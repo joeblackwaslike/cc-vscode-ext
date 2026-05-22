@@ -1,0 +1,8 @@
+vendor/
+dist/
+webview/
+node_modules/
+*.vsix
+.DS_Store
+*.js.map
+coverage/

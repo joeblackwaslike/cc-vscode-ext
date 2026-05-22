@@ -1,0 +1,40 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build:ext",
+      "type": "shell",
+      "command": "npm run build:ext",
+      "group": "build",
+      "presentation": { "reveal": "silent" },
+      "problemMatcher": []
+    },
+    {
+      "label": "build:webview",
+      "type": "shell",
+      "command": "npm run build:webview",
+      "group": "build",
+      "presentation": { "reveal": "silent" }
+    },
+    {
+      "label": "watch:ext",
+      "type": "shell",
+      "command": "npm run watch:ext",
+      "isBackground": true,
+      "presentation": { "reveal": "never" },
+      "problemMatcher": []
+    },
+    {
+      "label": "watch:webview",
+      "type": "shell",
+      "command": "npm run watch:webview",
+      "isBackground": true,
+      "presentation": { "reveal": "never" }
+    },
+    {
+      "label": "build",
+      "dependsOn": ["build:ext", "build:webview"],
+      "group": { "kind": "build", "isDefault": true }
+    }
+  ]
+}
