@@ -38,7 +38,7 @@ export function WelcomeScreen({ onNewSession, authenticated, loginUrl }: Props) 
       <div style={styles.card}>
         <h2 style={styles.title}>Claude Code</h2>
         <p style={styles.subtitle}>Your AI coding partner</p>
-        <button style={styles.primaryButton} onClick={onNewSession}>
+        <button data-testid="new-session-button" style={styles.primaryButton} onClick={onNewSession}>
           New Conversation
         </button>
         <p style={styles.hint}>

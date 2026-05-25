@@ -12,6 +12,14 @@
  *   expect(h.postedMessages).toContainEqual({ type: 'update_state', ... });
  */
 import { vi } from 'vitest';
+import type {
+  IAuthManager,
+  IAtMentionHandler,
+  IFileListProvider,
+  IVSCodeBridge,
+  IWorktreeManager,
+  MessageBrokerServices,
+} from '../../src/ipc/MessageBroker';
 import type { FromWebviewMessage, ToWebviewMessage } from '../../src/types/ipc';
 
 // ─── Mock shapes ──────────────────────────────────────────────────────────────
@@ -50,6 +58,79 @@ export interface MockViewManager {
 export interface MockWebview {
   postMessage: ReturnType<typeof vi.fn>;
   onDidReceiveMessage: ReturnType<typeof vi.fn>;
+}
+
+export interface MockAuthManager extends IAuthManager {
+  getAuthStatusResponse: ReturnType<typeof vi.fn>;
+}
+
+export interface MockWorktreeManager extends IWorktreeManager {
+  createWorktree: ReturnType<typeof vi.fn>;
+  checkGitStatus: ReturnType<typeof vi.fn>;
+  checkoutBranch: ReturnType<typeof vi.fn>;
+}
+
+export interface MockAtMentionHandler extends IAtMentionHandler {
+  getCurrentSelection: ReturnType<typeof vi.fn>;
+}
+
+export interface MockFileListProvider extends IFileListProvider {
+  listFiles: ReturnType<typeof vi.fn>;
+}
+
+export interface MockVSCodeBridge extends IVSCodeBridge {
+  openFile: ReturnType<typeof vi.fn>;
+  openUrl: ReturnType<typeof vi.fn>;
+  openFolder: ReturnType<typeof vi.fn>;
+  openNewConversationTab: ReturnType<typeof vi.fn>;
+}
+
+export interface MockMessageBrokerServices extends Required<MessageBrokerServices> {
+  authManager: MockAuthManager;
+  worktreeManager: MockWorktreeManager;
+  atMentionHandler: MockAtMentionHandler;
+  fileListProvider: MockFileListProvider;
+  vscode: MockVSCodeBridge;
+}
+
+export function createMockServices(): MockMessageBrokerServices {
+  return {
+    authManager: {
+      getAuthStatusResponse: vi.fn(() => ({
+        type: 'get_auth_status_response' as const,
+        authenticated: false,
+      })),
+    },
+    worktreeManager: {
+      createWorktree: vi.fn(() =>
+        Promise.resolve({ type: 'create_worktree_response' as const, success: true, worktreePath: '/tmp/branch' }),
+      ),
+      checkGitStatus: vi.fn(() =>
+        Promise.resolve({ type: 'check_git_status_response' as const, clean: true, branch: 'main' }),
+      ),
+      checkoutBranch: vi.fn(() =>
+        Promise.resolve({ type: 'checkout_branch_response' as const, success: true }),
+      ),
+    },
+    atMentionHandler: {
+      getCurrentSelection: vi.fn(() => ({
+        type: 'get_current_selection_response' as const,
+        text: 'selected text',
+        filePath: '/src/foo.ts',
+        startLine: 0,
+        endLine: 2,
+      })),
+    },
+    fileListProvider: {
+      listFiles: vi.fn(() => Promise.resolve(['src/foo.ts', 'src/bar.ts'])),
+    },
+    vscode: {
+      openFile: vi.fn(() => Promise.resolve()),
+      openUrl: vi.fn(() => Promise.resolve()),
+      openFolder: vi.fn(() => Promise.resolve()),
+      openNewConversationTab: vi.fn(() => Promise.resolve()),
+    },
+  };
 }
 
 export interface MockLogger {

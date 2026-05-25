@@ -27,7 +27,7 @@ export function SessionList({
     <div data-testid="session-list" style={styles.container}>
       <div style={styles.header}>
         <span style={styles.headerTitle}>Past Conversations</span>
-        <button style={styles.newButton} onClick={onNew} title="New conversation">
+        <button data-testid="new-session-button" style={styles.newButton} onClick={onNew} title="New conversation">
           +
         </button>
       </div>

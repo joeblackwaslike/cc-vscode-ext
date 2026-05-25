@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { createIpcTestHarness } from '../../helpers/ipcTestHarness';
+import { createIpcTestHarness, createMockServices } from '../../helpers/ipcTestHarness';
 import { MessageBroker } from '../../../src/ipc/MessageBroker';
 
 function makebroker() {
@@ -14,6 +14,22 @@ function makebroker() {
     h.logger,
   );
   return { h, broker };
+}
+
+function makeBrokerWithServices() {
+  const h = createIpcTestHarness();
+  const services = createMockServices();
+  const broker = new MessageBroker(
+    h.processManager,
+    h.sessionManager,
+    h.diffManager,
+    h.viewManager,
+    h.channelRouter,
+    h.webview,
+    h.logger,
+    services,
+  );
+  return { h, broker, services };
 }
 
 describe('MessageBroker', () => {
@@ -221,6 +237,131 @@ describe('MessageBroker', () => {
     it('logs unhandled type and does not throw', () => {
       const { h } = makebroker();
       expect(() => h.dispatch({ type: 'get_claude_state' })).not.toThrow();
+    });
+  });
+
+  describe('get_auth_status', () => {
+    it('posts get_auth_status_response from authManager', async () => {
+      const { h, services } = makeBrokerWithServices();
+      services.authManager.getAuthStatusResponse.mockReturnValue({
+        type: 'get_auth_status_response',
+        authenticated: true,
+      });
+      h.dispatch({ type: 'get_auth_status' });
+      await vi.waitFor(() =>
+        expect(h.postedMessages).toContainEqual({
+          type: 'get_auth_status_response',
+          authenticated: true,
+        }),
+      );
+    });
+
+    it('falls back to unauthenticated when no authManager provided', async () => {
+      const { h } = makebroker();
+      h.dispatch({ type: 'get_auth_status' });
+      await vi.waitFor(() =>
+        expect(h.postedMessages).toContainEqual({
+          type: 'get_auth_status_response',
+          authenticated: false,
+        }),
+      );
+    });
+  });
+
+  describe('create_worktree', () => {
+    it('calls worktreeManager.createWorktree and posts response', async () => {
+      const { h, services } = makeBrokerWithServices();
+      h.dispatch({ type: 'create_worktree', branchName: 'feat/test', cwd: '/repo' });
+      await vi.waitFor(() => expect(services.worktreeManager.createWorktree).toHaveBeenCalledWith('feat/test', '/repo'));
+      expect(h.postedMessages).toContainEqual({ type: 'create_worktree_response', success: true, worktreePath: '/tmp/branch' });
+    });
+
+    it('does nothing when no worktreeManager provided', () => {
+      const { h } = makebroker();
+      expect(() => h.dispatch({ type: 'create_worktree', branchName: 'feat/test', cwd: '/repo' })).not.toThrow();
+    });
+  });
+
+  describe('check_git_status', () => {
+    it('calls worktreeManager.checkGitStatus and posts response', async () => {
+      const { h, services } = makeBrokerWithServices();
+      h.dispatch({ type: 'check_git_status', cwd: '/repo' });
+      await vi.waitFor(() => expect(services.worktreeManager.checkGitStatus).toHaveBeenCalledWith('/repo'));
+      expect(h.postedMessages).toContainEqual(expect.objectContaining({ type: 'check_git_status_response', clean: true }));
+    });
+  });
+
+  describe('checkout_branch', () => {
+    it('calls worktreeManager.checkoutBranch and posts response', async () => {
+      const { h, services } = makeBrokerWithServices();
+      h.dispatch({ type: 'checkout_branch', branchName: 'main', cwd: '/repo' });
+      await vi.waitFor(() => expect(services.worktreeManager.checkoutBranch).toHaveBeenCalledWith('main', '/repo'));
+      expect(h.postedMessages).toContainEqual({ type: 'checkout_branch_response', success: true });
+    });
+  });
+
+  describe('get_current_selection', () => {
+    it('posts get_current_selection_response from atMentionHandler', async () => {
+      const { h, services } = makeBrokerWithServices();
+      h.dispatch({ type: 'get_current_selection' });
+      await vi.waitFor(() => expect(services.atMentionHandler.getCurrentSelection).toHaveBeenCalled());
+      expect(h.postedMessages).toContainEqual(
+        expect.objectContaining({ type: 'get_current_selection_response', text: 'selected text' }),
+      );
+    });
+
+    it('falls back to empty text when no atMentionHandler provided', async () => {
+      const { h } = makebroker();
+      h.dispatch({ type: 'get_current_selection' });
+      await vi.waitFor(() =>
+        expect(h.postedMessages).toContainEqual({ type: 'get_current_selection_response', text: '' }),
+      );
+    });
+  });
+
+  describe('list_files_request', () => {
+    it('calls fileListProvider.listFiles and posts list_files_response', async () => {
+      const { h, services } = makeBrokerWithServices();
+      h.dispatch({ type: 'list_files_request', query: 'foo', cwd: '/repo' });
+      await vi.waitFor(() => expect(services.fileListProvider.listFiles).toHaveBeenCalledWith('foo', '/repo'));
+      expect(h.postedMessages).toContainEqual({ type: 'list_files_response', files: ['src/foo.ts', 'src/bar.ts'] });
+    });
+
+    it('does nothing when no fileListProvider provided', () => {
+      const { h } = makebroker();
+      expect(() => h.dispatch({ type: 'list_files_request', query: 'foo' })).not.toThrow();
+    });
+  });
+
+  describe('VS Code native operations', () => {
+    it('open_url calls vscode.openUrl', async () => {
+      const { h, services } = makeBrokerWithServices();
+      h.dispatch({ type: 'open_url', url: 'https://example.com' });
+      await vi.waitFor(() => expect(services.vscode.openUrl).toHaveBeenCalledWith('https://example.com'));
+    });
+
+    it('open_file calls vscode.openFile with path and optional line', async () => {
+      const { h, services } = makeBrokerWithServices();
+      h.dispatch({ type: 'open_file', filePath: '/src/foo.ts', line: 42 });
+      await vi.waitFor(() => expect(services.vscode.openFile).toHaveBeenCalledWith('/src/foo.ts', 42));
+    });
+
+    it('open_folder calls vscode.openFolder', async () => {
+      const { h, services } = makeBrokerWithServices();
+      h.dispatch({ type: 'open_folder', folderPath: '/projects/myapp' });
+      await vi.waitFor(() => expect(services.vscode.openFolder).toHaveBeenCalledWith('/projects/myapp'));
+    });
+
+    it('open_folder_in_new_window calls vscode.openFolder with newWindow=true', async () => {
+      const { h, services } = makeBrokerWithServices();
+      h.dispatch({ type: 'open_folder_in_new_window', folderPath: '/projects/myapp' });
+      await vi.waitFor(() => expect(services.vscode.openFolder).toHaveBeenCalledWith('/projects/myapp', true));
+    });
+
+    it('new_conversation_tab calls vscode.openNewConversationTab', async () => {
+      const { h, services } = makeBrokerWithServices();
+      h.dispatch({ type: 'new_conversation_tab' });
+      await vi.waitFor(() => expect(services.vscode.openNewConversationTab).toHaveBeenCalled());
     });
   });
 });

@@ -1,4 +1,12 @@
-import type { FromWebviewMessage, ToWebviewMessage } from '../types/ipc';
+import type {
+  FromWebviewMessage,
+  ToWebviewMessage,
+  GetAuthStatusResponseMessage,
+  GetCurrentSelectionResponseMessage,
+  CreateWorktreeResponseMessage,
+  CheckGitStatusResponseMessage,
+  CheckoutBranchResponseMessage,
+} from '../types/ipc';
 import type { ClaudeStreamEvent } from '../types/process';
 import type { ProcessLaunchOptions } from '../process/ClaudeProcessManager';
 import type { ILogger } from '../process/ClaudeProcessManager';
@@ -41,6 +49,41 @@ export interface IWebview {
   onDidReceiveMessage(handler: (msg: unknown) => void): { dispose(): void };
 }
 
+// ─── Optional service interfaces ──────────────────────────────────────────────
+
+export interface IAuthManager {
+  getAuthStatusResponse(): GetAuthStatusResponseMessage;
+}
+
+export interface IWorktreeManager {
+  createWorktree(branchName: string, cwd: string): Promise<CreateWorktreeResponseMessage>;
+  checkGitStatus(cwd: string): Promise<CheckGitStatusResponseMessage>;
+  checkoutBranch(branchName: string, cwd: string): Promise<CheckoutBranchResponseMessage>;
+}
+
+export interface IAtMentionHandler {
+  getCurrentSelection(): GetCurrentSelectionResponseMessage;
+}
+
+export interface IFileListProvider {
+  listFiles(query: string, cwd?: string): Promise<string[]>;
+}
+
+export interface IVSCodeBridge {
+  openFile(filePath: string, line?: number): Promise<void>;
+  openUrl(url: string): Promise<void>;
+  openFolder(folderPath: string, newWindow?: boolean): Promise<void>;
+  openNewConversationTab(): Promise<void>;
+}
+
+export interface MessageBrokerServices {
+  authManager?: IAuthManager;
+  worktreeManager?: IWorktreeManager;
+  atMentionHandler?: IAtMentionHandler;
+  fileListProvider?: IFileListProvider;
+  vscode?: IVSCodeBridge;
+}
+
 /**
  * Central IPC dispatcher: translates incoming FromWebviewMessage events into
  * service calls and posts ToWebviewMessage responses back to the webview.
@@ -57,6 +100,7 @@ export class MessageBroker {
     private readonly channelRouter: IChannelRouter,
     private readonly webview: IWebview,
     private readonly logger: ILogger,
+    private readonly services: MessageBrokerServices = {},
   ) {
     webview.onDidReceiveMessage((raw: unknown) => {
       void this.handleMessage(raw as FromWebviewMessage);
@@ -110,6 +154,77 @@ export class MessageBroker {
         case 'open_diff':
           await this.diffManager.openDiff(msg);
           void this.webview.postMessage({ type: 'open_diff_response' });
+          return;
+
+        // ─── Auth ───────────────────────────────────────────────────────
+        case 'get_auth_status': {
+          const response = this.services.authManager?.getAuthStatusResponse()
+            ?? { type: 'get_auth_status_response' as const, authenticated: false };
+          void this.webview.postMessage(response);
+          return;
+        }
+
+        // ─── Worktree ───────────────────────────────────────────────────
+        case 'create_worktree': {
+          if (this.services.worktreeManager) {
+            const response = await this.services.worktreeManager.createWorktree(
+              msg.branchName,
+              msg.cwd,
+            );
+            void this.webview.postMessage(response);
+          }
+          return;
+        }
+        case 'check_git_status': {
+          if (this.services.worktreeManager) {
+            const response = await this.services.worktreeManager.checkGitStatus(msg.cwd);
+            void this.webview.postMessage(response);
+          }
+          return;
+        }
+        case 'checkout_branch': {
+          if (this.services.worktreeManager) {
+            const response = await this.services.worktreeManager.checkoutBranch(
+              msg.branchName,
+              msg.cwd,
+            );
+            void this.webview.postMessage(response);
+          }
+          return;
+        }
+
+        // ─── At-mention / selection ─────────────────────────────────────
+        case 'get_current_selection': {
+          const response = this.services.atMentionHandler?.getCurrentSelection()
+            ?? { type: 'get_current_selection_response' as const, text: '', filePath: undefined, startLine: undefined, endLine: undefined };
+          void this.webview.postMessage(response);
+          return;
+        }
+
+        // ─── File listing ───────────────────────────────────────────────
+        case 'list_files_request': {
+          if (this.services.fileListProvider) {
+            const files = await this.services.fileListProvider.listFiles(msg.query, msg.cwd);
+            void this.webview.postMessage({ type: 'list_files_response', files });
+          }
+          return;
+        }
+
+        // ─── VS Code native operations ──────────────────────────────────
+        case 'open_url':
+          await this.services.vscode?.openUrl(msg.url);
+          return;
+        case 'open_file':
+          await this.services.vscode?.openFile(msg.filePath, msg.line);
+          return;
+        case 'open_folder':
+          await this.services.vscode?.openFolder(msg.folderPath);
+          return;
+        case 'open_folder_in_new_window':
+          await this.services.vscode?.openFolder(msg.folderPath, true);
+          return;
+        case 'new_conversation_tab':
+          await this.services.vscode?.openNewConversationTab();
           return;
 
         // ─── Unhandled — log and ignore ─────────────────────────────────
