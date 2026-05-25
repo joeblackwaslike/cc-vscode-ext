@@ -2,14 +2,23 @@ import { chromium, Browser, Page } from '@playwright/test';
 import { ChildProcess, spawn } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as fsp from 'node:fs/promises';
+import * as net from 'node:net';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import { randomUUID } from 'node:crypto';
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..', '..');
 
-// Fixed CDP port — safe because we run workers:1 (serial tests).
-const CDP_PORT = 9500;
+function findFreePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.listen(0, '127.0.0.1', () => {
+      const port = (server.address() as net.AddressInfo).port;
+      server.close((err) => (err ? reject(err) : resolve(port)));
+    });
+    server.on('error', reject);
+  });
+}
 
 function findVSCodeCode(): string {
   const cacheDir = path.join(REPO_ROOT, '.vscode-test');
@@ -44,10 +53,12 @@ export async function launchVSCode(): Promise<LaunchResult> {
   const userDataDir = path.join(os.tmpdir(), `vscode-e2e-${randomUUID()}`);
   await fsp.mkdir(path.join(userDataDir, 'extensions'), { recursive: true });
 
+  const cdpPort = await findFreePort();
+
   const vscodeProcess = spawn(
     codeBin,
     [
-      `--remote-debugging-port=${CDP_PORT}`,
+      `--remote-debugging-port=${cdpPort}`,
       `--extensionDevelopmentPath=${REPO_ROOT}`,
       `--user-data-dir=${userDataDir}`,
       `--extensions-dir=${path.join(userDataDir, 'extensions')}`,
@@ -59,15 +70,15 @@ export async function launchVSCode(): Promise<LaunchResult> {
       '--disable-gpu',
       userDataDir,
     ],
-    { detached: false, env: { ...process.env, ELECTRON_ENABLE_LOGGING: '0' } },
+    { detached: false, env: { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'ELECTRON_RUN_AS_NODE' && k !== 'ELECTRON_NO_ATTACH_CONSOLE')), ELECTRON_ENABLE_LOGGING: '0' } },
   );
 
   vscodeProcess.on('error', (err) => console.error('[vscode] spawn error:', err));
 
   // Wait for VS Code's CDP endpoint to become available.
-  await waitForCDP(CDP_PORT, 40_000);
+  await waitForCDP(cdpPort, 40_000);
 
-  const browser = await chromium.connectOverCDP(`http://localhost:${CDP_PORT}`);
+  const browser = await chromium.connectOverCDP(`http://localhost:${cdpPort}`);
   const contexts = browser.contexts();
   if (!contexts.length) throw new Error('No browser contexts after CDP connect');
 

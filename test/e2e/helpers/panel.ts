@@ -1,4 +1,4 @@
-import { ElectronApplication, FrameLocator, Page } from '@playwright/test';
+import { Browser, FrameLocator, Page } from '@playwright/test';
 
 const PALETTE_KEY = process.platform === 'darwin' ? 'Meta+Shift+P' : 'Control+Shift+P';
 
@@ -31,34 +31,28 @@ export async function commandExists(window: Page, query: string): Promise<boolea
 }
 
 /**
- * Wait for a vscode-webview:// BrowserWindow to appear. VS Code creates each
- * webview panel as a separate Electron renderer, so we watch for a new window
- * whose URL starts with the vscode-webview protocol.
+ * Wait for a vscode-webview:// page to appear in any CDP context.
+ * VS Code webviews surface as separate browser contexts when connected via CDP.
  *
- * Register this BEFORE issuing the command that triggers the panel open to
- * avoid missing the event.
+ * Register BEFORE issuing the command that triggers the panel open to avoid
+ * missing the context-creation event.
  */
 export async function waitForWebviewWindow(
-  app: ElectronApplication,
+  browser: Browser,
   timeoutMs = 15_000,
 ): Promise<Page> {
-  // Check if a webview window already exists (race condition guard).
-  const existing = app.windows().find((w) => w.url().startsWith('vscode-webview://'));
-  if (existing) {
-    await existing.waitForLoadState('domcontentloaded');
-    return existing;
-  }
-
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    const remaining = Math.max(500, deadline - Date.now());
-    const page = await app.waitForEvent('window', { timeout: remaining });
-    if (page.url().startsWith('vscode-webview://')) {
-      await page.waitForLoadState('domcontentloaded');
-      return page;
+    for (const ctx of browser.contexts()) {
+      const page = ctx.pages().find((p) => p.url().startsWith('vscode-webview://'));
+      if (page) {
+        await page.waitForLoadState('domcontentloaded');
+        return page;
+      }
     }
+    await new Promise((r) => setTimeout(r, 300));
   }
-  throw new Error(`No vscode-webview:// window appeared within ${timeoutMs}ms`);
+  throw new Error(`No vscode-webview:// page appeared within ${timeoutMs}ms`);
 }
 
 /**
