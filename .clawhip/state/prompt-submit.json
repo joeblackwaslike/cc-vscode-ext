@@ -1,8 +1,0 @@
-{
-  "observed_at": "2026-05-22T02:52:17.488Z",
-  "provider": "claude-code",
-  "event_name": "UserPromptSubmit",
-  "session_id": "ea6b260e-f070-4a5f-bab1-f7a1b2f0b0b6",
-  "turn_id": null,
-  "prompt_summary": "I downloaded the VS Code extension for Claude Code under the vendor folder. I’d like you to explore it and reimplement it as a VS Code extension, essentially the same thing, but in well-written, docum…"
-}

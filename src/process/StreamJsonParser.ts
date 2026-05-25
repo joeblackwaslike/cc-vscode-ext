@@ -9,7 +9,7 @@ export class StreamJsonParser {
   private buffer = '';
 
   private readonly onEvent: (event: unknown) => void;
-  private readonly onError?: (line: string, err: unknown) => void;
+  private readonly onError: ((line: string, err: unknown) => void) | undefined;
 
   constructor(onEvent: (event: unknown) => void, onError?: (line: string, err: unknown) => void) {
     this.onEvent = onEvent;

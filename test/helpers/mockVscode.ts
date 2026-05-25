@@ -89,7 +89,7 @@ export const mockVscode = {
 
   // workspace namespace
   workspace: {
-    getConfiguration: vi.fn((section?: string) => ({
+    getConfiguration: vi.fn((_section?: string) => ({
       get: vi.fn((key: string, defaultValue?: unknown) => defaultValue),
       has: vi.fn(() => false),
       inspect: vi.fn(() => undefined),

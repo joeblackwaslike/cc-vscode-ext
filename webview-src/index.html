@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Claude Code</title>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+      html,
+      body,
+      #root {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family: var(--vscode-font-family, system-ui, sans-serif);
+        font-size: var(--vscode-font-size, 13px);
+        color: var(--vscode-foreground);
+        background: var(--vscode-editor-background);
+      }
+      a {
+        color: var(--vscode-textLink-foreground);
+      }
+      code,
+      pre {
+        font-family: var(--vscode-editor-font-family, monospace);
+        font-size: var(--vscode-editor-font-size, 12px);
+      }
+      pre {
+        background: var(--vscode-textBlockQuote-background);
+        padding: 8px 12px;
+        border-radius: 4px;
+        overflow-x: auto;
+      }
+      p {
+        margin: 4px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/main.tsx"></script>
+  </body>
+</html>
