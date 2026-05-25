@@ -1,20 +1,30 @@
-import { defineConfig } from '@playwright/test';
+import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: 'test/e2e',
-  testMatch: '**/*.test.ts',
-  // VS Code launches must be serial — concurrent Electron instances race on
-  // user-data-dir, focus, and keyboard input driving the palette.
-  workers: 1,
-  fullyParallel: false,
-  timeout: 60_000,
-  expect: { timeout: 10_000 },
-  retries: process.env.CI ? 2 : 1,
+  testMatch: '**/*.e2e.ts',
+  timeout: 30_000,
+  expect: { timeout: 5_000 },
+  fullyParallel: true,
+  retries: process.env.CI ? 2 : 0,
   reporter: [['list'], ['html', { open: 'never', outputFolder: 'playwright-report' }]],
   outputDir: 'test-results',
   use: {
+    baseURL: 'http://localhost:4174',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
     trace: 'retain-on-failure',
+  },
+  projects: [
+    {
+      name: 'chromium',
+      use: { ...devices['Desktop Chrome'] },
+    },
+  ],
+  webServer: {
+    command: 'npm run build:webview && npx vite preview --config vite.config.ts --port 4174',
+    url: 'http://localhost:4174',
+    reuseExistingServer: !process.env.CI,
+    timeout: 60_000,
   },
 });

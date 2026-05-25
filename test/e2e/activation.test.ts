@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { commandExists, openCommandPalette } from './helpers/panel';
-import { launchVSCode } from './helpers/launch';
+import { closeVSCode, launchVSCode } from './helpers/launch';
 
 const CLAUDE_COMMANDS = [
   'Claude Code: Open in New Tab',
@@ -12,43 +12,43 @@ const CLAUDE_COMMANDS = [
 
 test.describe('Extension activation', () => {
   test('VS Code launches with a visible window', async () => {
-    const { app, window } = await launchVSCode();
+    const result = await launchVSCode();
     try {
-      const title = await window.title();
+      const title = await result.window.title();
       expect(title).toBeTruthy();
-      expect(await window.isVisible('body')).toBe(true);
+      expect(await result.window.isVisible('body')).toBe(true);
     } finally {
-      await app.close();
+      await closeVSCode(result);
     }
   });
 
   test('Claude commands appear in command palette', async () => {
-    const { app, window } = await launchVSCode();
+    const result = await launchVSCode();
     try {
-      await openCommandPalette(window);
-      await window.locator('.quick-input-widget input').fill('Claude Code:');
-      await window.waitForTimeout(800);
-      const items = await window.locator('.quick-input-list .label-name').allTextContents();
-      await window.keyboard.press('Escape');
+      await openCommandPalette(result.window);
+      await result.window.locator('.quick-input-widget .input').fill('Claude Code:');
+      await result.window.waitForTimeout(800);
+      const items = await result.window.locator('.quick-input-list .label-name').allTextContents();
+      await result.window.keyboard.press('Escape');
 
       const claudeItems = items.filter((t) => t.startsWith('Claude Code'));
       expect(claudeItems.length).toBeGreaterThanOrEqual(CLAUDE_COMMANDS.length / 2);
     } finally {
-      await app.close();
+      await closeVSCode(result);
     }
   });
 
   test('no uncaught errors from the extension on startup', async () => {
     const errors: string[] = [];
-    const { app, window } = await launchVSCode();
+    const result = await launchVSCode();
     try {
-      window.on('pageerror', (err) => {
+      result.window.on('pageerror', (err) => {
         if (/claude/i.test(err.message)) errors.push(err.message);
       });
-      await window.waitForTimeout(3_000);
+      await result.window.waitForTimeout(3_000);
       expect(errors).toHaveLength(0);
     } finally {
-      await app.close();
+      await closeVSCode(result);
     }
   });
 });
