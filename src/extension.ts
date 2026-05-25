@@ -74,19 +74,20 @@ export function activate(context: vscode.ExtensionContext): void {
   // that messages from that webview are routed correctly.
 
   const vscBridge = {
-    openFile: (filePath: string, line?: number) => {
-      const uri = vscode.Uri.file(filePath);
-      return vscode.workspace.openTextDocument(uri).then((doc) =>
-        vscode.window.showTextDocument(doc, {
-          selection: line !== undefined ? new vscode.Range(line, 0, line, 0) : undefined,
-        }),
-      ).then(() => undefined);
+    openFile: async (filePath: string, line?: number) => {
+      const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(filePath));
+      const opts = line !== undefined ? { selection: new vscode.Range(line, 0, line, 0) } : undefined;
+      await vscode.window.showTextDocument(doc, opts);
     },
-    openUrl: (url: string) => vscode.env.openExternal(vscode.Uri.parse(url)).then(() => undefined),
-    openFolder: (folderPath: string, newWindow = false) =>
-      vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(folderPath), newWindow).then(() => undefined),
-    openNewConversationTab: () =>
-      vscode.commands.executeCommand('claude-vscode.editor.open').then(() => undefined),
+    openUrl: async (url: string) => {
+      await vscode.env.openExternal(vscode.Uri.parse(url));
+    },
+    openFolder: async (folderPath: string, newWindow = false) => {
+      await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(folderPath), newWindow);
+    },
+    openNewConversationTab: async () => {
+      await vscode.commands.executeCommand('claude-vscode.editor.open');
+    },
   };
 
   const makeBroker = (webview: ReturnType<typeof adaptWebview>): void => {
