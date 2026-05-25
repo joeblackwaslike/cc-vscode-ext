@@ -47,7 +47,7 @@ function AssistantMessage({ event }: { event: ClaudeStreamEvent }) {
   const content = Array.isArray(message?.content) ? message.content : [];
 
   return (
-    <div style={styles.assistantBubble}>
+    <div data-testid="chat-message-assistant" style={styles.assistantBubble}>
       <span style={styles.roleLabel}>Claude</span>
       {content.map((block, i) => (
         <ContentBlock key={i} block={block as Record<string, unknown>} />
@@ -93,7 +93,7 @@ function ResultMessage({ event }: { event: ClaudeStreamEvent }) {
 
 function ErrorMessage({ event }: { event: ClaudeStreamEvent }) {
   return (
-    <div style={styles.resultError}>
+    <div data-testid="chat-message-error" style={styles.resultError}>
       ✗ {String(event.message ?? 'Unknown error')}
     </div>
   );
