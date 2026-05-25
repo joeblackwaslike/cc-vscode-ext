@@ -20,6 +20,8 @@ import { CommandRegistry } from './commands/CommandRegistry';
 import { AtMentionHandler } from './mentions/AtMentionHandler';
 import { TerminalLauncher } from './terminal/TerminalLauncher';
 import { AuthManager } from './auth/AuthManager';
+import { WorktreeManager } from './worktree/WorktreeManager';
+import { FileListProvider } from './mentions/FileListProvider';
 import { adaptWebview } from './utils/webviewAdapter';
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -71,6 +73,22 @@ export function activate(context: vscode.ExtensionContext): void {
   // Each webview (panel, sidebar, session list) gets its own MessageBroker so
   // that messages from that webview are routed correctly.
 
+  const vscBridge = {
+    openFile: (filePath: string, line?: number) => {
+      const uri = vscode.Uri.file(filePath);
+      return vscode.workspace.openTextDocument(uri).then((doc) =>
+        vscode.window.showTextDocument(doc, {
+          selection: line !== undefined ? new vscode.Range(line, 0, line, 0) : undefined,
+        }),
+      ).then(() => undefined);
+    },
+    openUrl: (url: string) => vscode.env.openExternal(vscode.Uri.parse(url)).then(() => undefined),
+    openFolder: (folderPath: string, newWindow = false) =>
+      vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(folderPath), newWindow).then(() => undefined),
+    openNewConversationTab: () =>
+      vscode.commands.executeCommand('claude-vscode.editor.open').then(() => undefined),
+  };
+
   const makeBroker = (webview: ReturnType<typeof adaptWebview>): void => {
     new MessageBroker(
       processManager,
@@ -80,6 +98,7 @@ export function activate(context: vscode.ExtensionContext): void {
       channelRouter,
       webview,
       logger,
+      { authManager, worktreeManager, atMentionHandler, fileListProvider, vscode: vscBridge },
     );
   };
 
@@ -113,6 +132,8 @@ export function activate(context: vscode.ExtensionContext): void {
   const terminalLauncher = new TerminalLauncher(context.extensionPath);
   const authManager = new AuthManager();
   const atMentionHandler = new AtMentionHandler();
+  const worktreeManager = new WorktreeManager();
+  const fileListProvider = new FileListProvider();
 
   // ─── Context keys ───────────────────────────────────────────────────────────
 
@@ -174,9 +195,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
   logger.info('Claude Code extension activated');
 
-  // Suppress unused variable warnings for modules used for side-effects / future use
-  void authManager;
-  void atMentionHandler;
+
 }
 
 export function deactivate(): void {
