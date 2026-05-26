@@ -1,22 +1,18 @@
 import { expect, test } from '@playwright/test';
-import { commandExists, openCommandPalette } from './helpers/panel';
 import { closeVSCode, launchVSCode } from './helpers/launch';
+import { commandExists, openCommandPalette } from './helpers/panel';
 
-const CLAUDE_COMMANDS = [
-  'Claude Code: Open in New Tab',
-  'Claude Code: Open',
-  'Claude Code: New Conversation',
-  'Claude Code: Open in Terminal',
-  'Claude Code: Show Logs',
-];
+const CLAUDE_COMMANDS_PREFIX = 'Claude Code:';
+const MIN_CLAUDE_COMMANDS = 5;
 
 test.describe('Extension activation', () => {
-  test('VS Code launches with a visible window', async () => {
+  test('VS Code launches with a visible workbench', async () => {
     const result = await launchVSCode();
     try {
-      const title = await result.window.title();
+      const { window } = result;
+      const title = await window.title();
       expect(title).toBeTruthy();
-      expect(await result.window.isVisible('body')).toBe(true);
+      await expect(window.locator('.monaco-workbench')).toBeVisible();
     } finally {
       await closeVSCode(result);
     }
@@ -25,14 +21,15 @@ test.describe('Extension activation', () => {
   test('Claude commands appear in command palette', async () => {
     const result = await launchVSCode();
     try {
-      await openCommandPalette(result.window);
-      await result.window.locator('.quick-input-widget .input').fill('Claude Code:');
-      await result.window.waitForTimeout(800);
-      const items = await result.window.locator('.quick-input-list .label-name').allTextContents();
-      await result.window.keyboard.press('Escape');
+      const { window } = result;
+      await openCommandPalette(window);
+      await window.locator('.quick-input-widget input').fill(CLAUDE_COMMANDS_PREFIX);
+      await window.waitForTimeout(800);
+      const items = await window.locator('.quick-input-list .label-name').allTextContents();
+      await window.keyboard.press('Escape');
 
-      const claudeItems = items.filter((t) => t.startsWith('Claude Code'));
-      expect(claudeItems.length).toBeGreaterThanOrEqual(CLAUDE_COMMANDS.length / 2);
+      const claudeItems = items.filter((t) => t.startsWith(CLAUDE_COMMANDS_PREFIX));
+      expect(claudeItems.length).toBeGreaterThanOrEqual(MIN_CLAUDE_COMMANDS);
     } finally {
       await closeVSCode(result);
     }

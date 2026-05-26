@@ -1,15 +1,16 @@
 import { expect, test } from '@playwright/test';
-import { runCommand } from './helpers/panel';
 import { closeVSCode, launchVSCode } from './helpers/launch';
+import { runCommand } from './helpers/panel';
 
 test.describe('Process and terminal integration', () => {
   test('Open in Terminal creates a named terminal', async () => {
     const result = await launchVSCode();
     try {
-      await runCommand(result.window, 'Claude Code: Open in Terminal');
-      await result.window.waitForTimeout(3_000);
+      const { window } = result;
+      await runCommand(window, 'Claude Code: Open in Terminal');
+      await window.waitForTimeout(3_000);
 
-      const terminalPanel = result.window.locator('.terminal-outer-container, .panel.integrated-terminal');
+      const terminalPanel = window.locator('.terminal-outer-container, .panel.integrated-terminal');
       await expect(terminalPanel.first()).toBeAttached({ timeout: 10_000 });
     } finally {
       await closeVSCode(result);
@@ -19,10 +20,11 @@ test.describe('Process and terminal integration', () => {
   test('Show Logs command opens an output channel', async () => {
     const result = await launchVSCode();
     try {
-      await runCommand(result.window, 'Claude Code: Show Logs');
-      await result.window.waitForTimeout(2_000);
+      const { window } = result;
+      await runCommand(window, 'Claude Code: Show Logs');
+      await window.waitForTimeout(2_000);
 
-      const outputPanel = result.window.locator('.panel .output');
+      const outputPanel = window.locator('.panel .output');
       await expect(outputPanel.first()).toBeAttached({ timeout: 10_000 });
     } finally {
       await closeVSCode(result);

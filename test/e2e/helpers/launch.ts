@@ -68,6 +68,7 @@ export async function launchVSCode(): Promise<LaunchResult> {
       '--disable-telemetry',
       '--no-sandbox',
       '--disable-gpu',
+      '--remote-allow-origins=*',
       userDataDir,
     ],
     { detached: false, env: { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'ELECTRON_RUN_AS_NODE' && k !== 'ELECTRON_NO_ATTACH_CONSOLE')), ELECTRON_ENABLE_LOGGING: '0' } },
