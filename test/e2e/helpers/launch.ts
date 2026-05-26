@@ -68,6 +68,7 @@ export async function launchVSCode(): Promise<LaunchResult> {
       '--disable-telemetry',
       '--no-sandbox',
       '--disable-gpu',
+      '--headless',
       '--remote-allow-origins=*',
       userDataDir,
     ],
