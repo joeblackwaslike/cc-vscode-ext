@@ -77,35 +77,50 @@ export async function launchVSCode(): Promise<LaunchResult> {
 
   vscodeProcess.on('error', (err) => console.error('[vscode] spawn error:', err));
 
-  // Wait for VS Code's CDP endpoint to become available.
-  await waitForCDP(cdpPort, 40_000);
-  // Brief settle: CDP HTTP is ready but the WebSocket endpoint may lag slightly.
-  await new Promise((r) => setTimeout(r, 500));
+  try {
+    // Wait for VS Code's CDP endpoint to become available.
+    await waitForCDP(cdpPort, 60_000);
 
-  const browser = await chromium.connectOverCDP(`http://localhost:${cdpPort}`, { timeout: 60_000 });
-  const contexts = browser.contexts();
-  if (!contexts.length) throw new Error('No browser contexts after CDP connect');
+    // HTTP readiness doesn't guarantee the WebSocket endpoint is up yet.
+    // Retry connectOverCDP with short per-attempt timeouts instead of one
+    // long single attempt so we recover quickly once the WS becomes ready.
+    const browser = await connectOverCDPWithRetry(cdpPort, 60_000);
+    const contexts = browser.contexts();
+    if (!contexts.length) throw new Error('No browser contexts after CDP connect');
 
-  // Find the VS Code workbench page (not a vscode-webview:// renderer).
-  const window: Page = (() => {
-    for (const ctx of contexts) {
-      const p = ctx.pages().find((pg) => !pg.url().startsWith('vscode-webview://'));
-      if (p) return p;
-    }
-    const fallback = contexts[0]?.pages()[0];
-    if (!fallback) throw new Error('No VS Code workbench page found after CDP connect');
-    return fallback;
-  })();
+    // Find the VS Code workbench page (not a vscode-webview:// renderer).
+    const window: Page = (() => {
+      for (const ctx of contexts) {
+        const p = ctx.pages().find((pg) => !pg.url().startsWith('vscode-webview://'));
+        if (p) return p;
+      }
+      const fallback = contexts[0]?.pages()[0];
+      if (!fallback) throw new Error('No VS Code workbench page found after CDP connect');
+      return fallback;
+    })();
 
-  await window.waitForLoadState('domcontentloaded');
-  await window.locator('.monaco-workbench').waitFor({ state: 'visible', timeout: 30_000 });
+    await window.waitForLoadState('domcontentloaded');
+    await window.locator('.monaco-workbench').waitFor({ state: 'visible', timeout: 30_000 });
 
-  return { browser, window, vscodeProcess, userDataDir };
+    return { browser, window, vscodeProcess, userDataDir };
+  } catch (err) {
+    try { vscodeProcess.kill('SIGKILL'); } catch { /* ignore */ }
+    try { await fsp.rm(userDataDir, { recursive: true, force: true }); } catch { /* ignore */ }
+    throw err;
+  }
 }
 
 export async function closeVSCode(result: LaunchResult): Promise<void> {
   try { await result.browser.close(); } catch { /* ignore */ }
-  try { result.vscodeProcess.kill(); } catch { /* ignore */ }
+  try {
+    result.vscodeProcess.kill('SIGKILL');
+    // Wait for the process to fully exit before returning so the next test
+    // doesn't inherit a still-dying VS Code instance that holds ports/memory.
+    await new Promise<void>((resolve) => {
+      result.vscodeProcess.once('exit', () => resolve());
+      setTimeout(resolve, 5_000); // fallback: don't block more than 5s
+    });
+  } catch { /* ignore */ }
   try { await fsp.rm(result.userDataDir, { recursive: true, force: true }); } catch { /* ignore */ }
 }
 
@@ -119,4 +134,18 @@ async function waitForCDP(port: number, timeoutMs: number): Promise<void> {
     await new Promise((r) => setTimeout(r, 500));
   }
   throw new Error(`VS Code CDP did not become available on port ${port} within ${timeoutMs}ms`);
+}
+
+async function connectOverCDPWithRetry(port: number, totalTimeoutMs: number): Promise<Browser> {
+  const deadline = Date.now() + totalTimeoutMs;
+  let lastError: unknown;
+  while (Date.now() < deadline) {
+    try {
+      return await chromium.connectOverCDP(`http://localhost:${port}`, { timeout: 5_000 });
+    } catch (err) {
+      lastError = err;
+      await new Promise((r) => setTimeout(r, 1_000));
+    }
+  }
+  throw lastError ?? new Error(`connectOverCDP failed on port ${port} within ${totalTimeoutMs}ms`);
 }
