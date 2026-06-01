@@ -23,7 +23,7 @@ test.describe('Extension activation', () => {
     try {
       const { window } = result;
       await openCommandPalette(window);
-      await window.locator('.quick-input-widget input').fill(CLAUDE_COMMANDS_PREFIX);
+      await window.locator('.quick-input-widget input').fill(`>${CLAUDE_COMMANDS_PREFIX}`);
       await window.waitForTimeout(800);
       const items = await window.locator('.quick-input-list .label-name').allTextContents();
       await window.keyboard.press('Escape');
