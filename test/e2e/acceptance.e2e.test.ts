@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { closeVSCode, launchVSCode } from './helpers/launch';
-import { runCommand, waitForWebviewWindow } from './helpers/panel';
+import { getWebviewFrame, runCommand } from './helpers/panel';
 
 // VS Code launch + webview init reliably needs more than the default 60s.
 const ACCEPTANCE_TIMEOUT = 120_000;
@@ -10,15 +10,10 @@ test.describe('Acceptance: Claude Code extension', () => {
     test.setTimeout(ACCEPTANCE_TIMEOUT);
     const result = await launchVSCode();
     try {
-      const { window, browser } = result;
+      const { window } = result;
 
-      // Register webview listener before the command to avoid missing the creation event.
-      const webviewPagePromise = waitForWebviewWindow(browser, 20_000);
       await runCommand(window, 'Claude Code: Open in New Tab');
-
-      const webviewPage = await webviewPagePromise;
-      // The vscode-webview:// page wraps the extension HTML inside iframe#active-frame.
-      const frame = webviewPage.frameLocator('iframe#active-frame');
+      const frame = getWebviewFrame(window);
 
       // Either welcome screen (fresh install) or conversation view (existing sessions) is valid.
       const rootView = frame.locator(
@@ -35,13 +30,10 @@ test.describe('Acceptance: Claude Code extension', () => {
     test.setTimeout(ACCEPTANCE_TIMEOUT);
     const result = await launchVSCode();
     try {
-      const { window, browser } = result;
+      const { window } = result;
 
-      const webviewPagePromise = waitForWebviewWindow(browser, 20_000);
       await runCommand(window, 'Claude Code: Open in New Tab');
-
-      const webviewPage = await webviewPagePromise;
-      const frame = webviewPage.frameLocator('iframe#active-frame');
+      const frame = getWebviewFrame(window);
 
       const input = frame.getByTestId('message-input');
       await expect(input).toBeVisible({ timeout: 20_000 });
@@ -71,13 +63,10 @@ test.describe('Acceptance: Claude Code extension', () => {
 
     const result = await launchVSCode();
     try {
-      const { window, browser } = result;
+      const { window } = result;
 
-      const webviewPagePromise = waitForWebviewWindow(browser, 20_000);
       await runCommand(window, 'Claude Code: Open in New Tab');
-
-      const webviewPage = await webviewPagePromise;
-      const frame = webviewPage.frameLocator('iframe#active-frame');
+      const frame = getWebviewFrame(window);
 
       const input = frame.getByTestId('message-input');
       await expect(input).toBeVisible({ timeout: 20_000 });
