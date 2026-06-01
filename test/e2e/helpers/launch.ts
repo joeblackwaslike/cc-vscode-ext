@@ -79,8 +79,10 @@ export async function launchVSCode(): Promise<LaunchResult> {
 
   // Wait for VS Code's CDP endpoint to become available.
   await waitForCDP(cdpPort, 40_000);
+  // Brief settle: CDP HTTP is ready but the WebSocket endpoint may lag slightly.
+  await new Promise((r) => setTimeout(r, 500));
 
-  const browser = await chromium.connectOverCDP(`http://localhost:${cdpPort}`);
+  const browser = await chromium.connectOverCDP(`http://localhost:${cdpPort}`, { timeout: 60_000 });
   const contexts = browser.contexts();
   if (!contexts.length) throw new Error('No browser contexts after CDP connect');
 

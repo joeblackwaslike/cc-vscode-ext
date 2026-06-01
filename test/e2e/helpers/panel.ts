@@ -56,21 +56,8 @@ export async function waitForWebviewWindow(
 }
 
 /**
- * VS Code webviews use two nested iframes:
- *   1. iframe.webview.ready  — VS Code's outer security boundary
- *   2. iframe#active-frame   — the actual extension HTML (where React mounts)
- *
- * All data-testid assertions must go through this locator chain.
- */
-export function webviewFrame(page: Page): FrameLocator {
-  return page.frameLocator('iframe.webview.ready, iframe.webview').frameLocator(
-    'iframe#active-frame',
-  );
-}
-
-/**
- * Kept for backward compatibility with existing tests that call getWebviewFrame.
- * Points at the outer iframe only — use webviewFrame() for React content.
+ * Returns a FrameLocator for the VS Code webview iframe.
+ * React content (data-testid elements) is accessible directly from this frame.
  */
 export function getWebviewFrame(window: Page): FrameLocator {
   return window.frameLocator('iframe.webview.ready').first();
