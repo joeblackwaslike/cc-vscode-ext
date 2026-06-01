@@ -56,9 +56,9 @@ export async function waitForWebviewWindow(
 }
 
 /**
- * Returns a FrameLocator for the VS Code webview iframe.
- * React content (data-testid elements) is accessible directly from this frame.
+ * Returns a FrameLocator pointing at the React content inside the VS Code webview.
+ * VS Code nests content two levels deep: iframe.webview.ready → iframe#active-frame.
  */
 export function getWebviewFrame(window: Page): FrameLocator {
-  return window.frameLocator('iframe.webview.ready').first();
+  return window.frameLocator('iframe.webview.ready').frameLocator('iframe#active-frame');
 }
