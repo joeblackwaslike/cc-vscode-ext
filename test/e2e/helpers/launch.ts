@@ -6,6 +6,12 @@ import * as net from 'node:net';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import { randomUUID } from 'node:crypto';
+import {
+  assertUnderCap,
+  killTree,
+  registerInstance,
+  unregisterInstance,
+} from './registry';
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..', '..');
 
@@ -49,6 +55,10 @@ export interface LaunchResult {
 }
 
 export async function launchVSCode(): Promise<LaunchResult> {
+  // Fork-bomb stop: refuse to spawn if too many instances are already live.
+  // Throws (spawning nothing) rather than melting the machine.
+  assertUnderCap();
+
   const codeBin = findVSCodeCode();
   const userDataDir = path.join(os.tmpdir(), `vscode-e2e-${randomUUID()}`);
   await fsp.mkdir(path.join(userDataDir, 'extensions'), { recursive: true });
@@ -72,8 +82,14 @@ export async function launchVSCode(): Promise<LaunchResult> {
       '--remote-allow-origins=*',
       userDataDir,
     ],
-    { detached: false, env: { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'ELECTRON_RUN_AS_NODE' && k !== 'ELECTRON_NO_ATTACH_CONSOLE')), ELECTRON_ENABLE_LOGGING: '0' } },
+    // detached: true makes this VS Code its own process-group leader, so a hard
+    // crash + killTree() can take down every Electron helper it spawns — no orphans.
+    { detached: true, env: { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'ELECTRON_RUN_AS_NODE' && k !== 'ELECTRON_NO_ATTACH_CONSOLE')), ELECTRON_ENABLE_LOGGING: '0' } },
   );
+
+  // Record the instance immediately so a crash between here and closeVSCode()
+  // still leaves a trail for the pre-flight / teardown sweeps to clean up.
+  if (vscodeProcess.pid != null) registerInstance(vscodeProcess.pid, userDataDir);
 
   vscodeProcess.on('error', (err) => console.error('[vscode] spawn error:', err));
 
@@ -85,43 +101,64 @@ export async function launchVSCode(): Promise<LaunchResult> {
     // Retry connectOverCDP with short per-attempt timeouts instead of one
     // long single attempt so we recover quickly once the WS becomes ready.
     const browser = await connectOverCDPWithRetry(cdpPort, 60_000);
-    const contexts = browser.contexts();
-    if (!contexts.length) throw new Error('No browser contexts after CDP connect');
 
-    // Find the VS Code workbench page (not a vscode-webview:// renderer).
-    const window: Page = (() => {
-      for (const ctx of contexts) {
-        const p = ctx.pages().find((pg) => !pg.url().startsWith('vscode-webview://'));
-        if (p) return p;
-      }
-      const fallback = contexts[0]?.pages()[0];
-      if (!fallback) throw new Error('No VS Code workbench page found after CDP connect');
-      return fallback;
-    })();
+    // The workbench renderer target often attaches a beat after connectOverCDP
+    // returns, so reading pages() once races and finds an empty/webview-only
+    // list. Poll until the workbench page appears instead.
+    const window = await waitForWorkbenchPage(browser, 30_000);
 
     await window.waitForLoadState('domcontentloaded');
     await window.locator('.monaco-workbench').waitFor({ state: 'visible', timeout: 30_000 });
 
     return { browser, window, vscodeProcess, userDataDir };
   } catch (err) {
-    try { vscodeProcess.kill('SIGKILL'); } catch { /* ignore */ }
+    if (vscodeProcess.pid != null) {
+      killTree(vscodeProcess.pid);
+      unregisterInstance(vscodeProcess.pid);
+    }
     try { await fsp.rm(userDataDir, { recursive: true, force: true }); } catch { /* ignore */ }
     throw err;
   }
 }
 
 export async function closeVSCode(result: LaunchResult): Promise<void> {
+  const pid = result.vscodeProcess.pid;
   try { await result.browser.close(); } catch { /* ignore */ }
   try {
-    result.vscodeProcess.kill('SIGKILL');
-    // Wait for the process to fully exit before returning so the next test
-    // doesn't inherit a still-dying VS Code instance that holds ports/memory.
+    // Kill the whole process group, not just the launcher, so Electron helpers
+    // die with it. Then wait for exit so the next test doesn't inherit a
+    // still-dying instance that holds ports/memory.
+    if (pid != null) killTree(pid);
     await new Promise<void>((resolve) => {
       result.vscodeProcess.once('exit', () => resolve());
       setTimeout(resolve, 5_000); // fallback: don't block more than 5s
     });
   } catch { /* ignore */ }
+  if (pid != null) unregisterInstance(pid);
   try { await fsp.rm(result.userDataDir, { recursive: true, force: true }); } catch { /* ignore */ }
+}
+
+/**
+ * Wait for VS Code's workbench renderer page to attach as a CDP target. New
+ * targets (the workbench, then webviews) appear over the contexts/pages list
+ * a moment after connect, so we re-read every poll rather than once. Returns
+ * the first non-webview page; if only webview pages ever appear, returns the
+ * first page seen (the caller's `.monaco-workbench` check will then assert).
+ */
+async function waitForWorkbenchPage(browser: Browser, timeoutMs: number): Promise<Page> {
+  const deadline = Date.now() + timeoutMs;
+  let anyPage: Page | undefined;
+  while (Date.now() < deadline) {
+    for (const ctx of browser.contexts()) {
+      for (const pg of ctx.pages()) {
+        anyPage ??= pg;
+        if (!pg.url().startsWith('vscode-webview://')) return pg;
+      }
+    }
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  if (anyPage) return anyPage;
+  throw new Error('No VS Code workbench page found after CDP connect');
 }
 
 async function waitForCDP(port: number, timeoutMs: number): Promise<void> {
