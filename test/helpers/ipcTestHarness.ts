@@ -85,12 +85,17 @@ export interface MockVSCodeBridge extends IVSCodeBridge {
   openNewConversationTab: ReturnType<typeof vi.fn>;
 }
 
+export interface MockTerminalLauncher {
+  openClaudeTerminal: ReturnType<typeof vi.fn>;
+}
+
 export interface MockMessageBrokerServices extends Required<MessageBrokerServices> {
   authManager: MockAuthManager;
   worktreeManager: MockWorktreeManager;
   atMentionHandler: MockAtMentionHandler;
   fileListProvider: MockFileListProvider;
   vscode: MockVSCodeBridge;
+  terminalLauncher: MockTerminalLauncher;
 }
 
 export function createMockServices(): MockMessageBrokerServices {
@@ -129,6 +134,9 @@ export function createMockServices(): MockMessageBrokerServices {
       openUrl: vi.fn(() => Promise.resolve()),
       openFolder: vi.fn(() => Promise.resolve()),
       openNewConversationTab: vi.fn(() => Promise.resolve()),
+    },
+    terminalLauncher: {
+      openClaudeTerminal: vi.fn(),
     },
   };
 }

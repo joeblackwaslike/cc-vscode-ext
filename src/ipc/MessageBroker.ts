@@ -76,12 +76,17 @@ export interface IVSCodeBridge {
   openNewConversationTab(): Promise<void>;
 }
 
+export interface ITerminalLauncher {
+  openClaudeTerminal(cwd?: string): unknown;
+}
+
 export interface MessageBrokerServices {
   authManager?: IAuthManager;
   worktreeManager?: IWorktreeManager;
   atMentionHandler?: IAtMentionHandler;
   fileListProvider?: IFileListProvider;
   vscode?: IVSCodeBridge;
+  terminalLauncher?: ITerminalLauncher;
 }
 
 /**
@@ -163,6 +168,10 @@ export class MessageBroker {
           void this.webview.postMessage(response);
           return;
         }
+
+        case 'login':
+          this.services.terminalLauncher?.openClaudeTerminal();
+          return;
 
         // ─── Worktree ───────────────────────────────────────────────────
         case 'create_worktree': {

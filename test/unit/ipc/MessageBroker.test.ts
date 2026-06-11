@@ -364,4 +364,12 @@ describe('MessageBroker', () => {
       await vi.waitFor(() => expect(services.vscode.openNewConversationTab).toHaveBeenCalled());
     });
   });
+
+  describe('login', () => {
+    it('opens the claude terminal via terminalLauncher', () => {
+      const { h, services } = makeBrokerWithServices();
+      h.dispatch({ type: 'login' });
+      expect(services.terminalLauncher.openClaudeTerminal).toHaveBeenCalledOnce();
+    });
+  });
 });

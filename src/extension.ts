@@ -99,7 +99,7 @@ export function activate(context: vscode.ExtensionContext): void {
       channelRouter,
       webview,
       logger,
-      { authManager, worktreeManager, atMentionHandler, fileListProvider, vscode: vscBridge },
+      { authManager, worktreeManager, atMentionHandler, fileListProvider, vscode: vscBridge, terminalLauncher },
     );
   };
 
