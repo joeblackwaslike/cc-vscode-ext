@@ -44,7 +44,8 @@
     "lint": "eslint src/ test/",
     "typecheck": "tsc --noEmit -p tsconfig.extension.json",
     "typecheck:webview": "tsc --noEmit -p tsconfig.webview.json",
-    "package": "vsce package"
+    "package": "vsce package",
+    "install:insiders": "bash scripts/install-insiders.sh"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
