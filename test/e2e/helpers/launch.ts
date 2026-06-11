@@ -47,6 +47,23 @@ function findVSCodeCode(): string {
   throw new Error('No VS Code binary found. Run `npm run test:integration` once to download it.');
 }
 
+/**
+ * Resolve the VS Code CLI wrapper (`bin/code`). The GUI 'Code' binary rejects
+ * `--install-extension` ("bad option") — only the CLI wrapper handles it.
+ */
+function findVSCodeCli(): string {
+  const cacheDir = path.join(REPO_ROOT, '.vscode-test');
+  const entries = fs.readdirSync(cacheDir).filter((e) => e.startsWith('vscode-'));
+  entries.sort().reverse();
+  for (const entry of entries) {
+    const cli = path.join(
+      cacheDir, entry, 'Visual Studio Code.app', 'Contents', 'Resources', 'app', 'bin', 'code',
+    );
+    if (fs.existsSync(cli)) return cli;
+  }
+  throw new Error('No VS Code CLI (bin/code) found. Run `npm run test:integration` once to download it.');
+}
+
 function findVsix(): string {
   const entries = fs
     .readdirSync(REPO_ROOT)
@@ -90,7 +107,7 @@ export async function launchVSCode(opts: LaunchOptions = {}): Promise<LaunchResu
   if (target === 'vsix') {
     const vsix = findVsix();
     const install = spawnSync(
-      codeBin,
+      findVSCodeCli(),
       ['--install-extension', vsix, '--extensions-dir', path.join(userDataDir, 'extensions')],
       { stdio: 'inherit' },
     );
