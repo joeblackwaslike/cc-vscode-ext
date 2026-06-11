@@ -17,27 +17,32 @@ describe('AuthChecker', () => {
     await fsp.rm(dir, { recursive: true, force: true });
   });
 
-  async function writeCreds(obj: unknown): Promise<void> {
-    await fsp.writeFile(path.join(dir, '.credentials.json'), JSON.stringify(obj), 'utf8');
+  async function writeConfig(obj: unknown): Promise<void> {
+    await fsp.writeFile(path.join(dir, '.claude.json'), JSON.stringify(obj), 'utf8');
   }
 
-  it('returns authenticated for a present, non-expired token', async () => {
-    await writeCreds({ claudeAiOauth: { accessToken: 'tok', expiresAt: Date.now() + 3_600_000 } });
+  it('returns authenticated when oauthAccount is present', async () => {
+    await writeConfig({ oauthAccount: { accountUuid: 'abc', emailAddress: 'a@b.com' } });
     const result = await new AuthChecker(dir).checkAuth();
     expect(result.authenticated).toBe(true);
   });
 
-  it('returns unauthenticated for an expired token', async () => {
-    await writeCreds({ claudeAiOauth: { accessToken: 'tok', expiresAt: Date.now() - 1_000 } });
+  it('returns unauthenticated when oauthAccount is absent', async () => {
+    await writeConfig({ numStartups: 3, hasCompletedOnboarding: true });
     expect((await new AuthChecker(dir).checkAuth()).authenticated).toBe(false);
   });
 
-  it('returns unauthenticated when the credentials file is missing', async () => {
+  it('returns unauthenticated when oauthAccount is an empty object', async () => {
+    await writeConfig({ oauthAccount: {} });
     expect((await new AuthChecker(dir).checkAuth()).authenticated).toBe(false);
   });
 
-  it('returns unauthenticated for unparseable credentials', async () => {
-    await fsp.writeFile(path.join(dir, '.credentials.json'), 'not json', 'utf8');
+  it('returns unauthenticated when the config file is missing', async () => {
+    expect((await new AuthChecker(dir).checkAuth()).authenticated).toBe(false);
+  });
+
+  it('returns unauthenticated for an unparseable config file', async () => {
+    await fsp.writeFile(path.join(dir, '.claude.json'), 'not json', 'utf8');
     expect((await new AuthChecker(dir).checkAuth()).authenticated).toBe(false);
   });
 });
