@@ -1,5 +1,14 @@
 import type { GetAuthStatusResponseMessage } from '../types/ipc';
 
+export interface AuthCheckResult {
+  authenticated: boolean;
+  loginUrl?: string;
+}
+
+export interface IAuthChecker {
+  checkAuth(): Promise<AuthCheckResult>;
+}
+
 /**
  * Manages authentication state for the claude CLI.
  *
