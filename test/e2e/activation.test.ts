@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { closeVSCode, launchVSCode } from './helpers/launch';
 import { commandExists, openCommandPalette } from './helpers/panel';
 
-const CLAUDE_COMMANDS_PREFIX = 'Claude Code:';
+const CLAUDE_COMMANDS_PREFIX = 'Claw Code:';
 const MIN_CLAUDE_COMMANDS = 5;
 
 test.describe('Extension activation', () => {

@@ -5,14 +5,14 @@ import { getWebviewFrame, runCommand } from './helpers/panel';
 // VS Code launch + webview init reliably needs more than the default 60s.
 const ACCEPTANCE_TIMEOUT = 120_000;
 
-test.describe('Acceptance: Claude Code extension', () => {
+test.describe('Acceptance: Claw Code extension', () => {
   test('extension activates and panel UI renders', async () => {
     test.setTimeout(ACCEPTANCE_TIMEOUT);
     const result = await launchVSCode();
     try {
       const { window } = result;
 
-      await runCommand(window, 'Claude Code: Open in New Tab');
+      await runCommand(window, 'Claw Code: Open in New Tab');
       const frame = getWebviewFrame(window);
 
       // Either welcome screen (fresh install) or conversation view (existing sessions) is valid.
@@ -32,7 +32,7 @@ test.describe('Acceptance: Claude Code extension', () => {
     try {
       const { window } = result;
 
-      await runCommand(window, 'Claude Code: Open in New Tab');
+      await runCommand(window, 'Claw Code: Open in New Tab');
       const frame = getWebviewFrame(window);
 
       const input = frame.getByTestId('message-input');
@@ -65,7 +65,7 @@ test.describe('Acceptance: Claude Code extension', () => {
     try {
       const { window } = result;
 
-      await runCommand(window, 'Claude Code: Open in New Tab');
+      await runCommand(window, 'Claw Code: Open in New Tab');
       const frame = getWebviewFrame(window);
 
       const input = frame.getByTestId('message-input');

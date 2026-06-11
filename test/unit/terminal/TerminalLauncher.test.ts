@@ -24,7 +24,7 @@ describe('TerminalLauncher', () => {
     it('creates a named terminal', () => {
       launcher.openClaudeTerminal();
       expect(mockVscode.window.createTerminal).toHaveBeenCalledWith(
-        expect.objectContaining({ name: 'Claude Code' }),
+        expect.objectContaining({ name: 'Claw Code' }),
       );
     });
 
@@ -52,7 +52,7 @@ describe('TerminalLauncher', () => {
     it('creates a named terminal without sending any command', () => {
       launcher.openTerminal();
       expect(mockVscode.window.createTerminal).toHaveBeenCalledWith(
-        expect.objectContaining({ name: 'Claude Code Terminal' }),
+        expect.objectContaining({ name: 'Claw Code Terminal' }),
       );
       expect(mockTerminal.sendText).not.toHaveBeenCalled();
     });

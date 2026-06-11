@@ -4,7 +4,7 @@ import * as vscode from 'vscode';
 export class Logger {
   private readonly channel: vscode.OutputChannel;
 
-  constructor(channelName = 'Claude Code') {
+  constructor(channelName = 'Claw Code') {
     this.channel = vscode.window.createOutputChannel(channelName);
   }
 

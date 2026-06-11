@@ -105,7 +105,7 @@ function MainView() {
   );
 }
 
-// ─── Session-list-only view (claudeVSCodeSessionsList panel) ──────────────────
+// ─── Session-list-only view (clawVSCodeSessionsList panel) ──────────────────
 
 function SessionListView() {
   const { state } = React.useContext(ExtensionContext)!;

@@ -27,7 +27,7 @@ import { adaptWebview } from './utils/webviewAdapter';
 export function activate(context: vscode.ExtensionContext): void {
   // ─── Core services ──────────────────────────────────────────────────────────
 
-  const logger = new Logger('Claude Code');
+  const logger = new Logger('Claw Code');
   const settings = new ExtensionSettings();
   const settingsWatcher = new SettingsWatcher(settings);
 
@@ -48,8 +48,8 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // ─── Diff system ────────────────────────────────────────────────────────────
 
-  const leftProvider = new TempFileProvider('claude-vscode-left');
-  const rightProvider = new TempFileProvider('claude-vscode-right');
+  const leftProvider = new TempFileProvider('claw-vscode-left');
+  const rightProvider = new TempFileProvider('claw-vscode-right');
 
   const diffTracker = new ProposedDiffTracker(
     (key, value) => vscode.commands.executeCommand('setContext', key, value),
@@ -86,7 +86,7 @@ export function activate(context: vscode.ExtensionContext): void {
       await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(folderPath), newWindow);
     },
     openNewConversationTab: async () => {
-      await vscode.commands.executeCommand('claude-vscode.editor.open');
+      await vscode.commands.executeCommand('claw-vscode.editor.open');
     },
   };
 
@@ -138,11 +138,11 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // ─── Context keys ───────────────────────────────────────────────────────────
 
-  void vscode.commands.executeCommand('setContext', 'claude-vscode.sessionsListEnabled', true);
-  void vscode.commands.executeCommand('setContext', 'claude-vscode.primaryEditorEnabled', true);
-  void vscode.commands.executeCommand('setContext', 'claude-vscode.lastClosedWasSession', false);
-  void vscode.commands.executeCommand('setContext', 'claude-vscode.viewingProposedDiff', false);
-  void vscode.commands.executeCommand('setContext', 'claude-code.viewingProposedDiff', false);
+  void vscode.commands.executeCommand('setContext', 'claw-vscode.sessionsListEnabled', true);
+  void vscode.commands.executeCommand('setContext', 'claw-vscode.primaryEditorEnabled', true);
+  void vscode.commands.executeCommand('setContext', 'claw-vscode.lastClosedWasSession', false);
+  void vscode.commands.executeCommand('setContext', 'claw-vscode.viewingProposedDiff', false);
+  void vscode.commands.executeCommand('setContext', 'claw-code.viewingProposedDiff', false);
 
   // ─── Active editor tracking for diff context key ────────────────────────────
 
@@ -155,14 +155,18 @@ export function activate(context: vscode.ExtensionContext): void {
   // ─── Register text document content providers ───────────────────────────────
 
   context.subscriptions.push(
-    vscode.workspace.registerTextDocumentContentProvider('claude-vscode-left', leftProvider),
-    vscode.workspace.registerTextDocumentContentProvider('claude-vscode-right', rightProvider),
+    vscode.workspace.registerTextDocumentContentProvider('claw-vscode-left', leftProvider),
+    vscode.workspace.registerTextDocumentContentProvider('claw-vscode-right', rightProvider),
   );
 
   // ─── Register webview view providers ────────────────────────────────────────
 
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(SidebarWebviewProvider.VIEW_ID, sidebarProvider),
+    vscode.window.registerWebviewViewProvider(
+      SidebarWebviewProvider.VIEW_ID_SECONDARY,
+      sidebarProvider,
+    ),
     vscode.window.registerWebviewViewProvider(SessionListProvider.VIEW_ID, sessionListProvider),
   );
 
@@ -194,7 +198,7 @@ export function activate(context: vscode.ExtensionContext): void {
     logger,
   );
 
-  logger.info('Claude Code extension activated');
+  logger.info('Claw Code extension activated');
 
 
 }

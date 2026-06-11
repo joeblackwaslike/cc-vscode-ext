@@ -13,7 +13,7 @@ export function WelcomeScreen({ onNewSession, authenticated, loginUrl }: Props) 
       <div data-testid="welcome-screen" style={styles.container}>
         <div style={styles.card}>
           <h2 style={styles.title}>Sign in to Claude</h2>
-          <p style={styles.subtitle}>You need to sign in to use Claude Code.</p>
+          <p style={styles.subtitle}>You need to sign in to use Claw Code.</p>
           {loginUrl && (
             <button
               style={styles.primaryButton}
@@ -36,7 +36,7 @@ export function WelcomeScreen({ onNewSession, authenticated, loginUrl }: Props) 
   return (
     <div data-testid="welcome-screen" style={styles.container}>
       <div style={styles.card}>
-        <h2 style={styles.title}>Claude Code</h2>
+        <h2 style={styles.title}>Claw Code</h2>
         <p style={styles.subtitle}>Your AI coding partner</p>
         <button data-testid="new-session-button" style={styles.primaryButton} onClick={onNewSession}>
           New Conversation

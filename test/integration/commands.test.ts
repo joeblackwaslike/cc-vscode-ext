@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 
 const EXT_ID = 'reference.claude-code-reference';
 
-suite('claude-vscode.editor.open', () => {
+suite('claw-vscode.editor.open', () => {
   suiteSetup(async () => {
     const ext = vscode.extensions.getExtension(EXT_ID);
     if (ext && !ext.isActive) await ext.activate();
@@ -16,15 +16,15 @@ suite('claude-vscode.editor.open', () => {
   test('executes without throwing', async () => {
     let threw = false;
     try {
-      await vscode.commands.executeCommand('claude-vscode.editor.open');
+      await vscode.commands.executeCommand('claw-vscode.editor.open');
     } catch {
       threw = true;
     }
-    assert.ok(!threw, 'claude-vscode.editor.open should not throw');
+    assert.ok(!threw, 'claw-vscode.editor.open should not throw');
   });
 });
 
-suite('claude-vscode.terminal.open', () => {
+suite('claw-vscode.terminal.open', () => {
   suiteSetup(async () => {
     const ext = vscode.extensions.getExtension(EXT_ID);
     if (ext && !ext.isActive) await ext.activate();
@@ -38,21 +38,21 @@ suite('claude-vscode.terminal.open', () => {
 
   test('creates a new terminal', async () => {
     const before = vscode.window.terminals.length;
-    await vscode.commands.executeCommand('claude-vscode.terminal.open');
+    await vscode.commands.executeCommand('claw-vscode.terminal.open');
     assert.ok(
       vscode.window.terminals.length > before,
       'Expected at least one new terminal after command',
     );
   });
 
-  test('new terminal is named "Claude Code"', async () => {
-    await vscode.commands.executeCommand('claude-vscode.terminal.open');
-    const claude = vscode.window.terminals.find((t) => t.name === 'Claude Code');
-    assert.ok(claude, 'Expected a terminal named "Claude Code"');
+  test('new terminal is named "Claw Code"', async () => {
+    await vscode.commands.executeCommand('claw-vscode.terminal.open');
+    const claude = vscode.window.terminals.find((t) => t.name === 'Claw Code');
+    assert.ok(claude, 'Expected a terminal named "Claw Code"');
   });
 });
 
-suite('claude-vscode.showLogs', () => {
+suite('claw-vscode.showLogs', () => {
   suiteSetup(async () => {
     const ext = vscode.extensions.getExtension(EXT_ID);
     if (ext && !ext.isActive) await ext.activate();
@@ -61,7 +61,7 @@ suite('claude-vscode.showLogs', () => {
   test('executes without throwing', async () => {
     let threw = false;
     try {
-      await vscode.commands.executeCommand('claude-vscode.showLogs');
+      await vscode.commands.executeCommand('claw-vscode.showLogs');
     } catch {
       threw = true;
     }
@@ -69,7 +69,7 @@ suite('claude-vscode.showLogs', () => {
   });
 });
 
-suite('claude-vscode.acceptProposedDiff / rejectProposedDiff', () => {
+suite('claw-vscode.acceptProposedDiff / rejectProposedDiff', () => {
   suiteSetup(async () => {
     const ext = vscode.extensions.getExtension(EXT_ID);
     if (ext && !ext.isActive) await ext.activate();
@@ -78,7 +78,7 @@ suite('claude-vscode.acceptProposedDiff / rejectProposedDiff', () => {
   test('acceptProposedDiff executes without throwing when no diff is open', async () => {
     let threw = false;
     try {
-      await vscode.commands.executeCommand('claude-vscode.acceptProposedDiff');
+      await vscode.commands.executeCommand('claw-vscode.acceptProposedDiff');
     } catch {
       threw = true;
     }
@@ -88,7 +88,7 @@ suite('claude-vscode.acceptProposedDiff / rejectProposedDiff', () => {
   test('rejectProposedDiff executes without throwing when no diff is open', async () => {
     let threw = false;
     try {
-      await vscode.commands.executeCommand('claude-vscode.rejectProposedDiff');
+      await vscode.commands.executeCommand('claw-vscode.rejectProposedDiff');
     } catch {
       threw = true;
     }

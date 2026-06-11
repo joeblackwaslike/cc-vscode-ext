@@ -7,7 +7,7 @@ test.describe('Claude panel', () => {
     const result = await launchVSCode();
     try {
       const { window } = result;
-      await runCommand(window, 'Claude Code: Open in New Tab');
+      await runCommand(window, 'Claw Code: Open in New Tab');
       await window.waitForTimeout(2_000);
       const tabs = await window.locator('.tab .tab-label').allTextContents();
       const hasClaudeTab = tabs.some((t) => /claude/i.test(t));
@@ -21,7 +21,7 @@ test.describe('Claude panel', () => {
     const result = await launchVSCode();
     try {
       const { window } = result;
-      await runCommand(window, 'Claude Code: Open in New Tab');
+      await runCommand(window, 'Claw Code: Open in New Tab');
       await window.waitForTimeout(3_000);
 
       const frame = getWebviewFrame(window);
@@ -35,7 +35,7 @@ test.describe('Claude panel', () => {
     const result = await launchVSCode();
     try {
       const { window } = result;
-      await runCommand(window, 'Claude Code: Open in New Tab');
+      await runCommand(window, 'Claw Code: Open in New Tab');
       await window.waitForTimeout(3_000);
 
       const frame = getWebviewFrame(window);

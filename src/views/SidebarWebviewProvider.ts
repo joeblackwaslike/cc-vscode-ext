@@ -6,14 +6,18 @@ import type { IWebview } from '../ipc/MessageBroker';
 import { adaptWebview } from '../utils/webviewAdapter';
 
 /**
- * WebviewViewProvider for the Claude Code sidebar panel.
+ * WebviewViewProvider for the Claw Code sidebar panel.
  *
- * Registered with `window.registerWebviewViewProvider` for the view ID
- * `claude-vscode.sidebar.view`. VS Code calls `resolveWebviewView` whenever the
- * sidebar is made visible.
+ * Registered for BOTH sidebar view IDs declared in package.json — the primary
+ * activity-bar view and the secondary side bar view. They are mutually
+ * exclusive via the `claw-code:doesNotSupportSecondarySidebar` when-clause, so
+ * only one ever resolves. VS Code calls `resolveWebviewView` when it's shown.
  */
 export class SidebarWebviewProvider implements vscode.WebviewViewProvider {
-  static readonly VIEW_ID = 'claude-vscode.sidebar.view';
+  /** Primary activity-bar view (older VS Code without a secondary side bar). */
+  static readonly VIEW_ID = 'clawVSCodeSidebar';
+  /** Secondary side bar view (modern VS Code — the default placement). */
+  static readonly VIEW_ID_SECONDARY = 'clawVSCodeSidebarSecondary';
 
   private view: vscode.WebviewView | undefined;
 

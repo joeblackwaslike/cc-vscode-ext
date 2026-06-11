@@ -22,9 +22,9 @@ suite('Session persistence (globalState)', () => {
 
     // These commands are registered unconditionally in activate(); their
     // presence proves activate() ran to completion.
-    assert.ok(commands.includes('claude-vscode.acceptProposedDiff'));
-    assert.ok(commands.includes('claude-vscode.rejectProposedDiff'));
-    assert.ok(commands.includes('claude-vscode.showLogs'));
+    assert.ok(commands.includes('claw-vscode.acceptProposedDiff'));
+    assert.ok(commands.includes('claw-vscode.rejectProposedDiff'));
+    assert.ok(commands.includes('claw-vscode.showLogs'));
   });
 });
 
@@ -34,12 +34,12 @@ suite('Session list webview view', () => {
     if (ext && !ext.isActive) await ext.activate();
   });
 
-  test('claudeVSCodeSessionsList view provider is registered', async () => {
+  test('clawVSCodeSessionsList view provider is registered', async () => {
     // Verify that revealing the sessions list view does not throw.
     // The view is registered via registerWebviewViewProvider in activate().
     let threw = false;
     try {
-      await vscode.commands.executeCommand('claudeVSCodeSessionsList.focus');
+      await vscode.commands.executeCommand('clawVSCodeSessionsList.focus');
     } catch {
       // Command may not exist if view container is not visible; that's fine.
     }

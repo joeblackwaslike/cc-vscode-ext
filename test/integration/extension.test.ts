@@ -5,21 +5,21 @@ const EXT_ID = 'reference.claude-code-reference';
 
 // Expected command IDs from package.json contributes.commands
 const EXPECTED_COMMANDS = [
-  'claude-vscode.editor.open',
-  'claude-vscode.editor.openLast',
-  'claude-vscode.primaryEditor.open',
-  'claude-vscode.sidebar.open',
-  'claude-vscode.newConversation',
-  'claude-vscode.reopenClosedSession',
-  'claude-vscode.terminal.open',
-  'claude-vscode.acceptProposedDiff',
-  'claude-vscode.rejectProposedDiff',
-  'claude-vscode.insertAtMention',
+  'claw-vscode.editor.open',
+  'claw-vscode.editor.openLast',
+  'claw-vscode.primaryEditor.open',
+  'claw-vscode.sidebar.open',
+  'claw-vscode.newConversation',
+  'claw-vscode.reopenClosedSession',
+  'claw-vscode.terminal.open',
+  'claw-vscode.acceptProposedDiff',
+  'claw-vscode.rejectProposedDiff',
+  'claw-vscode.insertAtMention',
   'claude-code.acceptProposedDiff',
   'claude-code.rejectProposedDiff',
   'claude-code.insertAtMentioned',
-  'claude-vscode.showLogs',
-  'claude-vscode.openWalkthrough',
+  'claw-vscode.showLogs',
+  'claw-vscode.openWalkthrough',
 ];
 
 suite('Extension activation', () => {

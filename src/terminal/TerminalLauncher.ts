@@ -4,7 +4,7 @@ import { resolveBinaryPath } from '../utils/platform';
 /**
  * Opens the claude CLI in a VS Code integrated terminal.
  *
- * Used by the `claude-vscode.terminal.open` command and by the `open_terminal`
+ * Used by the `claw-vscode.terminal.open` command and by the `open_terminal`
  * and `open_claude_in_terminal` IPC messages.
  */
 export class TerminalLauncher {
@@ -15,7 +15,7 @@ export class TerminalLauncher {
     const binaryPath = resolveBinaryPath(this.extensionPath);
     const resolvedCwd = cwd ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     const terminal = vscode.window.createTerminal({
-      name: 'Claude Code',
+      name: 'Claw Code',
       ...(resolvedCwd !== undefined ? { cwd: resolvedCwd } : {}),
     });
     terminal.sendText(binaryPath);
@@ -27,7 +27,7 @@ export class TerminalLauncher {
   openTerminal(cwd?: string): vscode.Terminal {
     const resolvedCwd = cwd ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     const terminal = vscode.window.createTerminal({
-      name: 'Claude Code Terminal',
+      name: 'Claw Code Terminal',
       ...(resolvedCwd !== undefined ? { cwd: resolvedCwd } : {}),
     });
     terminal.show();
