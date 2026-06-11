@@ -16,6 +16,7 @@ export function WelcomeScreen({ onNewSession, authenticated, loginUrl }: Props) 
           <p style={styles.subtitle}>You need to sign in to use Claw Code.</p>
           {loginUrl && (
             <button
+              data-testid="sign-in-button"
               style={styles.primaryButton}
               onClick={() => postMessage({ type: 'open_url', url: loginUrl })}
             >
@@ -23,6 +24,7 @@ export function WelcomeScreen({ onNewSession, authenticated, loginUrl }: Props) 
             </button>
           )}
           <button
+            data-testid="auth-cli-button"
             style={styles.secondaryButton}
             onClick={() => postMessage({ type: 'login' })}
           >
