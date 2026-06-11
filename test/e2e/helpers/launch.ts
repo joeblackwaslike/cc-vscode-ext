@@ -1,5 +1,5 @@
 import { chromium, Browser, Page } from '@playwright/test';
-import { ChildProcess, spawn } from 'node:child_process';
+import { ChildProcess, spawn, spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as fsp from 'node:fs/promises';
 import * as net from 'node:net';
@@ -47,6 +47,26 @@ function findVSCodeCode(): string {
   throw new Error('No VS Code binary found. Run `npm run test:integration` once to download it.');
 }
 
+function findVsix(): string {
+  const entries = fs
+    .readdirSync(REPO_ROOT)
+    .filter((e) => e.endsWith('.vsix'))
+    .map((e) => path.join(REPO_ROOT, e));
+  if (entries.length === 0) {
+    throw new Error('No .vsix found in repo root. Run `npm run package` before E2E_TARGET=vsix.');
+  }
+  // Newest by mtime.
+  entries.sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
+  return entries[0];
+}
+
+export interface LaunchOptions {
+  /** 'dev' = run from source (--extensionDevelopmentPath); 'vsix' = install the packaged artifact first. */
+  target?: 'dev' | 'vsix';
+  /** Extra env vars merged into the spawned VS Code process (e.g. CLAUDE_CONFIG_DIR). */
+  env?: Record<string, string>;
+}
+
 export interface LaunchResult {
   browser: Browser;
   window: Page;
@@ -54,22 +74,35 @@ export interface LaunchResult {
   userDataDir: string;
 }
 
-export async function launchVSCode(): Promise<LaunchResult> {
+export async function launchVSCode(opts: LaunchOptions = {}): Promise<LaunchResult> {
   // Fork-bomb stop: refuse to spawn if too many instances are already live.
   // Throws (spawning nothing) rather than melting the machine.
   assertUnderCap();
 
+  const target = opts.target ?? (process.env.E2E_TARGET as 'dev' | 'vsix' | undefined) ?? 'dev';
   const codeBin = findVSCodeCode();
   const userDataDir = path.join(os.tmpdir(), `vscode-e2e-${randomUUID()}`);
   await fsp.mkdir(path.join(userDataDir, 'extensions'), { recursive: true });
 
   const cdpPort = await findFreePort();
 
+  if (target === 'vsix') {
+    const vsix = findVsix();
+    const install = spawnSync(
+      codeBin,
+      ['--install-extension', vsix, '--extensions-dir', path.join(userDataDir, 'extensions')],
+      { stdio: 'inherit' },
+    );
+    if (install.status !== 0) {
+      throw new Error(`Failed to install ${vsix} (exit ${install.status ?? 'null'}).`);
+    }
+  }
+
   const vscodeProcess = spawn(
     codeBin,
     [
       `--remote-debugging-port=${cdpPort}`,
-      `--extensionDevelopmentPath=${REPO_ROOT}`,
+      ...(target === 'dev' ? [`--extensionDevelopmentPath=${REPO_ROOT}`] : []),
       `--user-data-dir=${userDataDir}`,
       `--extensions-dir=${path.join(userDataDir, 'extensions')}`,
       '--disable-workspace-trust',
@@ -84,7 +117,7 @@ export async function launchVSCode(): Promise<LaunchResult> {
     ],
     // detached: true makes this VS Code its own process-group leader, so a hard
     // crash + killTree() can take down every Electron helper it spawns — no orphans.
-    { detached: true, env: { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'ELECTRON_RUN_AS_NODE' && k !== 'ELECTRON_NO_ATTACH_CONSOLE')), ELECTRON_ENABLE_LOGGING: '0' } },
+    { detached: true, env: { ...Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== 'ELECTRON_RUN_AS_NODE' && k !== 'ELECTRON_NO_ATTACH_CONSOLE')), ELECTRON_ENABLE_LOGGING: '0', ...opts.env } },
   );
 
   // Record the instance immediately so a crash between here and closeVSCode()
