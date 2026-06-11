@@ -8,10 +8,17 @@ test.describe('Claude panel', () => {
     try {
       const { window } = result;
       await runCommand(window, 'Claw Code: Open in New Tab');
-      await window.waitForTimeout(2_000);
-      const tabs = await window.locator('.tab .tab-label').allTextContents();
-      const hasClawTab = tabs.some((t) => /claw/i.test(t));
-      expect(hasClawTab).toBe(true);
+      // Poll for the editor tab to appear rather than a fixed sleep — the tab
+      // label populates a beat after the command resolves.
+      await expect
+        .poll(
+          async () => {
+            const tabs = await window.locator('.tab .tab-label').allTextContents();
+            return tabs.some((t) => /claw/i.test(t));
+          },
+          { timeout: 15_000 },
+        )
+        .toBe(true);
     } finally {
       await closeVSCode(result);
     }
