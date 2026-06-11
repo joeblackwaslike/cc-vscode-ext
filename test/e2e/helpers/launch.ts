@@ -57,7 +57,8 @@ function findVsix(): string {
   }
   // Newest by mtime.
   entries.sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
-  return entries[0];
+  // entries.length > 0 is guaranteed by the check above.
+  return entries[0]!;
 }
 
 export interface LaunchOptions {
