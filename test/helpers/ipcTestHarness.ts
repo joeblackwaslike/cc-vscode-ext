@@ -61,6 +61,7 @@ export interface MockWebview {
 }
 
 export interface MockAuthManager extends IAuthManager {
+  ensureChecked: ReturnType<typeof vi.fn>;
   getAuthStatusResponse: ReturnType<typeof vi.fn>;
 }
 
@@ -101,6 +102,7 @@ export interface MockMessageBrokerServices extends Required<MessageBrokerService
 export function createMockServices(): MockMessageBrokerServices {
   return {
     authManager: {
+      ensureChecked: vi.fn(() => Promise.resolve()),
       getAuthStatusResponse: vi.fn(() => ({
         type: 'get_auth_status_response' as const,
         authenticated: false,

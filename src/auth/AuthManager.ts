@@ -19,11 +19,27 @@ export interface IAuthChecker {
 export class AuthManager {
   private authenticated = false;
   private loginUrl: string | undefined;
+  private checkPromise: Promise<void> | undefined;
+
+  constructor(private readonly checker?: IAuthChecker) {}
 
   /** Update the cached auth state (called after querying the CLI binary). */
   setAuthState(authenticated: boolean, loginUrl?: string): void {
     this.authenticated = authenticated;
     this.loginUrl = authenticated ? undefined : loginUrl;
+  }
+
+  /**
+   * Run the auth check exactly once (memoized) and cache the result. Safe to
+   * call on every auth query; only the first call hits the checker.
+   */
+  async ensureChecked(): Promise<void> {
+    if (!this.checker) return;
+    this.checkPromise ??= this.checker
+      .checkAuth()
+      .then((r) => this.setAuthState(r.authenticated, r.loginUrl))
+      .catch(() => this.setAuthState(false));
+    return this.checkPromise;
   }
 
   /** Returns the current auth state as a response message ready for the webview. */

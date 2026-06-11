@@ -52,6 +52,7 @@ export interface IWebview {
 // ─── Optional service interfaces ──────────────────────────────────────────────
 
 export interface IAuthManager {
+  ensureChecked(): Promise<void>;
   getAuthStatusResponse(): GetAuthStatusResponseMessage;
 }
 
@@ -163,6 +164,7 @@ export class MessageBroker {
 
         // ─── Auth ───────────────────────────────────────────────────────
         case 'get_auth_status': {
+          await this.services.authManager?.ensureChecked();
           const response = this.services.authManager?.getAuthStatusResponse()
             ?? { type: 'get_auth_status_response' as const, authenticated: false };
           void this.webview.postMessage(response);

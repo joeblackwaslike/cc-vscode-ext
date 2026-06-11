@@ -20,6 +20,7 @@ import { CommandRegistry } from './commands/CommandRegistry';
 import { AtMentionHandler } from './mentions/AtMentionHandler';
 import { TerminalLauncher } from './terminal/TerminalLauncher';
 import { AuthManager } from './auth/AuthManager';
+import { AuthChecker } from './auth/AuthChecker';
 import { WorktreeManager } from './worktree/WorktreeManager';
 import { FileListProvider } from './mentions/FileListProvider';
 import { adaptWebview } from './utils/webviewAdapter';
@@ -131,7 +132,7 @@ export function activate(context: vscode.ExtensionContext): void {
   // ─── Feature modules ────────────────────────────────────────────────────────
 
   const terminalLauncher = new TerminalLauncher(context.extensionPath);
-  const authManager = new AuthManager();
+  const authManager = new AuthManager(new AuthChecker());
   const atMentionHandler = new AtMentionHandler();
   const worktreeManager = new WorktreeManager();
   const fileListProvider = new FileListProvider();
