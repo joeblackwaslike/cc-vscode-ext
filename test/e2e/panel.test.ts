@@ -10,8 +10,8 @@ test.describe('Claude panel', () => {
       await runCommand(window, 'Claw Code: Open in New Tab');
       await window.waitForTimeout(2_000);
       const tabs = await window.locator('.tab .tab-label').allTextContents();
-      const hasClaudeTab = tabs.some((t) => /claude/i.test(t));
-      expect(hasClaudeTab).toBe(true);
+      const hasClawTab = tabs.some((t) => /claw/i.test(t));
+      expect(hasClawTab).toBe(true);
     } finally {
       await closeVSCode(result);
     }
