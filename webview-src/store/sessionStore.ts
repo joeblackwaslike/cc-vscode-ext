@@ -1,11 +1,12 @@
 import { createContext, useContext, useReducer, useCallback } from 'react';
-import type { ClaudeStreamEvent, ToWebviewMessage } from '../lib/ipc';
+import type { ClaudeStreamEvent, ContextUsage, ToWebviewMessage } from '../lib/ipc';
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
 export interface ChannelState {
   events: ClaudeStreamEvent[];
   running: boolean;
+  usage?: ContextUsage;
 }
 
 export interface SessionStoreState {
@@ -19,12 +20,13 @@ const initialState: SessionStoreState = { channels: {} };
 type Action =
   | { type: 'STREAM_EVENT'; channelId: string; event: ClaudeStreamEvent }
   | { type: 'SET_RUNNING'; channelId: string; running: boolean }
+  | { type: 'SET_USAGE'; channelId: string; usage: ContextUsage }
   | { type: 'CLEAR_CHANNEL'; channelId: string };
 
 function reducer(state: SessionStoreState, action: Action): SessionStoreState {
   switch (action.type) {
     case 'STREAM_EVENT': {
-      const prev = state.channels[action.channelId] ?? { events: [], running: true };
+      const prev = state.channels[action.channelId] ?? { events: [], running: false };
       return {
         ...state,
         channels: {
@@ -40,6 +42,16 @@ function reducer(state: SessionStoreState, action: Action): SessionStoreState {
         channels: {
           ...state.channels,
           [action.channelId]: { ...prev, running: action.running },
+        },
+      };
+    }
+    case 'SET_USAGE': {
+      const prev = state.channels[action.channelId] ?? { events: [], running: false };
+      return {
+        ...state,
+        channels: {
+          ...state.channels,
+          [action.channelId]: { ...prev, usage: action.usage },
         },
       };
     }
@@ -74,6 +86,10 @@ export function useSessionReducer() {
 
   const handleMessage = useCallback(
     (msg: ToWebviewMessage): void => {
+      if (msg.type === 'context_usage') {
+        dispatch({ type: 'SET_USAGE', channelId: msg.channelId, usage: msg.usage });
+        return;
+      }
       if (msg.type !== 'request') return;
       const event = msg.request;
       dispatch({ type: 'STREAM_EVENT', channelId: msg.channelId, event });

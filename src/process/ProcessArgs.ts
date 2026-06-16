@@ -1,5 +1,20 @@
+import type { ThinkingLevel } from '../types/ipc';
+
 /** Permission modes that map to the `--permission-mode` CLI flag. */
 export type PermissionMode = 'default' | 'acceptEdits' | 'plan' | 'bypassPermissions';
+
+/**
+ * Live effort changes go through the `set_max_thinking_tokens` control request
+ * (the CLI has no live `--effort` equivalent), so each effort level maps to a
+ * thinking-token budget. Approximate but monotonic; tune freely.
+ */
+export const EFFORT_THINKING_TOKENS: Record<ThinkingLevel, number> = {
+  low: 4_000,
+  medium: 10_000,
+  high: 20_000,
+  xhigh: 32_000,
+  max: 64_000,
+};
 
 /** Options that control how the claude CLI is launched for a given channel. */
 export interface LaunchOptions {
@@ -7,6 +22,10 @@ export interface LaunchOptions {
   resume?: string;
   /** Override the default permission mode. */
   permissionMode?: PermissionMode;
+  /** Reasoning effort → `--effort <level>`. */
+  effort?: ThinkingLevel;
+  /** Model alias or id → `--model`. */
+  model?: string;
   /** Pass `--allow-dangerously-skip-permissions` (sandbox use only). */
   allowDangerouslySkipPermissions?: boolean;
 }
@@ -34,6 +53,14 @@ export function buildArgs(options: LaunchOptions): string[] {
   } else {
     // Default mode: route permission prompts through IPC so the webview handles them
     args.push('--permission-prompt-tool', 'stdio');
+  }
+
+  if (options.effort) {
+    args.push('--effort', options.effort);
+  }
+
+  if (options.model) {
+    args.push('--model', options.model);
   }
 
   if (options.allowDangerouslySkipPermissions) {

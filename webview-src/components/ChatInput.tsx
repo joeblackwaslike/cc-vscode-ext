@@ -1,36 +1,92 @@
-import React, { useRef, useState, useCallback } from 'react';
+import React, { useContext, useEffect, useRef, useState, useCallback } from 'react';
 import { AtMentionDropdown } from './AtMentionDropdown';
+import { ComposerMenu, type MenuOption } from './ComposerMenu';
+import { ContextUsageRing } from './ContextUsageRing';
+import { ExtensionContext } from '../store/extensionStore';
+import { postMessage } from '../lib/ipc';
+import type { PermissionMode, ThinkingLevel, ContextUsage } from '../lib/ipc';
 
 interface Props {
+  channelId: string;
   onSend: (text: string) => void;
   onInterrupt: () => void;
+  onCompact: () => void;
+  onRefreshUsage?: (() => void) | undefined;
   running: boolean;
+  usage?: ContextUsage | undefined;
   disabled?: boolean;
 }
 
-export function ChatInput({ onSend, onInterrupt, running, disabled }: Props) {
+const MAX_HEIGHT = 168;
+
+const MODE_OPTIONS: MenuOption[] = [
+  { value: 'default', label: 'Ask permissions' },
+  { value: 'acceptEdits', label: 'Accept edits' },
+  { value: 'plan', label: 'Plan mode' },
+  { value: 'bypassPermissions', label: 'Bypass permissions' },
+];
+const MODEL_OPTIONS: MenuOption[] = [
+  { value: '', label: 'Default' },
+  { value: 'opus', label: 'Opus' },
+  { value: 'sonnet', label: 'Sonnet' },
+  { value: 'haiku', label: 'Haiku' },
+];
+const EFFORT_OPTIONS: MenuOption[] = [
+  { value: 'low', label: 'Low', hint: 'faster' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'high', label: 'High' },
+  { value: 'xhigh', label: 'Extra high' },
+  { value: 'max', label: 'Max', hint: 'smarter' },
+];
+const PLUS_OPTIONS: MenuOption[] = [
+  { value: 'add-files', label: 'Add files', hint: '@' },
+  { value: 'slash', label: 'Slash commands', hint: '/' },
+  { value: 'add-image', label: 'Add image', hint: 'soon', disabled: true },
+];
+
+const labelFor = (options: MenuOption[], value: string): string =>
+  options.find((o) => o.value === value)?.label ?? value;
+
+export function ChatInput({ channelId, onSend, onInterrupt, onCompact, onRefreshUsage, running, usage, disabled }: Props) {
+  const ext = useContext(ExtensionContext);
+  const state = ext?.state;
   const [text, setText] = useState('');
   const [mention, setMention] = useState<string | null>(null);
+  const [focused, setFocused] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Grow with content up to MAX_HEIGHT, then scroll. Runs on every value change
+  // (including reset to '' after send), fixing the old fixed-height clipping.
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, MAX_HEIGHT)}px`;
+  }, [text]);
+
+  const submit = useCallback(() => {
+    const trimmed = text.trim();
+    if (trimmed && !running) {
+      onSend(trimmed);
+      setText('');
+    }
+  }, [text, running, onSend]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
+      // Skip while an IME is composing (Japanese/Chinese/Korean etc.) — Enter
+      // there commits the candidate, it should not send a half-typed message.
+      if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
         e.preventDefault();
-        if (text.trim() && !running) {
-          onSend(text.trim());
-          setText('');
-        }
+        submit();
       }
     },
-    [text, running, onSend],
+    [submit],
   );
 
   const handleChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value;
     setText(val);
-
-    // Detect @-mention trigger
     const lastAt = val.lastIndexOf('@');
     if (lastAt !== -1) {
       const afterAt = val.slice(lastAt + 1);
@@ -44,113 +100,135 @@ export function ChatInput({ onSend, onInterrupt, running, disabled }: Props) {
 
   const handleMentionSelect = useCallback(
     (filePath: string) => {
-      const lastAt = text.lastIndexOf('@');
-      const newText = text.slice(0, lastAt + 1) + filePath + ' ';
-      setText(newText);
+      setText((prev) => {
+        const lastAt = prev.lastIndexOf('@');
+        return prev.slice(0, lastAt + 1) + filePath + ' ';
+      });
       setMention(null);
       textareaRef.current?.focus();
     },
-    [text],
+    [],
+  );
+
+  const insert = useCallback((ch: string) => {
+    setText((prev) => prev + ch);
+    if (ch === '@') setMention('');
+    textareaRef.current?.focus();
+  }, []);
+
+  const onPlus = useCallback(
+    (action: string) => {
+      if (action === 'add-files') insert('@');
+      else if (action === 'slash') insert('/');
+    },
+    [insert],
+  );
+
+  const mode = (state?.defaultPermissionMode ?? 'default') as PermissionMode;
+  const effort = (state?.thinkingLevel ?? 'medium') as ThinkingLevel;
+  const model = state?.model ?? '';
+
+  const dispatch = ext?.dispatch;
+
+  const setMode = useCallback(
+    (value: string) => {
+      dispatch?.({ type: 'SET_DEFAULTS', defaults: { defaultPermissionMode: value as PermissionMode } });
+      postMessage({ type: 'set_permission_mode', channelId, mode: value as PermissionMode });
+    },
+    [channelId, dispatch],
+  );
+  const setEffort = useCallback(
+    (value: string) => {
+      dispatch?.({ type: 'SET_DEFAULTS', defaults: { thinkingLevel: value as ThinkingLevel } });
+      postMessage({ type: 'set_thinking_level', level: value as ThinkingLevel, channelId });
+    },
+    [channelId, dispatch],
+  );
+  const setModel = useCallback(
+    (value: string) => {
+      dispatch?.({ type: 'SET_DEFAULTS', defaults: { model: value } });
+      postMessage({ type: 'set_model', model: value, channelId });
+    },
+    [channelId, dispatch],
   );
 
   return (
-    <div style={styles.container}>
+    <div className="cc-composer-wrap">
       {mention !== null && (
-        <AtMentionDropdown
-          query={mention}
-          onSelect={handleMentionSelect}
-          onClose={() => setMention(null)}
-        />
+        <AtMentionDropdown query={mention} onSelect={handleMentionSelect} onClose={() => setMention(null)} />
       )}
-      <div style={styles.inputRow}>
+      <div className={`cc-composer${focused ? ' cc-composer--focus' : ''}`}>
         <textarea
           data-testid="message-input"
           ref={textareaRef}
           value={text}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
           placeholder={running ? 'Claude is thinking…' : 'Message Claude… (@ to mention files)'}
           disabled={disabled}
           rows={1}
-          style={styles.textarea}
+          className="cc-textarea"
         />
-        {running ? (
-          <button data-testid="interrupt-button" style={styles.interruptButton} onClick={onInterrupt} title="Stop">
-            ■
-          </button>
-        ) : (
-          <button
-            data-testid="send-button"
-            style={{ ...styles.sendButton, opacity: text.trim() ? 1 : 0.4 }}
-            onClick={() => {
-              if (text.trim()) {
-                onSend(text.trim());
-                setText('');
-              }
-            }}
-            disabled={!text.trim() || disabled}
-            title="Send (Enter)"
-          >
-            ↑
-          </button>
-        )}
+        <div className="cc-toolbar">
+          {/* "+" anchored in the left corner, where it has always lived */}
+          <ComposerMenu
+            options={PLUS_OPTIONS}
+            onSelect={onPlus}
+            triggerLabel="＋"
+            showChevron={false}
+            triggerClass="cc-tbtn--plus"
+            triggerTestId="composer-add-button"
+            triggerTitle="Add files / slash commands"
+          />
+          <ComposerMenu
+            options={MODE_OPTIONS}
+            value={mode}
+            onSelect={setMode}
+            triggerLabel={labelFor(MODE_OPTIONS, mode)}
+            triggerClass={mode === 'bypassPermissions' ? 'cc-tbtn--mode' : ''}
+            triggerTestId="mode-selector"
+            triggerTitle="Permission mode"
+          />
+          <span className="cc-toolbar__sp" />
+          <ComposerMenu
+            options={MODEL_OPTIONS}
+            value={model}
+            onSelect={setModel}
+            align="right"
+            triggerLabel={labelFor(MODEL_OPTIONS, model)}
+            triggerTestId="model-selector"
+            triggerTitle="Model"
+          />
+          <ComposerMenu
+            options={EFFORT_OPTIONS}
+            value={effort}
+            onSelect={setEffort}
+            align="right"
+            triggerLabel={labelFor(EFFORT_OPTIONS, effort)}
+            triggerTestId="effort-selector"
+            triggerTitle="Reasoning effort"
+          />
+          {usage && <ContextUsageRing usage={usage} onCompact={onCompact} onRefresh={onRefreshUsage} />}
+          {running ? (
+            <button data-testid="interrupt-button" className="cc-stop" onClick={onInterrupt} title="Stop">
+              ■
+            </button>
+          ) : (
+            <button
+              data-testid="send-button"
+              className="cc-send"
+              style={{ opacity: text.trim() ? 1 : 0.4 }}
+              onClick={submit}
+              disabled={!text.trim() || disabled}
+              title="Send (Enter)"
+            >
+              ↑
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  container: {
-    position: 'relative',
-    padding: '8px 12px 12px',
-    borderTop: '1px solid var(--vscode-editorWidget-border)',
-  },
-  inputRow: {
-    display: 'flex',
-    gap: '8px',
-    alignItems: 'flex-end',
-  },
-  textarea: {
-    flex: 1,
-    resize: 'none',
-    background: 'var(--vscode-input-background)',
-    color: 'var(--vscode-input-foreground)',
-    border: '1px solid var(--vscode-input-border)',
-    borderRadius: '6px',
-    padding: '8px 10px',
-    fontSize: '13px',
-    fontFamily: 'inherit',
-    outline: 'none',
-    maxHeight: '160px',
-    lineHeight: 1.5,
-    overflowY: 'auto',
-  },
-  sendButton: {
-    width: '32px',
-    height: '32px',
-    borderRadius: '50%',
-    background: 'var(--vscode-button-background)',
-    color: 'var(--vscode-button-foreground)',
-    border: 'none',
-    cursor: 'pointer',
-    fontSize: '16px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  interruptButton: {
-    width: '32px',
-    height: '32px',
-    borderRadius: '50%',
-    background: 'var(--vscode-statusBarItem-warningBackground)',
-    color: '#fff',
-    border: 'none',
-    cursor: 'pointer',
-    fontSize: '12px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-};

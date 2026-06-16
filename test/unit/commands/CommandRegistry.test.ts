@@ -60,14 +60,14 @@ describe('CommandRegistry', () => {
     const registeredIds = mockVscode.commands.registerCommand.mock.calls.map(
       (c: [string, ...unknown[]]) => c[0],
     );
-    expect(registeredIds).toContain('claude-vscode.editor.open');
-    expect(registeredIds).toContain('claude-vscode.acceptProposedDiff');
-    expect(registeredIds).toContain('claude-vscode.rejectProposedDiff');
+    expect(registeredIds).toContain('claw-vscode.editor.open');
+    expect(registeredIds).toContain('claw-vscode.acceptProposedDiff');
+    expect(registeredIds).toContain('claw-vscode.rejectProposedDiff');
     expect(registeredIds).toContain('claude-code.acceptProposedDiff');
     expect(registeredIds).toContain('claude-code.rejectProposedDiff');
-    expect(registeredIds).toContain('claude-vscode.terminal.open');
-    expect(registeredIds).toContain('claude-vscode.showLogs');
-    expect(registeredIds).toContain('claude-vscode.reopenClosedSession');
+    expect(registeredIds).toContain('claw-vscode.terminal.open');
+    expect(registeredIds).toContain('claw-vscode.showLogs');
+    expect(registeredIds).toContain('claw-vscode.reopenClosedSession');
   });
 
   it('editor.open calls panelOpener.openNewPanel', async () => {
@@ -75,7 +75,7 @@ describe('CommandRegistry', () => {
     registry.register();
 
     const call = mockVscode.commands.registerCommand.mock.calls.find(
-      (c: [string, ...unknown[]]) => c[0] === 'claude-vscode.editor.open',
+      (c: [string, ...unknown[]]) => c[0] === 'claw-vscode.editor.open',
     );
     const handler = call?.[1] as () => Promise<void>;
     await handler();
@@ -93,7 +93,7 @@ describe('CommandRegistry', () => {
     registry.register();
 
     const call = mockVscode.commands.registerCommand.mock.calls.find(
-      (c: [string, ...unknown[]]) => c[0] === 'claude-vscode.acceptProposedDiff',
+      (c: [string, ...unknown[]]) => c[0] === 'claw-vscode.acceptProposedDiff',
     );
     const handler = call?.[1] as () => Promise<void>;
     await handler();
@@ -110,7 +110,7 @@ describe('CommandRegistry', () => {
     registry.register();
 
     const call = mockVscode.commands.registerCommand.mock.calls.find(
-      (c: [string, ...unknown[]]) => c[0] === 'claude-vscode.acceptProposedDiff',
+      (c: [string, ...unknown[]]) => c[0] === 'claw-vscode.acceptProposedDiff',
     );
     const handler = call?.[1] as () => void;
     handler();
@@ -122,7 +122,7 @@ describe('CommandRegistry', () => {
     registry.register();
 
     const call = mockVscode.commands.registerCommand.mock.calls.find(
-      (c: [string, ...unknown[]]) => c[0] === 'claude-vscode.terminal.open',
+      (c: [string, ...unknown[]]) => c[0] === 'claw-vscode.terminal.open',
     );
     const handler = call?.[1] as () => void;
     handler();
@@ -134,7 +134,7 @@ describe('CommandRegistry', () => {
     registry.register();
 
     const call = mockVscode.commands.registerCommand.mock.calls.find(
-      (c: [string, ...unknown[]]) => c[0] === 'claude-vscode.showLogs',
+      (c: [string, ...unknown[]]) => c[0] === 'claw-vscode.showLogs',
     );
     const handler = call?.[1] as () => void;
     handler();

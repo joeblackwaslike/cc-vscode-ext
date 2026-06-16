@@ -78,6 +78,16 @@ describe('MessageBroker', () => {
       h.dispatch({ type: 'launch_claude', channelId: 'ch-1' });
       expect(h.viewManager.broadcastSessionStates).toHaveBeenCalled();
     });
+
+    it('marks the session as error if the spawn fails', async () => {
+      const { h } = makebroker();
+      h.processManager.spawnClaude.mockRejectedValueOnce(new Error('binary download failed'));
+      h.dispatch({ type: 'launch_claude', channelId: 'ch-1' });
+      // The catch runs on a microtask after dispatch returns.
+      await vi.waitFor(() =>
+        expect(h.sessionManager.updateSession).toHaveBeenCalledWith('ch-1', 'error'),
+      );
+    });
   });
 
   describe('close_channel', () => {
@@ -109,11 +119,10 @@ describe('MessageBroker', () => {
   });
 
   describe('control_request', () => {
-    it('writes data to the channel stdin', () => {
+    it('forwards the user text to the process via sendUserMessage', () => {
       const { h } = makebroker();
-      const data = { type: 'user_message', text: 'hello' };
-      h.dispatch({ type: 'control_request', channelId: 'ch-1', requestId: 'req-1', data });
-      expect(h.processManager.writeToChannel).toHaveBeenCalledWith('ch-1', data);
+      h.dispatch({ type: 'control_request', channelId: 'ch-1', requestId: 'req-1', text: 'hello' });
+      expect(h.processManager.sendUserMessage).toHaveBeenCalledWith('ch-1', 'hello');
     });
   });
 
@@ -362,6 +371,14 @@ describe('MessageBroker', () => {
       const { h, services } = makeBrokerWithServices();
       h.dispatch({ type: 'new_conversation_tab' });
       await vi.waitFor(() => expect(services.vscode.openNewConversationTab).toHaveBeenCalled());
+    });
+  });
+
+  describe('login', () => {
+    it('opens the claude terminal via terminalLauncher', () => {
+      const { h, services } = makeBrokerWithServices();
+      h.dispatch({ type: 'login' });
+      expect(services.terminalLauncher.openClaudeTerminal).toHaveBeenCalledOnce();
     });
   });
 });

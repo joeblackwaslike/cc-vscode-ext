@@ -7,6 +7,7 @@ import { SessionHistory } from './sessions/SessionHistory';
 import { SessionManager } from './sessions/SessionManager';
 import { ChannelRouter } from './process/ChannelRouter';
 import { ClaudeProcessManager } from './process/ClaudeProcessManager';
+import { createBinaryProvider, CLAUDE_PINNED_VERSION } from './process/ClaudeBinary';
 import { TempFileProvider } from './views/TempFileProvider';
 import { HtmlBuilder } from './views/HtmlBuilder';
 import { ViewManager } from './views/ViewManager';
@@ -20,6 +21,7 @@ import { CommandRegistry } from './commands/CommandRegistry';
 import { AtMentionHandler } from './mentions/AtMentionHandler';
 import { TerminalLauncher } from './terminal/TerminalLauncher';
 import { AuthManager } from './auth/AuthManager';
+import { AuthChecker } from './auth/AuthChecker';
 import { WorktreeManager } from './worktree/WorktreeManager';
 import { FileListProvider } from './mentions/FileListProvider';
 import { adaptWebview } from './utils/webviewAdapter';
@@ -27,7 +29,7 @@ import { adaptWebview } from './utils/webviewAdapter';
 export function activate(context: vscode.ExtensionContext): void {
   // ─── Core services ──────────────────────────────────────────────────────────
 
-  const logger = new Logger('Claude Code');
+  const logger = new Logger('Claw Code');
   const settings = new ExtensionSettings();
   const settingsWatcher = new SettingsWatcher(settings);
 
@@ -39,17 +41,30 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // ─── Process layer ──────────────────────────────────────────────────────────
 
+  // The pinned claude binary is downloaded on first use into global storage and
+  // cached for the session (memoized). A per-launch wrapper override still wins.
+  const binaryProvider = createBinaryProvider({
+    storageDir: context.globalStorageUri.fsPath,
+    version: CLAUDE_PINNED_VERSION,
+    log: (m) => logger.info(m),
+    withProgress: (title, task) =>
+      vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title, cancellable: false },
+        () => task(),
+      ),
+  });
+
   const channelRouter = new ChannelRouter();
   const processManager = new ClaudeProcessManager(
-    context.extensionPath,
+    binaryProvider,
     channelRouter,
     logger,
   );
 
   // ─── Diff system ────────────────────────────────────────────────────────────
 
-  const leftProvider = new TempFileProvider('claude-vscode-left');
-  const rightProvider = new TempFileProvider('claude-vscode-right');
+  const leftProvider = new TempFileProvider('claw-vscode-left');
+  const rightProvider = new TempFileProvider('claw-vscode-right');
 
   const diffTracker = new ProposedDiffTracker(
     (key, value) => vscode.commands.executeCommand('setContext', key, value),
@@ -86,7 +101,7 @@ export function activate(context: vscode.ExtensionContext): void {
       await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(folderPath), newWindow);
     },
     openNewConversationTab: async () => {
-      await vscode.commands.executeCommand('claude-vscode.editor.open');
+      await vscode.commands.executeCommand('claw-vscode.editor.open');
     },
   };
 
@@ -99,7 +114,7 @@ export function activate(context: vscode.ExtensionContext): void {
       channelRouter,
       webview,
       logger,
-      { authManager, worktreeManager, atMentionHandler, fileListProvider, vscode: vscBridge },
+      { authManager, worktreeManager, atMentionHandler, fileListProvider, vscode: vscBridge, terminalLauncher },
     );
   };
 
@@ -130,19 +145,19 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // ─── Feature modules ────────────────────────────────────────────────────────
 
-  const terminalLauncher = new TerminalLauncher(context.extensionPath);
-  const authManager = new AuthManager();
+  const terminalLauncher = new TerminalLauncher(binaryProvider);
+  const authManager = new AuthManager(new AuthChecker());
   const atMentionHandler = new AtMentionHandler();
   const worktreeManager = new WorktreeManager();
   const fileListProvider = new FileListProvider();
 
   // ─── Context keys ───────────────────────────────────────────────────────────
 
-  void vscode.commands.executeCommand('setContext', 'claude-vscode.sessionsListEnabled', true);
-  void vscode.commands.executeCommand('setContext', 'claude-vscode.primaryEditorEnabled', true);
-  void vscode.commands.executeCommand('setContext', 'claude-vscode.lastClosedWasSession', false);
-  void vscode.commands.executeCommand('setContext', 'claude-vscode.viewingProposedDiff', false);
-  void vscode.commands.executeCommand('setContext', 'claude-code.viewingProposedDiff', false);
+  void vscode.commands.executeCommand('setContext', 'claw-vscode.sessionsListEnabled', true);
+  void vscode.commands.executeCommand('setContext', 'claw-vscode.primaryEditorEnabled', true);
+  void vscode.commands.executeCommand('setContext', 'claw-vscode.lastClosedWasSession', false);
+  void vscode.commands.executeCommand('setContext', 'claw-vscode.viewingProposedDiff', false);
+  void vscode.commands.executeCommand('setContext', 'claw-code.viewingProposedDiff', false);
 
   // ─── Active editor tracking for diff context key ────────────────────────────
 
@@ -155,14 +170,18 @@ export function activate(context: vscode.ExtensionContext): void {
   // ─── Register text document content providers ───────────────────────────────
 
   context.subscriptions.push(
-    vscode.workspace.registerTextDocumentContentProvider('claude-vscode-left', leftProvider),
-    vscode.workspace.registerTextDocumentContentProvider('claude-vscode-right', rightProvider),
+    vscode.workspace.registerTextDocumentContentProvider('claw-vscode-left', leftProvider),
+    vscode.workspace.registerTextDocumentContentProvider('claw-vscode-right', rightProvider),
   );
 
   // ─── Register webview view providers ────────────────────────────────────────
 
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(SidebarWebviewProvider.VIEW_ID, sidebarProvider),
+    vscode.window.registerWebviewViewProvider(
+      SidebarWebviewProvider.VIEW_ID_SECONDARY,
+      sidebarProvider,
+    ),
     vscode.window.registerWebviewViewProvider(SessionListProvider.VIEW_ID, sessionListProvider),
   );
 
@@ -194,7 +213,7 @@ export function activate(context: vscode.ExtensionContext): void {
     logger,
   );
 
-  logger.info('Claude Code extension activated');
+  logger.info('Claw Code extension activated');
 
 
 }

@@ -45,7 +45,7 @@ describe('SessionListProvider', () => {
   }
 
   it('VIEW_ID is the expected view identifier', () => {
-    expect(SessionListProvider.VIEW_ID).toBe('claudeVSCodeSessionsList');
+    expect(SessionListProvider.VIEW_ID).toBe('clawVSCodeSessionsList');
   });
 
   it('resolveWebviewView() builds HTML with isSessionListOnly=true', () => {

@@ -7,11 +7,18 @@ test.describe('Claude panel', () => {
     const result = await launchVSCode();
     try {
       const { window } = result;
-      await runCommand(window, 'Claude Code: Open in New Tab');
-      await window.waitForTimeout(2_000);
-      const tabs = await window.locator('.tab .tab-label').allTextContents();
-      const hasClaudeTab = tabs.some((t) => /claude/i.test(t));
-      expect(hasClaudeTab).toBe(true);
+      await runCommand(window, 'Claw Code: Open in New Tab');
+      // Poll for the editor tab to appear rather than a fixed sleep — the tab
+      // label populates a beat after the command resolves.
+      await expect
+        .poll(
+          async () => {
+            const tabs = await window.locator('.tab .tab-label').allTextContents();
+            return tabs.some((t) => /claw/i.test(t));
+          },
+          { timeout: 15_000 },
+        )
+        .toBe(true);
     } finally {
       await closeVSCode(result);
     }
@@ -21,7 +28,7 @@ test.describe('Claude panel', () => {
     const result = await launchVSCode();
     try {
       const { window } = result;
-      await runCommand(window, 'Claude Code: Open in New Tab');
+      await runCommand(window, 'Claw Code: Open in New Tab');
       await window.waitForTimeout(3_000);
 
       const frame = getWebviewFrame(window);
@@ -35,7 +42,7 @@ test.describe('Claude panel', () => {
     const result = await launchVSCode();
     try {
       const { window } = result;
-      await runCommand(window, 'Claude Code: Open in New Tab');
+      await runCommand(window, 'Claw Code: Open in New Tab');
       await window.waitForTimeout(3_000);
 
       const frame = getWebviewFrame(window);

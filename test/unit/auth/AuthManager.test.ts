@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { AuthManager } from '../../../src/auth/AuthManager';
 
 describe('AuthManager', () => {
@@ -41,5 +41,46 @@ describe('AuthManager', () => {
     manager.setAuthState(false, 'https://claude.ai/login');
     manager.setAuthState(true);
     expect(manager.getAuthStatusResponse().loginUrl).toBeUndefined();
+  });
+
+  it('ensureChecked() runs the checker once and applies its result', async () => {
+    const checker = { checkAuth: vi.fn(async () => ({ authenticated: true })) };
+    const m = new AuthManager(checker);
+    await m.ensureChecked();
+    await m.ensureChecked();
+    expect(checker.checkAuth).toHaveBeenCalledOnce();
+    expect(m.isAuthenticated()).toBe(true);
+  });
+
+  it('ensureChecked() treats a checker error as logged out', async () => {
+    const checker = { checkAuth: vi.fn(async () => { throw new Error('boom'); }) };
+    const m = new AuthManager(checker);
+    await m.ensureChecked();
+    expect(m.isAuthenticated()).toBe(false);
+  });
+
+  it('ensureChecked() is a no-op when no checker is provided', async () => {
+    const m = new AuthManager();
+    await expect(m.ensureChecked()).resolves.toBeUndefined();
+  });
+
+  it('invalidate() forces the next ensureChecked() to re-query the checker', async () => {
+    let authed = false;
+    const checker = { checkAuth: vi.fn(async () => ({ authenticated: authed })) };
+    const m = new AuthManager(checker);
+
+    await m.ensureChecked();
+    expect(m.isAuthenticated()).toBe(false);
+
+    // Simulate the CLI login writing .claude.json after the first probe.
+    authed = true;
+    await m.ensureChecked(); // still cached → no re-check
+    expect(checker.checkAuth).toHaveBeenCalledOnce();
+    expect(m.isAuthenticated()).toBe(false);
+
+    m.invalidate();
+    await m.ensureChecked(); // cache dropped → re-checks and picks up the change
+    expect(checker.checkAuth).toHaveBeenCalledTimes(2);
+    expect(m.isAuthenticated()).toBe(true);
   });
 });

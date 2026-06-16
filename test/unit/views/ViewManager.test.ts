@@ -104,7 +104,7 @@ describe('ViewManager', () => {
       const msg = wv.postMessage.mock.calls[0]?.[0];
       expect(msg).toMatchObject({
         defaultPermissionMode: 'default',
-        thinkingLevel: 'auto',
+        thinkingLevel: 'medium',
         activeSessionId: undefined,
       });
     });

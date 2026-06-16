@@ -1,10 +1,11 @@
 {
-  "name": "claude-code-reference",
-  "displayName": "Claude Code (Reference Implementation)",
+  "name": "claw-code",
+  "displayName": "Claw Code",
   "description": "A clean, documented reimplementation of the Claude Code VS Code extension",
   "version": "0.1.0",
   "publisher": "reference",
   "license": "MIT",
+  "claudeCliVersion": "2.1.168",
   "engines": {
     "vscode": "^1.94.0"
   },
@@ -21,7 +22,7 @@
   ],
   "activationEvents": [
     "onStartupFinished",
-    "onWebviewPanel:claudeVSCodePanel"
+    "onWebviewPanel:clawVSCodePanel"
   ],
   "icon": "resources/claude-logo.png",
   "main": "./dist/extension.js",
@@ -33,7 +34,10 @@
     "watch:webview": "vite build --watch --config vite.config.ts",
     "test:unit": "vitest run --config vitest.config.ts",
     "test:unit:watch": "vitest --config vitest.config.ts",
-    "test:e2e": "playwright test --config playwright.e2e.config.ts",
+    "test:webview": "vitest run --config vitest.webview.config.ts",
+    "test:webview:watch": "vitest --config vitest.webview.config.ts",
+    "test:e2e": "node scripts/e2e.mjs",
+    "test:e2e:raw": "playwright test --config playwright.e2e.config.ts",
     "test:e2e:debug": "PWDEBUG=1 playwright test --config playwright.e2e.config.ts",
     "test:e2e:ui": "playwright test --config playwright.e2e.config.ts --ui",
     "test:all": "bash scripts/test-all.sh",
@@ -43,10 +47,15 @@
     "lint": "eslint src/ test/",
     "typecheck": "tsc --noEmit -p tsconfig.extension.json",
     "typecheck:webview": "tsc --noEmit -p tsconfig.webview.json",
-    "package": "vsce package"
+    "package": "npx --yes @vscode/vsce package --allow-missing-repository",
+    "install:insiders": "bash scripts/install-insiders.sh"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/markdown-it": "^14.1.2",
     "@types/mocha": "^10.0.10",
     "@types/node": "^20.0.0",
     "@types/react": "^18.0.0",
@@ -59,6 +68,7 @@
     "@vscode/test-electron": "^2.4.0",
     "esbuild": "^0.24.0",
     "eslint": "^9.0.0",
+    "jsdom": "^29.1.1",
     "prettier": "^3.0.0",
     "react": "^18.0.0",
     "react-dom": "^18.0.0",
@@ -67,110 +77,6 @@
     "vitest": "^2.0.0"
   },
   "contributes": {
-    "configuration": {
-      "title": "Claude Code",
-      "properties": {
-        "claudeCode.environmentVariables": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "name": {
-                "type": "string",
-                "description": "Environment variable name"
-              },
-              "value": {
-                "type": "string",
-                "description": "Environment variable value"
-              }
-            },
-            "required": [
-              "name",
-              "value"
-            ]
-          },
-          "default": [],
-          "description": "Environment variables to set when launching Claude.\n\nPrefer setting environment variables in Claude's settings.json.\nSee documentation: https://code.claude.com/docs/en/settings"
-        },
-        "claudeCode.useTerminal": {
-          "type": "boolean",
-          "default": false,
-          "description": "Launch Claude in the terminal instead of the native UI."
-        },
-        "claudeCode.allowDangerouslySkipPermissions": {
-          "type": "boolean",
-          "description": "Allow bypass permissions mode. Recommended only for sandboxes with no internet access."
-        },
-        "claudeCode.claudeProcessWrapper": {
-          "type": "string",
-          "description": "Executable path used to launch the Claude process."
-        },
-        "claudeCode.respectGitIgnore": {
-          "type": "boolean",
-          "default": true,
-          "description": "Respect .gitignore files when performing file searches. Tip: You can still filter by other exclusion patterns in .ignore when this is disabled."
-        },
-        "claudeCode.initialPermissionMode": {
-          "type": "string",
-          "enum": [
-            "default",
-            "acceptEdits",
-            "plan",
-            "bypassPermissions"
-          ],
-          "default": "default",
-          "description": "Initial permission mode for new conversations."
-        },
-        "claudeCode.disableLoginPrompt": {
-          "type": "boolean",
-          "default": false,
-          "description": "When true, never prompt for login/authentication in the extension. Used when authentication is handled externally."
-        },
-        "claudeCode.autosave": {
-          "type": "boolean",
-          "default": true,
-          "description": "Automatically save files before Claude reads or writes them."
-        },
-        "claudeCode.useCtrlEnterToSend": {
-          "type": "boolean",
-          "default": false,
-          "description": "When enabled, use Ctrl/Cmd+Enter to send prompts instead of just Enter. This allows Enter to create new lines."
-        },
-        "claudeCode.preferredLocation": {
-          "type": "string",
-          "enum": [
-            "sidebar",
-            "panel"
-          ],
-          "enumDescriptions": [
-            "Sidebar (Right)",
-            "Panel (New Tab)"
-          ],
-          "default": "panel",
-          "description": "Where Claude opens by default. This setting updates automatically when you open Claude in a new location."
-        },
-        "claudeCode.enableNewConversationShortcut": {
-          "type": "boolean",
-          "default": false,
-          "description": "Use the Cmd/Ctrl+N keyboard shortcut to start a new conversation when Claude is focused."
-        },
-        "claudeCode.enableReopenClosedSessionShortcut": {
-          "type": "boolean",
-          "default": true,
-          "description": "Use Cmd/Ctrl+Shift+T to reopen the most recently closed Claude session tab. Only intercepts the shortcut when a Claude tab was the last thing closed; otherwise falls through to VS Code's normal reopen-closed-editor behavior."
-        },
-        "claudeCode.hideOnboarding": {
-          "type": "boolean",
-          "default": false,
-          "description": "Hide the onboarding checklist in Claude Code."
-        },
-        "claudeCode.usePythonEnvironment": {
-          "type": "boolean",
-          "default": true,
-          "markdownDescription": "Automatically activate the workspace's Python environment when running Claude. Requires the [Python](https://marketplace.visualstudio.com/items?itemName=ms-python.python) extension."
-        }
-      }
-    },
     "jsonValidation": [
       {
         "fileMatch": [
@@ -184,131 +90,131 @@
     ],
     "commands": [
       {
-        "command": "claude-vscode.editor.open",
-        "title": "Claude Code: Open in New Tab",
+        "command": "claw-vscode.editor.open",
+        "title": "Claw Code: Open in New Tab",
         "icon": {
-          "light": "resources/claude-logo.svg",
-          "dark": "resources/claude-logo.svg"
+          "light": "resources/clawd.svg",
+          "dark": "resources/clawd.svg"
         }
       },
       {
-        "command": "claude-vscode.editor.openLast",
-        "title": "Claude Code: Open",
+        "command": "claw-vscode.editor.openLast",
+        "title": "Claw Code: Open",
         "icon": {
-          "light": "resources/claude-logo.svg",
-          "dark": "resources/claude-logo.svg"
+          "light": "resources/clawd.svg",
+          "dark": "resources/clawd.svg"
         }
       },
       {
-        "command": "claude-vscode.primaryEditor.open",
-        "title": "Claude Code: Open in Primary Editor",
+        "command": "claw-vscode.primaryEditor.open",
+        "title": "Claw Code: Open in Primary Editor",
         "icon": {
-          "light": "resources/claude-logo.svg",
-          "dark": "resources/claude-logo.svg"
+          "light": "resources/clawd.svg",
+          "dark": "resources/clawd.svg"
         }
       },
       {
-        "command": "claude-vscode.window.open",
-        "title": "Claude Code: Open in New Window"
+        "command": "claw-vscode.window.open",
+        "title": "Claw Code: Open in New Window"
       },
       {
-        "command": "claude-vscode.createWorktree",
-        "title": "Claude Code: Create Worktree"
+        "command": "claw-vscode.createWorktree",
+        "title": "Claw Code: Create Worktree"
       },
       {
-        "command": "claude-vscode.sidebar.open",
-        "title": "Claude Code: Open in Side Bar",
+        "command": "claw-vscode.sidebar.open",
+        "title": "Claw Code: Open in Side Bar",
         "icon": {
-          "light": "resources/claude-logo.svg",
-          "dark": "resources/claude-logo.svg"
+          "light": "resources/clawd.svg",
+          "dark": "resources/clawd.svg"
         }
       },
       {
-        "command": "claude-vscode.newConversation",
-        "title": "Claude Code: New Conversation"
+        "command": "claw-vscode.newConversation",
+        "title": "Claw Code: New Conversation"
       },
       {
-        "command": "claude-vscode.reopenClosedSession",
-        "title": "Claude Code: Reopen Closed Session"
+        "command": "claw-vscode.reopenClosedSession",
+        "title": "Claw Code: Reopen Closed Session"
       },
       {
-        "command": "claude-vscode.update",
-        "title": "Claude Code: Update extension"
+        "command": "claw-vscode.update",
+        "title": "Claw Code: Update extension"
       },
       {
-        "command": "claude-vscode.focus",
-        "title": "Claude Code: Focus input"
+        "command": "claw-vscode.focus",
+        "title": "Claw Code: Focus input"
       },
       {
-        "command": "claude-vscode.blur",
-        "title": "Claude Code: Blur input"
+        "command": "claw-vscode.blur",
+        "title": "Claw Code: Blur input"
       },
       {
-        "command": "claude-vscode.logout",
-        "title": "Claude Code: Logout"
+        "command": "claw-vscode.logout",
+        "title": "Claw Code: Logout"
       },
       {
-        "command": "claude-vscode.terminal.open",
-        "title": "Claude Code: Open in Terminal",
+        "command": "claw-vscode.terminal.open",
+        "title": "Claw Code: Open in Terminal",
         "icon": {
-          "light": "resources/claude-logo.svg",
-          "dark": "resources/claude-logo.svg"
+          "light": "resources/clawd.svg",
+          "dark": "resources/clawd.svg"
         }
       },
       {
-        "command": "claude-vscode.acceptProposedDiff",
-        "title": "Claude Code: Accept Proposed Changes",
-        "enablement": "claude-vscode.viewingProposedDiff",
+        "command": "claw-vscode.acceptProposedDiff",
+        "title": "Claw Code: Accept Proposed Changes",
+        "enablement": "claw-vscode.viewingProposedDiff",
         "icon": "$(check)"
       },
       {
-        "command": "claude-vscode.rejectProposedDiff",
-        "title": "Claude Code: Reject Proposed Changes",
-        "enablement": "claude-vscode.viewingProposedDiff",
+        "command": "claw-vscode.rejectProposedDiff",
+        "title": "Claw Code: Reject Proposed Changes",
+        "enablement": "claw-vscode.viewingProposedDiff",
         "icon": "$(discard)"
       },
       {
-        "command": "claude-vscode.insertAtMention",
-        "title": "Claude Code: Insert @-Mention Reference"
+        "command": "claw-vscode.insertAtMention",
+        "title": "Claw Code: Insert @-Mention Reference"
       },
       {
-        "command": "claude-vscode.installPlugin",
-        "title": "Claude Code: Install Plugin"
+        "command": "claw-vscode.installPlugin",
+        "title": "Claw Code: Install Plugin"
       },
       {
         "command": "claude-code.acceptProposedDiff",
-        "title": "Claude Code: Accept Proposed Changes",
-        "enablement": "claude-code.viewingProposedDiff",
+        "title": "Claw Code: Accept Proposed Changes",
+        "enablement": "claw-vscode.viewingProposedDiff",
         "icon": "$(check)"
       },
       {
         "command": "claude-code.rejectProposedDiff",
-        "title": "Claude Code: Reject Proposed Changes",
-        "enablement": "claude-code.viewingProposedDiff",
+        "title": "Claw Code: Reject Proposed Changes",
+        "enablement": "claw-vscode.viewingProposedDiff",
         "icon": "$(discard)"
       },
       {
         "command": "claude-code.insertAtMentioned",
-        "title": "Claude Code: Insert At-Mentioned"
+        "title": "Claw Code: Insert At-Mentioned"
       },
       {
-        "command": "claude-vscode.showLogs",
-        "title": "Claude Code: Show Logs"
+        "command": "claw-vscode.showLogs",
+        "title": "Claw Code: Show Logs"
       },
       {
-        "command": "claude-vscode.openWalkthrough",
-        "title": "Claude Code: Open Walkthrough"
+        "command": "claw-vscode.openWalkthrough",
+        "title": "Claw Code: Open Walkthrough"
       }
     ],
     "keybindings": [
       {
-        "command": "claude-vscode.insertAtMention",
+        "command": "claw-vscode.insertAtMention",
         "key": "alt+k",
         "mac": "alt+k",
         "when": "editorTextFocus"
       },
       {
-        "command": "claude-vscode.focus",
+        "command": "claw-vscode.focus",
         "key": "cmd+escape",
         "mac": "cmd+escape",
         "win": "ctrl+escape",
@@ -316,7 +222,7 @@
         "when": "!config.claudeCode.useTerminal && editorTextFocus"
       },
       {
-        "command": "claude-vscode.blur",
+        "command": "claw-vscode.blur",
         "key": "cmd+escape",
         "mac": "cmd+escape",
         "win": "ctrl+escape",
@@ -324,7 +230,7 @@
         "when": "!config.claudeCode.useTerminal && !editorTextFocus"
       },
       {
-        "command": "claude-vscode.editor.open",
+        "command": "claw-vscode.editor.open",
         "key": "cmd+shift+escape",
         "mac": "cmd+shift+escape",
         "win": "ctrl+shift+escape",
@@ -332,7 +238,7 @@
         "when": "!config.claudeCode.useTerminal"
       },
       {
-        "command": "claude-vscode.terminal.open.keyboard",
+        "command": "claw-vscode.terminal.open.keyboard",
         "key": "cmd+escape",
         "mac": "cmd+escape",
         "win": "ctrl+escape",
@@ -348,69 +254,69 @@
         "when": "editorTextFocus"
       },
       {
-        "command": "claude-vscode.newConversation",
+        "command": "claw-vscode.newConversation",
         "key": "cmd+n",
         "mac": "cmd+n",
         "win": "ctrl+n",
         "linux": "ctrl+n",
-        "when": "config.claudeCode.enableNewConversationShortcut && (activeWebviewPanelId == 'claudeVSCodePanel' || (claude-vscode.sideBarActive && !editorFocus && !panelFocus))"
+        "when": "config.claudeCode.enableNewConversationShortcut && (activeWebviewPanelId == 'clawVSCodePanel' || (claw-vscode.sideBarActive && !editorFocus && !panelFocus))"
       },
       {
-        "command": "claude-vscode.reopenClosedSession",
+        "command": "claw-vscode.reopenClosedSession",
         "key": "cmd+shift+t",
         "mac": "cmd+shift+t",
         "win": "ctrl+shift+t",
         "linux": "ctrl+shift+t",
-        "when": "config.claudeCode.enableReopenClosedSessionShortcut && claude-vscode.lastClosedWasSession"
+        "when": "config.claudeCode.enableReopenClosedSessionShortcut && claw-vscode.lastClosedWasSession"
       }
     ],
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "claude-sidebar",
-          "title": "Claude Code",
-          "icon": "resources/claude-logo.svg",
-          "when": "claude-code:doesNotSupportSecondarySidebar"
+          "id": "claw-sidebar",
+          "title": "Claw Code",
+          "icon": "resources/clawd.svg",
+          "when": "claw-code:doesNotSupportSecondarySidebar"
         },
         {
-          "id": "claude-sessions-sidebar",
-          "title": "Claude Code",
-          "icon": "resources/claude-logo.svg",
-          "when": "claude-vscode.sessionsListEnabled"
+          "id": "claw-sessions-sidebar",
+          "title": "Claw Code",
+          "icon": "resources/clawd.svg",
+          "when": "claw-vscode.sessionsListEnabled"
         }
       ],
       "secondarySidebar": [
         {
-          "id": "claude-sidebar-secondary",
-          "title": "Claude Code",
-          "icon": "resources/claude-logo.svg",
-          "when": "!claude-code:doesNotSupportSecondarySidebar"
+          "id": "claw-sidebar-secondary",
+          "title": "Claw Code",
+          "icon": "resources/clawd.svg",
+          "when": "!claw-code:doesNotSupportSecondarySidebar"
         }
       ]
     },
     "views": {
-      "claude-sidebar": [
+      "claw-sidebar": [
         {
           "type": "webview",
-          "id": "claudeVSCodeSidebar",
-          "name": "Claude Code",
-          "when": "claude-code:doesNotSupportSecondarySidebar"
+          "id": "clawVSCodeSidebar",
+          "name": "Claw Code",
+          "when": "claw-code:doesNotSupportSecondarySidebar"
         }
       ],
-      "claude-sidebar-secondary": [
+      "claw-sidebar-secondary": [
         {
           "type": "webview",
-          "id": "claudeVSCodeSidebarSecondary",
-          "name": "Claude Code",
-          "when": "!claude-code:doesNotSupportSecondarySidebar"
+          "id": "clawVSCodeSidebarSecondary",
+          "name": "Claw Code",
+          "when": "!claw-code:doesNotSupportSecondarySidebar"
         }
       ],
-      "claude-sessions-sidebar": [
+      "claw-sessions-sidebar": [
         {
           "type": "webview",
-          "id": "claudeVSCodeSessionsList",
+          "id": "clawVSCodeSessionsList",
           "name": "",
-          "when": "claude-vscode.sessionsListEnabled"
+          "when": "claw-vscode.sessionsListEnabled"
         }
       ]
     },
@@ -436,8 +342,8 @@
               "markdown": "resources/walkthrough/step2.md"
             },
             "completionEvents": [
-              "onCommand:claude-vscode.sidebar.open",
-              "onCommand:claude-vscode.editor.open"
+              "onCommand:claw-vscode.sidebar.open",
+              "onCommand:claw-vscode.editor.open"
             ]
           },
           {
@@ -462,59 +368,59 @@
     "menus": {
       "editor/title": [
         {
-          "command": "claude-vscode.acceptProposedDiff",
-          "when": "claude-vscode.viewingProposedDiff",
+          "command": "claw-vscode.acceptProposedDiff",
+          "when": "claw-vscode.viewingProposedDiff",
           "group": "navigation"
         },
         {
-          "command": "claude-vscode.rejectProposedDiff",
-          "when": "claude-vscode.viewingProposedDiff",
+          "command": "claw-vscode.rejectProposedDiff",
+          "when": "claw-vscode.viewingProposedDiff",
           "group": "navigation"
         },
         {
           "command": "claude-code.acceptProposedDiff",
-          "when": "claude-code.viewingProposedDiff",
+          "when": "claw-vscode.viewingProposedDiff",
           "group": "navigation"
         },
         {
           "command": "claude-code.rejectProposedDiff",
-          "when": "claude-code.viewingProposedDiff",
+          "when": "claw-vscode.viewingProposedDiff",
           "group": "navigation"
         },
         {
-          "command": "claude-vscode.editor.openLast",
+          "command": "claw-vscode.editor.openLast",
           "when": "!config.claudeCode.useTerminal",
           "group": "navigation"
         },
         {
-          "command": "claude-vscode.terminal.open",
+          "command": "claw-vscode.terminal.open",
           "when": "config.claudeCode.useTerminal",
           "group": "navigation"
         }
       ],
       "commandPalette": [
         {
-          "command": "claude-vscode.update",
-          "when": "claude-vscode.updateSupported"
+          "command": "claw-vscode.update",
+          "when": "claw-vscode.updateSupported"
         },
         {
-          "command": "claude-vscode.editor.openLast",
+          "command": "claw-vscode.editor.openLast",
           "when": "false"
         },
         {
-          "command": "claude-vscode.primaryEditor.open",
-          "when": "claude-vscode.primaryEditorEnabled"
+          "command": "claw-vscode.primaryEditor.open",
+          "when": "claw-vscode.primaryEditorEnabled"
         },
         {
-          "command": "claude-vscode.createWorktree",
-          "when": "claude-vscode.createWorktreeEnabled"
+          "command": "claw-vscode.createWorktree",
+          "when": "claw-vscode.createWorktreeEnabled"
         },
         {
-          "command": "claude-vscode.blur",
+          "command": "claw-vscode.blur",
           "when": "false"
         },
         {
-          "command": "claude-vscode.newConversation",
+          "command": "claw-vscode.newConversation",
           "when": "false"
         },
         {
@@ -522,12 +428,12 @@
           "when": "config.claudeCode.useTerminal"
         },
         {
-          "command": "claude-vscode.insertAtMention",
+          "command": "claw-vscode.insertAtMention",
           "when": "!config.claudeCode.useTerminal"
         },
         {
-          "command": "claude-vscode.installPlugin",
-          "when": "claude-vscode.updateSupported"
+          "command": "claw-vscode.installPlugin",
+          "when": "claw-vscode.updateSupported"
         }
       ]
     }
@@ -537,5 +443,9 @@
       "supported": false,
       "description": "Untrusted workspaces are not supported"
     }
+  },
+  "dependencies": {
+    "highlight.js": "^11.11.1",
+    "markdown-it": "^14.2.0"
   }
 }

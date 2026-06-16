@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
     "strict": true,
+    "resolveJsonModule": true,
     "exactOptionalPropertyTypes": true,
     "noUncheckedIndexedAccess": true,
     "moduleResolution": "bundler",

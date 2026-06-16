@@ -1,8 +1,13 @@
-import type { FromWebviewMessage, ToWebviewMessage } from '../../src/types/ipc';
+import type {
+  FromWebviewMessage,
+  ToWebviewMessage,
+  ThinkingLevel,
+  ContextUsage,
+  ContextCategory,
+} from '../../src/types/ipc';
 import type { ClaudeStreamEvent } from '../../src/types/process';
 import type { SessionInfo, ConversationState } from '../../src/types/session';
 import type { PermissionMode } from '../../src/process/ProcessArgs';
-import type { ThinkingLevel } from '../../src/types/ipc';
 
 export type {
   FromWebviewMessage,
@@ -12,6 +17,8 @@ export type {
   ConversationState,
   PermissionMode,
   ThinkingLevel,
+  ContextUsage,
+  ContextCategory,
 };
 
 let _api: ReturnType<typeof acquireVsCodeApi> | null = null;

@@ -3,9 +3,13 @@ import type { ClaudeStreamEvent } from './process';
 import type { DiffFile } from './diff';
 import type { ConversationState, SessionInfo } from './session';
 
-// ─── Thinking levels ─────────────────────────────────────────────────────────
+// ─── Effort levels ───────────────────────────────────────────────────────────
+// Mirrors the claude CLI `--effort <level>` choices (verified via `claude --help`).
+// Named ThinkingLevel for backwards-compat with the existing IPC field.
 
-export type ThinkingLevel = 'none' | 'auto' | 'max';
+export type ThinkingLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+
+export const DEFAULT_EFFORT: ThinkingLevel = 'medium';
 
 // ═════════════════════════════════════════════════════════════════════════════
 // Webview → Extension Host (FromWebviewMessage)
@@ -20,6 +24,7 @@ export interface LaunchClaudeMessage {
   cwd?: string;
   permissionMode?: PermissionMode;
   thinkingLevel?: ThinkingLevel;
+  model?: string;
 }
 
 export interface CloseChannelMessage {
@@ -43,7 +48,8 @@ export interface ControlRequestMessage {
   type: 'control_request';
   channelId: string;
   requestId: string;
-  data: Record<string, unknown>;
+  /** Raw user text. The host wraps it in the CLI's stream-json user envelope. */
+  text: string;
 }
 
 // ─── State queries ───────────────────────────────────────────────────────────
@@ -189,8 +195,8 @@ export interface SetPermissionModeMessage {
   persist?: boolean;
 }
 
-export interface SetModelMessage { type: 'set_model'; model: string }
-export interface SetThinkingLevelMessage { type: 'set_thinking_level'; level: ThinkingLevel }
+export interface SetModelMessage { type: 'set_model'; model: string; channelId?: string }
+export interface SetThinkingLevelMessage { type: 'set_thinking_level'; level: ThinkingLevel; channelId?: string }
 export interface ApplySettingsMessage { type: 'apply_settings'; settings: Record<string, unknown> }
 
 // ─── Git / worktree ───────────────────────────────────────────────────────────
@@ -362,6 +368,30 @@ export interface UpdateStateMessage {
   activeSessionId: string | undefined;
   defaultPermissionMode: PermissionMode;
   thinkingLevel: ThinkingLevel;
+  model?: string;
+}
+
+/** One row of the context-window breakdown (from the CLI's get_context_usage). */
+export interface ContextCategory {
+  name: string;
+  tokens: number;
+  /** Semantic color key from the CLI (e.g. 'warning', 'claude', 'inactive'). */
+  color: string;
+  isDeferred?: boolean;
+}
+
+/** Full context-window occupancy — drives the ring + breakdown popover. */
+export interface ContextUsage {
+  categories: ContextCategory[];
+  totalTokens: number;
+  maxTokens: number;
+  percentage: number;
+}
+
+export interface ContextUsageMessage {
+  type: 'context_usage';
+  channelId: string;
+  usage: ContextUsage;
 }
 
 export interface AssetUrisResponseMessage {
@@ -460,6 +490,7 @@ export interface CheckoutBranchResponseMessage {
 export type ToWebviewMessage =
   | StreamRequestMessage
   | UpdateStateMessage
+  | ContextUsageMessage
   | AssetUrisResponseMessage
   | GetClaudeStateResponseMessage
   | GetAuthStatusResponseMessage

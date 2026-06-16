@@ -27,6 +27,7 @@ import type { FromWebviewMessage, ToWebviewMessage } from '../../src/types/ipc';
 export interface MockProcessManager {
   spawnClaude: ReturnType<typeof vi.fn>;
   writeToChannel: ReturnType<typeof vi.fn>;
+  sendUserMessage: ReturnType<typeof vi.fn>;
   interruptClaude: ReturnType<typeof vi.fn>;
   closeChannel: ReturnType<typeof vi.fn>;
   hasChannel: ReturnType<typeof vi.fn>;
@@ -61,6 +62,7 @@ export interface MockWebview {
 }
 
 export interface MockAuthManager extends IAuthManager {
+  ensureChecked: ReturnType<typeof vi.fn>;
   getAuthStatusResponse: ReturnType<typeof vi.fn>;
 }
 
@@ -85,17 +87,23 @@ export interface MockVSCodeBridge extends IVSCodeBridge {
   openNewConversationTab: ReturnType<typeof vi.fn>;
 }
 
+export interface MockTerminalLauncher {
+  openClaudeTerminal: ReturnType<typeof vi.fn>;
+}
+
 export interface MockMessageBrokerServices extends Required<MessageBrokerServices> {
   authManager: MockAuthManager;
   worktreeManager: MockWorktreeManager;
   atMentionHandler: MockAtMentionHandler;
   fileListProvider: MockFileListProvider;
   vscode: MockVSCodeBridge;
+  terminalLauncher: MockTerminalLauncher;
 }
 
 export function createMockServices(): MockMessageBrokerServices {
   return {
     authManager: {
+      ensureChecked: vi.fn(() => Promise.resolve()),
       getAuthStatusResponse: vi.fn(() => ({
         type: 'get_auth_status_response' as const,
         authenticated: false,
@@ -129,6 +137,9 @@ export function createMockServices(): MockMessageBrokerServices {
       openUrl: vi.fn(() => Promise.resolve()),
       openFolder: vi.fn(() => Promise.resolve()),
       openNewConversationTab: vi.fn(() => Promise.resolve()),
+    },
+    terminalLauncher: {
+      openClaudeTerminal: vi.fn(),
     },
   };
 }
@@ -182,8 +193,9 @@ export function createIpcTestHarness(): IpcTestHarness {
   });
 
   const processManager: MockProcessManager = {
-    spawnClaude: vi.fn(),
+    spawnClaude: vi.fn(() => Promise.resolve()),
     writeToChannel: vi.fn(),
+    sendUserMessage: vi.fn(),
     interruptClaude: vi.fn(),
     closeChannel: vi.fn(),
     hasChannel: vi.fn(() => false),

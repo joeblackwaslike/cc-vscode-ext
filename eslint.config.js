@@ -54,6 +54,15 @@ export default [
       '@typescript-eslint/no-explicit-any': 'error',
     },
   },
+  // Plain-JS test fixtures (e.g. fake CLI scripts run via node)
+  {
+    files: ['test/**/*.mjs'],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: 'module',
+      globals: { ...globals.node },
+    },
+  },
   {
     ignores: ['dist/', 'webview/', 'vendor/', 'node_modules/', '**/*.js'],
   },

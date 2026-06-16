@@ -1,0 +1,40 @@
+# The extension host code is bundled into dist/extension.js, and the webview
+# into webview/, so none of the source/build inputs need to ship.
+src/**
+webview-src/**
+out/**
+**/*.map
+**/*.ts
+!resources/**
+
+# Tests & their artifacts
+test/**
+test-results/**
+playwright-report/**
+.vscode-test/**
+playwright.e2e.config.ts
+vitest.config.ts
+
+# Dev tooling, caches, and the vendored reference copy of the real extension
+.serena/**
+vendor/**
+scripts/**
+.vscode/**
+.github/**
+.clawhip/**
+.git/**
+node_modules/**
+
+# Build configs / linting
+esbuild.config.js
+vite.config.ts
+tsconfig*.json
+.eslintrc*
+.eslint*
+.prettier*
+.editorconfig
+.gitignore
+.gitattributes
+
+# Kept (NOT ignored): dist/, webview/, resources/ (icons, walkthrough,
+# native-binary/claude), package.json, README/LICENSE/CHANGELOG.

@@ -17,14 +17,14 @@ describe('DiffManager', () => {
     setContent: vi.fn(),
     deleteContent: vi.fn(),
     provideTextDocumentContent: vi.fn(() => 'old content'),
-    scheme: 'claude-vscode-left',
+    scheme: 'claw-vscode-left',
   };
   const mockRight = {
     makeUri: vi.fn(() => rightUri),
     setContent: vi.fn(),
     deleteContent: vi.fn(),
     provideTextDocumentContent: vi.fn(() => 'proposed content'),
-    scheme: 'claude-vscode-right',
+    scheme: 'claw-vscode-right',
   };
   const mockTracker = {
     trackDiff: vi.fn(),

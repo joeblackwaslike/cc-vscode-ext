@@ -3,7 +3,7 @@ import type { SessionStorage } from './SessionStorage';
 /**
  * Tracks the "last closed session" state for the Cmd+Shift+T reopen shortcut.
  *
- * VS Code sets `claude-vscode.lastClosedWasSession` context key to true when the
+ * VS Code sets `claw-vscode.lastClosedWasSession` context key to true when the
  * last thing the user closed was a Claude session tab. This lets the keybinding
  * intercept Cmd+Shift+T only when it should reopen a Claude session.
  */

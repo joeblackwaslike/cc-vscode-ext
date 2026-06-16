@@ -1,4 +1,4 @@
-import React, { useCallback, useRef } from 'react';
+import React, { useCallback, useState } from 'react';
 import { ExtensionContext, useExtensionReducer } from './store/extensionStore';
 import { SessionContext, useSessionReducer } from './store/sessionStore';
 import { useMessages } from './hooks/useMessages';
@@ -7,7 +7,8 @@ import { postMessage } from './lib/ipc';
 import { WelcomeScreen } from './components/WelcomeScreen';
 import { ConversationView } from './components/ConversationView';
 import { SessionList } from './components/SessionList';
-import type { ToWebviewMessage } from './lib/ipc';
+import { TabBar, type TabInfo } from './components/TabBar';
+import type { ClaudeStreamEvent, ToWebviewMessage } from './lib/ipc';
 
 // ─── Detect view mode from flags injected by HtmlBuilder ─────────────────────
 
@@ -56,34 +57,91 @@ export function App() {
 function MainView() {
   const { state: extState } = React.useContext(ExtensionContext)!;
   const { state: sessState, dispatch } = React.useContext(SessionContext)!;
-  const { launch, sendText, interrupt } = useSession();
-  const channelIdRef = useRef<string | null>(null);
+  const { launch, sendText, interrupt, compact, requestContextUsage, close, deleteSession } = useSession();
 
-  const activeChannelId = channelIdRef.current;
-  const channelState = activeChannelId ? sessState.channels[activeChannelId] : undefined;
-  const hasConversation = activeChannelId !== null && channelState !== undefined;
+  // One tab per conversation channel. `tabs` drives the tab bar; `activeId` is
+  // the channel currently shown. Stream state lives in the session store keyed
+  // by the same channelId, so switching tabs is just a re-render.
+  const [tabs, setTabs] = useState<TabInfo[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(null);
 
-  const startNewSession = useCallback(() => {
-    const id = crypto.randomUUID();
-    channelIdRef.current = id;
-    launch(id);
-  }, [launch]);
+  const channelState = activeId ? sessState.channels[activeId] : undefined;
+
+  const openTab = useCallback(
+    (title: string, opts: { resume?: string } = {}) => {
+      const channelId = crypto.randomUUID();
+      setTabs((prev) => [...prev, { channelId, title }]);
+      setActiveId(channelId);
+      // Apply the current composer defaults (mode/effort/model) at launch — these
+      // are CLI launch flags, so they take effect when the conversation starts.
+      launch(channelId, {
+        ...(opts.resume !== undefined ? { resume: opts.resume } : {}),
+        permissionMode: extState.defaultPermissionMode,
+        thinkingLevel: extState.thinkingLevel,
+        ...(extState.model !== undefined ? { model: extState.model } : {}),
+      });
+    },
+    [launch, extState.defaultPermissionMode, extState.thinkingLevel, extState.model],
+  );
+
+  const startNewSession = useCallback(() => openTab('New conversation'), [openTab]);
+
+  const openSession = useCallback(
+    (sessionId: string) => {
+      const existing = extState.sessions.find((s) => s.id === sessionId);
+      openTab(existing?.title || 'Conversation', { resume: sessionId });
+    },
+    [openTab, extState.sessions],
+  );
+
+  const closeTab = useCallback(
+    (channelId: string) => {
+      close(channelId);
+      dispatch({ type: 'CLEAR_CHANNEL', channelId });
+      setTabs((prev) => {
+        const idx = prev.findIndex((t) => t.channelId === channelId);
+        const next = prev.filter((t) => t.channelId !== channelId);
+        setActiveId((curr) => {
+          if (curr !== channelId) return curr;
+          if (next.length === 0) return null;
+          return next[Math.min(idx, next.length - 1)]!.channelId;
+        });
+        return next;
+      });
+    },
+    [close, dispatch],
+  );
 
   const handleSend = useCallback(
     (text: string) => {
-      if (!channelIdRef.current) return;
+      if (!activeId) return;
       const requestId = crypto.randomUUID();
-      dispatch({ type: 'SET_RUNNING', channelId: channelIdRef.current, running: true });
-      sendText(channelIdRef.current, text, requestId);
+      // Optimistically render the user's turn — the CLI's stream-json output
+      // does not echo user input back, so without this the message never shows.
+      dispatch({
+        type: 'STREAM_EVENT',
+        channelId: activeId,
+        event: { type: 'user', message: { role: 'user', content: text } } as ClaudeStreamEvent,
+      });
+      dispatch({ type: 'SET_RUNNING', channelId: activeId, running: true });
+      sendText(activeId, text, requestId);
     },
-    [sendText, dispatch],
+    [activeId, sendText, dispatch],
   );
 
   const handleInterrupt = useCallback(() => {
-    if (channelIdRef.current) interrupt(channelIdRef.current);
-  }, [interrupt]);
+    if (activeId) interrupt(activeId);
+  }, [activeId, interrupt]);
 
-  if (!hasConversation) {
+  const handleCompact = useCallback(() => {
+    if (activeId) compact(activeId);
+  }, [activeId, compact]);
+
+  const handleRefreshUsage = useCallback(() => {
+    if (activeId) requestContextUsage(activeId);
+  }, [activeId, requestContextUsage]);
+
+  if (tabs.length === 0 || activeId === null) {
     return (
       <WelcomeScreen
         onNewSession={startNewSession}
@@ -94,18 +152,32 @@ function MainView() {
   }
 
   return (
-    <ConversationView
-      channelId={activeChannelId}
-      events={channelState?.events ?? []}
-      running={channelState?.running ?? false}
-      onSend={handleSend}
-      onInterrupt={handleInterrupt}
-      onNew={startNewSession}
-    />
+    <div className="cc-main">
+      <TabBar
+        tabs={tabs}
+        activeId={activeId}
+        onSelect={setActiveId}
+        onClose={closeTab}
+        onNew={startNewSession}
+        sessions={extState.sessions}
+        onOpenSession={openSession}
+        onDeleteSession={deleteSession}
+      />
+      <ConversationView
+        channelId={activeId}
+        events={channelState?.events ?? []}
+        running={channelState?.running ?? false}
+        usage={channelState?.usage}
+        onSend={handleSend}
+        onInterrupt={handleInterrupt}
+        onCompact={handleCompact}
+        onRefreshUsage={handleRefreshUsage}
+      />
+    </div>
   );
 }
 
-// ─── Session-list-only view (claudeVSCodeSessionsList panel) ──────────────────
+// ─── Session-list-only view (clawVSCodeSessionsList panel) ──────────────────
 
 function SessionListView() {
   const { state } = React.useContext(ExtensionContext)!;

@@ -1,5 +1,14 @@
 import type { GetAuthStatusResponseMessage } from '../types/ipc';
 
+export interface AuthCheckResult {
+  authenticated: boolean;
+  loginUrl?: string;
+}
+
+export interface IAuthChecker {
+  checkAuth(): Promise<AuthCheckResult>;
+}
+
 /**
  * Manages authentication state for the claude CLI.
  *
@@ -10,11 +19,37 @@ import type { GetAuthStatusResponseMessage } from '../types/ipc';
 export class AuthManager {
   private authenticated = false;
   private loginUrl: string | undefined;
+  private checkPromise: Promise<void> | undefined;
+
+  constructor(private readonly checker?: IAuthChecker) {}
 
   /** Update the cached auth state (called after querying the CLI binary). */
   setAuthState(authenticated: boolean, loginUrl?: string): void {
     this.authenticated = authenticated;
     this.loginUrl = authenticated ? undefined : loginUrl;
+  }
+
+  /**
+   * Run the auth check exactly once (memoized) and cache the result. Safe to
+   * call on every auth query; only the first call hits the checker.
+   */
+  async ensureChecked(): Promise<void> {
+    if (!this.checker) return;
+    this.checkPromise ??= this.checker
+      .checkAuth()
+      .then((r) => this.setAuthState(r.authenticated, r.loginUrl))
+      .catch(() => this.setAuthState(false));
+    return this.checkPromise;
+  }
+
+  /**
+   * Drop the memoized auth check so the next `ensureChecked()` re-queries the
+   * CLI. The "Authenticate with CLI" flow can write `.claude.json` after the
+   * first probe ran; without this, the welcome screen would stay stuck on the
+   * cached `false` until the extension host reloads.
+   */
+  invalidate(): void {
+    this.checkPromise = undefined;
   }
 
   /** Returns the current auth state as a response message ready for the webview. */

@@ -21,7 +21,7 @@ export function DiffViewer({ filePath }: { filePath?: string }) {
           onClick={() =>
             postMessage({ type: 'open_output_panel' })
           }
-          title="Accept (claude-vscode.acceptProposedDiff)"
+          title="Accept (claw-vscode.acceptProposedDiff)"
         >
           ✓ Accept
         </button>
@@ -30,7 +30,7 @@ export function DiffViewer({ filePath }: { filePath?: string }) {
           onClick={() =>
             postMessage({ type: 'close_channel', channelId: '' })
           }
-          title="Reject (claude-vscode.rejectProposedDiff)"
+          title="Reject (claw-vscode.rejectProposedDiff)"
         >
           ✗ Reject
         </button>

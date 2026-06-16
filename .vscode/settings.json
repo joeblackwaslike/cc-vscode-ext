@@ -4,5 +4,5 @@
   "[typescript]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
   "[typescriptreact]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
   "typescript.tsdk": "node_modules/typescript/lib",
-  "files.exclude": { "dist/": true, "webview/": true }
+  "files.exclude": { "dist/": false, "webview/": false }
 }

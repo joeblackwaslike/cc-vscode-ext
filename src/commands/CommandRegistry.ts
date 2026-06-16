@@ -37,15 +37,15 @@ export class CommandRegistry {
 
     return [
       // ─── Panel / editor ───────────────────────────────────────────────
-      r('claude-vscode.editor.open', () => this.panelOpener.openNewPanel()),
-      r('claude-vscode.editor.openLast', () => this.panelOpener.reopenLastSession()),
-      r('claude-vscode.primaryEditor.open', () => this.panelOpener.openNewPanel()),
-      r('claude-vscode.window.open', () => this.panelOpener.openNewPanel()),
-      r('claude-vscode.sidebar.open', () =>
-        vscode.commands.executeCommand('claude-vscode.sidebar.view.focus'),
+      r('claw-vscode.editor.open', () => this.panelOpener.openNewPanel()),
+      r('claw-vscode.editor.openLast', () => this.panelOpener.reopenLastSession()),
+      r('claw-vscode.primaryEditor.open', () => this.panelOpener.openNewPanel()),
+      r('claw-vscode.window.open', () => this.panelOpener.openNewPanel()),
+      r('claw-vscode.sidebar.open', () =>
+        vscode.commands.executeCommand('clawVSCodeSidebarSecondary.focus'),
       ),
-      r('claude-vscode.newConversation', () => this.panelOpener.openNewPanel()),
-      r('claude-vscode.reopenClosedSession', () => {
+      r('claw-vscode.newConversation', () => this.panelOpener.openNewPanel()),
+      r('claw-vscode.reopenClosedSession', () => {
         const lastId = this.sessionHistory.getLastClosed();
         if (lastId) {
           this.sessionHistory.clearLastClosed();
@@ -54,35 +54,35 @@ export class CommandRegistry {
       }),
 
       // ─── Diff accept / reject ─────────────────────────────────────────
-      r('claude-vscode.acceptProposedDiff', () => this.acceptActiveDiff()),
-      r('claude-vscode.rejectProposedDiff', () => this.rejectActiveDiff()),
+      r('claw-vscode.acceptProposedDiff', () => this.acceptActiveDiff()),
+      r('claw-vscode.rejectProposedDiff', () => this.rejectActiveDiff()),
       r('claude-code.acceptProposedDiff', () => this.acceptActiveDiff()),
       r('claude-code.rejectProposedDiff', () => this.rejectActiveDiff()),
 
       // ─── Terminal ─────────────────────────────────────────────────────
-      r('claude-vscode.terminal.open', () =>
+      r('claw-vscode.terminal.open', () =>
         this.terminalLauncher.openClaudeTerminal(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath),
       ),
-      r('claude-vscode.terminal.open.keyboard', () =>
+      r('claw-vscode.terminal.open.keyboard', () =>
         this.terminalLauncher.openClaudeTerminal(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath),
       ),
 
       // ─── Stubs for remaining commands ─────────────────────────────────
-      r('claude-vscode.focus', () => undefined),
-      r('claude-vscode.blur', () => undefined),
-      r('claude-vscode.logout', () => undefined),
-      r('claude-vscode.update', () => undefined),
-      r('claude-vscode.insertAtMention', () => undefined),
+      r('claw-vscode.focus', () => undefined),
+      r('claw-vscode.blur', () => undefined),
+      r('claw-vscode.logout', () => undefined),
+      r('claw-vscode.update', () => undefined),
+      r('claw-vscode.insertAtMention', () => undefined),
       r('claude-code.insertAtMentioned', () => undefined),
-      r('claude-vscode.installPlugin', () => undefined),
-      r('claude-vscode.showLogs', () => this.logger.info('showLogs command invoked')),
-      r('claude-vscode.openWalkthrough', () =>
+      r('claw-vscode.installPlugin', () => undefined),
+      r('claw-vscode.showLogs', () => this.logger.info('showLogs command invoked')),
+      r('claw-vscode.openWalkthrough', () =>
         vscode.commands.executeCommand(
           'workbench.action.openWalkthrough',
-          'reference.claude-code-reference#claude-code-walkthrough',
+          'reference.claw-code#claude-code-walkthrough',
         ),
       ),
-      r('claude-vscode.createWorktree', () => undefined),
+      r('claw-vscode.createWorktree', () => undefined),
     ];
   }
 

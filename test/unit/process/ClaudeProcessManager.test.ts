@@ -22,10 +22,6 @@ const { mockProcess, mockSpawn } = vi.hoisted(() => {
   return { mockProcess: proc, mockSpawn };
 });
 
-vi.mock('../../../src/utils/platform', () => ({
-  resolveBinaryPath: vi.fn(() => '/usr/local/bin/claude'),
-}));
-
 vi.mock('../../../src/process/ProcessArgs', () => ({
   buildArgs: vi.fn(() => [
     '--output-format', 'stream-json',
@@ -34,15 +30,12 @@ vi.mock('../../../src/process/ProcessArgs', () => ({
   ]),
 }));
 
-import { resolveBinaryPath } from '../../../src/utils/platform';
 import { buildArgs } from '../../../src/process/ProcessArgs';
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
 const mockLogger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
 
-// Replay proc.on listeners registered in the current test for a given event.
-// vi.clearAllMocks() wipes mock.calls between tests so there is no cross-test bleed.
 function triggerProcessEvent(event: string, ...args: unknown[]): void {
   for (const call of mockProcess.on.mock.calls as [string, (...a: unknown[]) => void][]) {
     if (call[0] === event) call[1](...args);
@@ -55,10 +48,12 @@ function triggerStdoutData(chunk: Buffer): void {
   }
 }
 
-function makeManager() {
+// The binary is provided by an async provider (downloaded + cached at runtime).
+function makeManager(binary = '/usr/local/bin/claude') {
   const router = new ChannelRouter();
-  const manager = new ClaudeProcessManager('/ext', router, mockLogger, mockSpawn as never);
-  return { manager, router };
+  const provider = vi.fn(() => Promise.resolve(binary));
+  const manager = new ClaudeProcessManager(provider, router, mockLogger, mockSpawn as never);
+  return { manager, router, provider };
 }
 
 // ─── Tests ─────────────────────────────────────────────────────────────────────
@@ -69,11 +64,11 @@ describe('ClaudeProcessManager', () => {
     mockProcess.stdin.writable = true;
   });
 
-  it('spawnClaude() calls spawn with the resolved binary and built args', () => {
-    const { manager } = makeManager();
-    manager.spawnClaude('ch-1', {});
+  it('spawnClaude() spawns with the provider binary and built args', async () => {
+    const { manager, provider } = makeManager();
+    await manager.spawnClaude('ch-1', {});
 
-    expect(resolveBinaryPath).toHaveBeenCalledWith('/ext', undefined);
+    expect(provider).toHaveBeenCalled();
     expect(buildArgs).toHaveBeenCalledWith({});
     expect(mockSpawn).toHaveBeenCalledWith(
       '/usr/local/bin/claude',
@@ -82,42 +77,43 @@ describe('ClaudeProcessManager', () => {
     );
   });
 
-  it('spawnClaude() passes wrapper to resolveBinaryPath', () => {
-    const { manager } = makeManager();
-    manager.spawnClaude('ch-1', { wrapper: '/custom/bin' });
-    expect(resolveBinaryPath).toHaveBeenCalledWith('/ext', '/custom/bin');
+  it('spawnClaude() uses a per-launch wrapper override instead of the provider', async () => {
+    const { manager, provider } = makeManager();
+    await manager.spawnClaude('ch-1', { wrapper: '/custom/bin' });
+    expect(provider).not.toHaveBeenCalled();
+    expect(mockSpawn).toHaveBeenCalledWith('/custom/bin', expect.anything(), expect.anything());
   });
 
-  it('spawnClaude() marks the channel as active', () => {
+  it('spawnClaude() marks the channel as active', async () => {
     const { manager } = makeManager();
     expect(manager.hasChannel('ch-1')).toBe(false);
-    manager.spawnClaude('ch-1', {});
+    await manager.spawnClaude('ch-1', {});
     expect(manager.hasChannel('ch-1')).toBe(true);
   });
 
-  it('spawnClaude() throws if channelId is already active', () => {
+  it('spawnClaude() rejects if channelId is already active', async () => {
     const { manager } = makeManager();
-    manager.spawnClaude('ch-1', {});
-    expect(() => manager.spawnClaude('ch-1', {})).toThrow(/"ch-1"/);
+    await manager.spawnClaude('ch-1', {});
+    await expect(manager.spawnClaude('ch-1', {})).rejects.toThrow(/"ch-1"/);
   });
 
-  it('stdout NDJSON data is parsed and routed to the router', () => {
+  it('stdout NDJSON data is parsed and routed to the router', async () => {
     const { manager, router } = makeManager();
     const handler = vi.fn();
     router.register('ch-1', handler);
 
-    manager.spawnClaude('ch-1', {});
+    await manager.spawnClaude('ch-1', {});
     triggerStdoutData(Buffer.from(JSON.stringify({ type: 'text', content: 'hi' }) + '\n'));
 
     expect(handler).toHaveBeenCalledWith({ type: 'text', content: 'hi' });
   });
 
-  it('multiple NDJSON lines in one chunk are all routed', () => {
+  it('multiple NDJSON lines in one chunk are all routed', async () => {
     const { manager, router } = makeManager();
     const handler = vi.fn();
     router.register('ch-1', handler);
 
-    manager.spawnClaude('ch-1', {});
+    await manager.spawnClaude('ch-1', {});
     triggerStdoutData(Buffer.from('{"type":"a"}\n{"type":"b"}\n{"type":"c"}\n'));
 
     expect(handler).toHaveBeenCalledTimes(3);
@@ -126,18 +122,31 @@ describe('ClaudeProcessManager', () => {
     expect(handler).toHaveBeenNthCalledWith(3, { type: 'c' });
   });
 
-  it('malformed JSON on stdout calls logger.warn', () => {
+  it('malformed JSON on stdout calls logger.warn', async () => {
     const { manager } = makeManager();
-    manager.spawnClaude('ch-1', {});
+    await manager.spawnClaude('ch-1', {});
     triggerStdoutData(Buffer.from('not-json\n'));
     expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining('ch-1'));
   });
 
-  it('writeToChannel() writes JSON+newline to stdin', () => {
+  it('writeToChannel() writes JSON+newline to stdin', async () => {
     const { manager } = makeManager();
-    manager.spawnClaude('ch-1', {});
+    await manager.spawnClaude('ch-1', {});
     manager.writeToChannel('ch-1', { type: 'ping' });
     expect(mockProcess.stdin.write).toHaveBeenCalledWith('{"type":"ping"}\n');
+  });
+
+  // Contract guard: the CLI's stream-json input rejects a bare-string message
+  // ("Expected message role 'user', got 'undefined'") and produces no response.
+  // The user turn MUST be wrapped as { role, content }. Verified empirically
+  // against claude 2.1.168.
+  it('sendUserMessage() writes the SDK user envelope (role + content)', async () => {
+    const { manager } = makeManager();
+    await manager.spawnClaude('ch-1', {});
+    manager.sendUserMessage('ch-1', 'hi there');
+    expect(mockProcess.stdin.write).toHaveBeenCalledWith(
+      '{"type":"user","message":{"role":"user","content":"hi there"}}\n',
+    );
   });
 
   it('writeToChannel() is a no-op for inactive channels', () => {
@@ -146,17 +155,17 @@ describe('ClaudeProcessManager', () => {
     expect(mockProcess.stdin.write).not.toHaveBeenCalled();
   });
 
-  it('writeToChannel() is a no-op when stdin is not writable', () => {
+  it('writeToChannel() is a no-op when stdin is not writable', async () => {
     const { manager } = makeManager();
     mockProcess.stdin.writable = false;
-    manager.spawnClaude('ch-1', {});
+    await manager.spawnClaude('ch-1', {});
     manager.writeToChannel('ch-1', { type: 'ping' });
     expect(mockProcess.stdin.write).not.toHaveBeenCalled();
   });
 
-  it('interruptClaude() sends SIGINT to the process', () => {
+  it('interruptClaude() sends SIGINT to the process', async () => {
     const { manager } = makeManager();
-    manager.spawnClaude('ch-1', {});
+    await manager.spawnClaude('ch-1', {});
     manager.interruptClaude('ch-1');
     expect(mockProcess.kill).toHaveBeenCalledWith('SIGINT');
   });
@@ -167,19 +176,19 @@ describe('ClaudeProcessManager', () => {
     expect(mockProcess.kill).not.toHaveBeenCalled();
   });
 
-  it('closeChannel() kills the process and removes the channel', () => {
+  it('closeChannel() kills the process and removes the channel', async () => {
     const { manager } = makeManager();
-    manager.spawnClaude('ch-1', {});
+    await manager.spawnClaude('ch-1', {});
     manager.closeChannel('ch-1');
     expect(mockProcess.kill).toHaveBeenCalled();
     expect(manager.hasChannel('ch-1')).toBe(false);
   });
 
-  it('closeChannel() unregisters from the router', () => {
+  it('closeChannel() unregisters from the router', async () => {
     const { manager, router } = makeManager();
     const handler = vi.fn();
     router.register('ch-1', handler);
-    manager.spawnClaude('ch-1', {});
+    await manager.spawnClaude('ch-1', {});
     manager.closeChannel('ch-1');
     router.route('ch-1', { type: 'late' });
     expect(handler).not.toHaveBeenCalled();
@@ -191,9 +200,9 @@ describe('ClaudeProcessManager', () => {
     expect(mockProcess.kill).not.toHaveBeenCalled();
   });
 
-  it("process 'close' event removes the channel and logs", () => {
+  it("process 'close' event removes the channel and logs", async () => {
     const { manager } = makeManager();
-    manager.spawnClaude('ch-1', {});
+    await manager.spawnClaude('ch-1', {});
     expect(manager.hasChannel('ch-1')).toBe(true);
 
     triggerProcessEvent('close', 0);
@@ -202,11 +211,11 @@ describe('ClaudeProcessManager', () => {
     expect(mockLogger.info).toHaveBeenCalledWith(expect.stringContaining('ch-1'));
   });
 
-  it("process 'close' event unregisters from the router", () => {
+  it("process 'close' event unregisters from the router", async () => {
     const { manager, router } = makeManager();
     const handler = vi.fn();
     router.register('ch-1', handler);
-    manager.spawnClaude('ch-1', {});
+    await manager.spawnClaude('ch-1', {});
 
     triggerProcessEvent('close', 1);
     router.route('ch-1', { type: 'late' });
@@ -214,9 +223,9 @@ describe('ClaudeProcessManager', () => {
     expect(handler).not.toHaveBeenCalled();
   });
 
-  it("process 'error' event removes the channel and logs error", () => {
+  it("process 'error' event removes the channel and logs error", async () => {
     const { manager } = makeManager();
-    manager.spawnClaude('ch-1', {});
+    await manager.spawnClaude('ch-1', {});
 
     triggerProcessEvent('error', new Error('ENOENT'));
 
@@ -227,9 +236,9 @@ describe('ClaudeProcessManager', () => {
     );
   });
 
-  it('dispose() kills all active processes', () => {
+  it('dispose() kills all active processes', async () => {
     const { manager } = makeManager();
-    manager.spawnClaude('ch-1', {});
+    await manager.spawnClaude('ch-1', {});
     manager.dispose();
     expect(mockProcess.kill).toHaveBeenCalled();
     expect(manager.hasChannel('ch-1')).toBe(false);

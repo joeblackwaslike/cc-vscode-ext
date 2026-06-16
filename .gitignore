@@ -1,12 +1,14 @@
 vendor/
 dist/
 webview/
+resources/native-binary/
 node_modules/
 *.vsix
 .DS_Store
 *.js.map
 coverage/
 out/
+docs/_*.md
 .vscode-test/
 .serena/
 .clawhip/
