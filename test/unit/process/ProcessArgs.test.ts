@@ -52,4 +52,28 @@ describe('buildArgs', () => {
     const args = buildArgs({ allowDangerouslySkipPermissions: false });
     expect(args).not.toContain('--allow-dangerously-skip-permissions');
   });
+
+  it('passes --effort <level> when an effort is set', () => {
+    for (const effort of ['low', 'medium', 'high', 'xhigh', 'max'] as const) {
+      const args = buildArgs({ effort });
+      const i = args.indexOf('--effort');
+      expect(i).toBeGreaterThanOrEqual(0);
+      expect(args[i + 1]).toBe(effort);
+    }
+  });
+
+  it('does not add --effort when absent', () => {
+    expect(buildArgs({})).not.toContain('--effort');
+  });
+
+  it('passes --model when a model is set', () => {
+    const args = buildArgs({ model: 'opus' });
+    const i = args.indexOf('--model');
+    expect(i).toBeGreaterThanOrEqual(0);
+    expect(args[i + 1]).toBe('opus');
+  });
+
+  it('does not add --model when absent', () => {
+    expect(buildArgs({})).not.toContain('--model');
+  });
 });

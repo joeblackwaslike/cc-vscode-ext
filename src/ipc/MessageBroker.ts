@@ -6,7 +6,11 @@ import type {
   CreateWorktreeResponseMessage,
   CheckGitStatusResponseMessage,
   CheckoutBranchResponseMessage,
+  ThinkingLevel,
 } from '../types/ipc';
+import { EFFORT_THINKING_TOKENS, type PermissionMode } from '../process/ProcessArgs';
+import { parseContextUsage } from '../process/usage';
+import { ControlRequestManager, type ControlResponseEvent } from '../process/ControlRequest';
 import type { ClaudeStreamEvent } from '../types/process';
 import type { ProcessLaunchOptions } from '../process/ClaudeProcessManager';
 import type { ILogger } from '../process/ClaudeProcessManager';
@@ -19,8 +23,9 @@ export interface IChannelRouter {
 }
 
 export interface IClaudeProcessManager {
-  spawnClaude(channelId: string, options: ProcessLaunchOptions, cwd?: string): void;
+  spawnClaude(channelId: string, options: ProcessLaunchOptions, cwd?: string): Promise<void>;
   writeToChannel(channelId: string, data: unknown): void;
+  sendUserMessage(channelId: string, text: string): void;
   interruptClaude(channelId: string): void;
   closeChannel(channelId: string): void;
   hasChannel(channelId: string): boolean;
@@ -42,6 +47,9 @@ export interface IDiffManager {
 export interface IViewManager {
   broadcastMessage(msg: ToWebviewMessage): void;
   broadcastSessionStates(): void;
+  setPermissionMode(mode: PermissionMode): void;
+  setThinkingLevel(level: ThinkingLevel): void;
+  setModel(model: string): void;
 }
 
 export interface IWebview {
@@ -98,6 +106,9 @@ export interface MessageBrokerServices {
  * Each message type routes to a dedicated private handler method.
  */
 export class MessageBroker {
+  /** Correlates control_request/control_response over the CLI stdin/stdout. */
+  private readonly control: ControlRequestManager;
+
   constructor(
     private readonly processManager: IClaudeProcessManager,
     private readonly sessionManager: ISessionManager,
@@ -108,9 +119,30 @@ export class MessageBroker {
     private readonly logger: ILogger,
     private readonly services: MessageBrokerServices = {},
   ) {
+    this.control = new ControlRequestManager((channelId, data) =>
+      this.processManager.writeToChannel(channelId, data),
+    );
     webview.onDidReceiveMessage((raw: unknown) => {
       void this.handleMessage(raw as FromWebviewMessage);
     });
+  }
+
+  /** Fire a control request, swallowing failures into the log (live set_*). */
+  private sendControl(channelId: string, subtype: Parameters<ControlRequestManager['send']>[1], payload?: Record<string, unknown>): void {
+    this.control.send(channelId, subtype, payload).catch((err: unknown) => {
+      this.logger.info(`[MessageBroker] control '${subtype}' failed: ${String(err)}`);
+    });
+  }
+
+  /** Query the CLI's context breakdown for a channel and broadcast it. */
+  private async refreshContextUsage(channelId: string): Promise<void> {
+    try {
+      const response = await this.control.send(channelId, 'get_context_usage');
+      const usage = parseContextUsage(response);
+      if (usage) this.viewManager.broadcastMessage({ type: 'context_usage', channelId, usage });
+    } catch (err) {
+      this.logger.info(`[MessageBroker] get_context_usage failed: ${String(err)}`);
+    }
   }
 
   private async handleMessage(msg: FromWebviewMessage): Promise<void> {
@@ -126,7 +158,34 @@ export class MessageBroker {
           this.processManager.interruptClaude(msg.channelId);
           return;
         case 'control_request':
-          this.processManager.writeToChannel(msg.channelId, msg.data);
+          this.processManager.sendUserMessage(msg.channelId, msg.text);
+          return;
+
+        // ─── Live session controls (applied to the running process now, and
+        //     stored as defaults for subsequent launches) ──────────────────
+        case 'set_permission_mode':
+          this.viewManager.setPermissionMode(msg.mode);
+          this.viewManager.broadcastSessionStates();
+          this.sendControl(msg.channelId, 'set_permission_mode', { mode: msg.mode, userInitiated: true });
+          return;
+        case 'set_thinking_level':
+          this.viewManager.setThinkingLevel(msg.level);
+          this.viewManager.broadcastSessionStates();
+          if (msg.channelId) {
+            this.sendControl(msg.channelId, 'set_max_thinking_tokens', {
+              maxThinkingTokens: EFFORT_THINKING_TOKENS[msg.level],
+            });
+          }
+          return;
+        case 'set_model':
+          this.viewManager.setModel(msg.model);
+          this.viewManager.broadcastSessionStates();
+          if (msg.channelId) this.sendControl(msg.channelId, 'set_model', { model: msg.model });
+          return;
+
+        // ─── Context-window breakdown (for the usage ring popover) ────────
+        case 'get_context_usage':
+          void this.refreshContextUsage(msg.channelId);
           return;
 
         // ─── Session management ─────────────────────────────────────────
@@ -172,7 +231,7 @@ export class MessageBroker {
         }
 
         case 'login':
-          this.services.terminalLauncher?.openClaudeTerminal();
+          void this.services.terminalLauncher?.openClaudeTerminal();
           return;
 
         // ─── Worktree ───────────────────────────────────────────────────
@@ -252,19 +311,35 @@ export class MessageBroker {
     const options: ProcessLaunchOptions = {
       ...(msg.resume !== undefined ? { resume: msg.resume } : {}),
       ...(msg.permissionMode !== undefined ? { permissionMode: msg.permissionMode } : {}),
+      ...(msg.thinkingLevel !== undefined ? { effort: msg.thinkingLevel } : {}),
+      ...(msg.model !== undefined ? { model: msg.model } : {}),
     };
 
-    // Forward stream events from the process to all webviews
+    // Forward stream events to all webviews. control_response lines are private
+    // RPC plumbing — settle them here and never broadcast them as conversation
+    // events. After each turn completes, refresh the context-usage breakdown.
     this.channelRouter.register(channelId, (event) => {
+      const typed = event as { type?: string };
+      if (typed.type === 'control_response') {
+        this.control.handleResponse(event as ControlResponseEvent);
+        return;
+      }
       this.viewManager.broadcastMessage({
         type: 'request',
         channelId,
         requestId: channelId,
         request: event as ClaudeStreamEvent,
       });
+      if (typed.type === 'result') {
+        void this.refreshContextUsage(channelId);
+      }
     });
 
-    this.processManager.spawnClaude(channelId, options, msg.cwd);
+    // Fire-and-forget: the router is already registered, so events flow once the
+    // process spawns. The binary may download on first launch — don't block.
+    void this.processManager.spawnClaude(channelId, options, msg.cwd).catch((err) => {
+      this.logger.info(`[MessageBroker] spawnClaude failed: ${String(err)}`);
+    });
     void this.sessionManager.updateSession(channelId, 'running');
     this.viewManager.broadcastSessionStates();
   }

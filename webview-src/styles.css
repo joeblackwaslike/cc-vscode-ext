@@ -1,0 +1,300 @@
+/* ============================================================================
+ * Claw Code webview — single bundled stylesheet.
+ *
+ * Loaded in production via HtmlBuilder's <link href=".../webview/index.css">.
+ * The webview-src/index.html <style> block only applies in Vite dev, so all
+ * reset/base/component styling lives HERE to take effect in the real webview.
+ *
+ * Design tokens map to --vscode-* so theme switching stays automatic; the only
+ * brand literal is the terminal-green accent, chosen to make this build
+ * visually unmistakable next to the official (orange) Claude Code extension.
+ * ========================================================================== */
+
+:root {
+  /* ── Brand ────────────────────────────────────────────────────────────── */
+  --cc-accent: #3fb950;            /* terminal green */
+  --cc-accent-hover: #2ea043;
+  --cc-accent-soft: #3fb95022;     /* translucent fills (drag target, hovers) */
+
+  /* ── Surfaces / text (mapped to VS Code theme) ────────────────────────── */
+  --cc-bg: var(--vscode-editor-background);
+  --cc-fg: var(--vscode-foreground);
+  --cc-muted: var(--vscode-descriptionForeground);
+  --cc-border: var(--vscode-editorWidget-border, #2b2b2b);
+  --cc-input-bg: var(--vscode-input-background);
+  --cc-code-bg: var(--vscode-textCodeBlock-background, var(--vscode-textBlockQuote-background));
+  --cc-hover: #ffffff14;
+  --cc-warning: var(--vscode-statusBarItem-warningForeground, #e5c07b);
+
+  /* ── Geometry / type ──────────────────────────────────────────────────── */
+  --cc-radius: 6px;
+  --cc-radius-lg: 14px;
+  --cc-font-mono: var(--vscode-editor-font-family, ui-monospace, monospace);
+}
+
+/* ── Reset / base (production-critical: see header note) ─────────────────── */
+*,
+*::before,
+*::after { box-sizing: border-box; }
+
+html, body, #root { height: 100%; margin: 0; padding: 0; }
+
+body {
+  font-family: var(--vscode-font-family, system-ui, sans-serif);
+  font-size: var(--vscode-font-size, 13px);
+  color: var(--cc-fg);
+  background: var(--cc-bg);
+}
+
+a { color: var(--vscode-textLink-foreground); }
+
+/* thin, theme-aware scrollbars everywhere */
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-thumb { background: var(--cc-hover); border-radius: 6px; }
+
+/* ── Markdown (rendered via innerHTML → styled by class, not inline) ─────── */
+.cc-markdown { font-size: 13px; line-height: 1.6; }
+.cc-markdown > *:first-child { margin-top: 0; }
+.cc-markdown > *:last-child { margin-bottom: 0; }
+.cc-markdown p { margin: 0 0 9px; }
+.cc-markdown ul, .cc-markdown ol { margin: 0 0 9px; padding-left: 22px; }
+.cc-markdown li { margin: 2px 0; }
+.cc-markdown h1, .cc-markdown h2, .cc-markdown h3 { margin: 14px 0 8px; line-height: 1.3; }
+.cc-markdown h1 { font-size: 1.4em; }
+.cc-markdown h2 { font-size: 1.25em; }
+.cc-markdown h3 { font-size: 1.1em; }
+.cc-markdown blockquote {
+  margin: 0 0 9px; padding: 2px 12px;
+  border-left: 3px solid var(--cc-border); color: var(--cc-muted);
+}
+.cc-markdown table { border-collapse: collapse; margin: 0 0 9px; font-size: 12px; }
+.cc-markdown th, .cc-markdown td { border: 1px solid var(--cc-border); padding: 4px 9px; text-align: left; }
+.cc-markdown th { background: var(--cc-hover); }
+.cc-markdown code {
+  font-family: var(--cc-font-mono); font-size: 12px;
+  background: var(--cc-hover); border-radius: 4px; padding: 1px 5px;
+}
+.cc-markdown pre {
+  background: var(--cc-code-bg); border: 1px solid var(--cc-border);
+  border-radius: 8px; padding: 11px 13px; overflow-x: auto; margin: 0 0 10px;
+}
+.cc-markdown pre code { background: none; padding: 0; font-size: 12px; line-height: 1.55; }
+
+/* ── Welcome / auth screen ──────────────────────────────────────────────── */
+.cc-welcome { display: flex; align-items: center; justify-content: center; height: 100%; padding: 24px; }
+.cc-welcome__card { text-align: center; max-width: 320px; }
+.cc-welcome__mark { font-size: 34px; color: var(--cc-accent); margin-bottom: 10px; line-height: 1; }
+.cc-welcome__title { font-size: 20px; font-weight: 600; margin: 0 0 8px; color: var(--cc-fg); }
+.cc-welcome__sub { font-size: 14px; color: var(--cc-muted); margin: 0 0 24px; }
+.cc-welcome__hint { font-size: 12px; color: var(--cc-muted); margin-top: 16px; }
+
+.cc-btn {
+  display: block; width: 100%; padding: 9px 16px; margin-bottom: 8px;
+  border: 0; border-radius: var(--cc-radius); font-size: 13px; font-family: inherit; cursor: pointer;
+}
+.cc-btn--primary { background: var(--cc-accent); color: #fff; }
+.cc-btn--primary:hover { background: var(--cc-accent-hover); }
+.cc-btn--secondary {
+  background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground);
+}
+
+/* ── Top-level layout ───────────────────────────────────────────────────── */
+.cc-main { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+
+/* ── Conversation tab bar ───────────────────────────────────────────────── */
+.cc-tabbar {
+  display: flex; align-items: stretch; flex-shrink: 0;
+  background: var(--vscode-tab-inactiveBackground, #181818);
+  border-bottom: 1px solid var(--cc-border);
+}
+.cc-tabs { display: flex; overflow-x: auto; scrollbar-width: none; }
+.cc-tabs::-webkit-scrollbar { display: none; }
+.cc-tab {
+  display: flex; align-items: center; gap: 7px; padding: 0 12px; height: 36px;
+  font-size: 12.5px; cursor: pointer; max-width: 180px;
+  border-right: 1px solid var(--cc-border); color: var(--cc-muted);
+}
+.cc-tab--active {
+  background: var(--vscode-tab-activeBackground, var(--cc-bg)); color: var(--cc-fg);
+  box-shadow: inset 0 2px 0 var(--cc-accent);
+}
+.cc-tab__star { color: var(--cc-accent); font-size: 13px; }
+.cc-tab__title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cc-tab__close {
+  width: 17px; height: 17px; line-height: 16px; text-align: center; border-radius: 4px;
+  font-size: 14px; opacity: 0; flex-shrink: 0;
+}
+.cc-tab:hover .cc-tab__close, .cc-tab--active .cc-tab__close { opacity: 0.6; }
+.cc-tab__close:hover { background: var(--cc-hover); opacity: 1; }
+.cc-newtab {
+  display: flex; align-items: center; justify-content: center; width: 36px;
+  font-size: 17px; color: var(--cc-muted); background: none; border: 0; cursor: pointer;
+}
+.cc-newtab:hover { color: var(--cc-fg); background: var(--cc-hover); }
+
+/* ── "Past conversations" subbar + dropdown ─────────────────────────────── */
+.cc-subbar { display: flex; align-items: center; padding: 8px 12px 4px; flex-shrink: 0; }
+.cc-past-wrap { position: relative; }
+.cc-past {
+  display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--cc-fg);
+  background: var(--cc-input-bg); border: 1px solid var(--cc-border);
+  border-radius: 14px; padding: 5px 12px; cursor: pointer;
+}
+.cc-past:hover { border-color: var(--cc-accent); }
+.cc-past__chev { opacity: 0.6; font-size: 10px; }
+.cc-past-menu {
+  position: absolute; top: 110%; left: 0; z-index: 20; min-width: 240px; max-height: 320px;
+  overflow-y: auto; background: var(--vscode-editorWidget-background, #1e1e1e);
+  border: 1px solid var(--cc-border); border-radius: 8px; padding: 4px;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.4);
+}
+.cc-past-menu__empty { padding: 8px 10px; font-size: 12px; color: var(--cc-muted); }
+.cc-past-menu__item {
+  display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 5px;
+  font-size: 12.5px; cursor: pointer;
+}
+.cc-past-menu__item:hover { background: var(--vscode-list-hoverBackground, var(--cc-hover)); }
+.cc-past-menu__dot { width: 7px; height: 7px; border-radius: 50%; background: var(--cc-muted); flex-shrink: 0; }
+.cc-past-menu__dot[data-state='running'] { background: var(--cc-accent); }
+.cc-past-menu__dot[data-state='error'] { background: var(--vscode-testing-iconFailed, #e06c5e); }
+.cc-past-menu__title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cc-past-menu__del { opacity: 0; padding: 0 4px; border-radius: 4px; font-size: 13px; }
+.cc-past-menu__item:hover .cc-past-menu__del { opacity: 0.6; }
+.cc-past-menu__del:hover { opacity: 1; background: var(--cc-hover); }
+
+/* ── Conversation layout ────────────────────────────────────────────────── */
+.cc-conversation { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
+
+/* ── Messages list ──────────────────────────────────────────────────────── */
+.cc-messages { flex: 1; overflow-y: auto; padding: 6px 14px 16px; }
+
+/* User turn — right-aligned rounded bubble */
+.cc-user { display: flex; justify-content: flex-end; margin: 14px 0 8px; }
+.cc-user__bubble {
+  background: var(--cc-input-bg); border-radius: 14px 14px 4px 14px;
+  padding: 8px 13px; max-width: 82%; font-size: 13px; line-height: 1.5;
+  white-space: pre-wrap; word-break: break-word;
+}
+
+/* Assistant turn — dot gutter (green), no label box */
+.cc-assistant { display: flex; gap: 10px; margin: 14px 0; }
+.cc-assistant__gutter { flex-shrink: 0; width: 8px; display: flex; justify-content: center; padding-top: 6px; }
+.cc-assistant__dot { width: 7px; height: 7px; border-radius: 50%; background: var(--cc-accent); }
+.cc-assistant__body { flex: 1; min-width: 0; }
+
+/* ── Tool call (compact header + inline result) ─────────────────────────── */
+.cc-tool { border: 1px solid var(--cc-border); border-radius: 8px; margin: 0 0 10px; overflow: hidden; background: #ffffff06; }
+.cc-tool__hd { display: flex; align-items: center; gap: 8px; padding: 7px 11px; font-size: 12.5px; }
+.cc-tool__name { font-weight: 600; }
+.cc-tool__arg { color: var(--cc-muted); font-family: var(--cc-font-mono); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cc-tool__status { margin-left: auto; font-size: 11px; color: var(--cc-accent); }
+.cc-tool__status--error { color: var(--vscode-testing-iconFailed, #e06c5e); }
+.cc-tool__out { border-top: 1px solid var(--cc-border); background: var(--cc-code-bg); font-family: var(--cc-font-mono); font-size: 11.5px; line-height: 1.55; max-height: 320px; overflow: auto; }
+.cc-tool__out--error { background: #3a1d1d33; }
+.cc-tool__text { margin: 0; padding: 8px 12px; white-space: pre-wrap; word-break: break-word; }
+.cc-ln { display: flex; }
+.cc-ln__gut { width: 46px; flex-shrink: 0; text-align: right; padding: 0 10px 0 0; color: #6a6a6a; user-select: none; }
+.cc-ln__txt { white-space: pre-wrap; word-break: break-word; padding-right: 12px; }
+.cc-ln--add { background: #1d332666; }
+.cc-ln--del { background: #3a1d1d66; }
+.cc-tool__collapse { display: block; width: 100%; text-align: left; padding: 6px 12px; font-size: 11px; color: var(--cc-muted); background: none; border: 0; border-top: 1px solid var(--cc-border); cursor: pointer; }
+.cc-tool__collapse:hover { color: var(--cc-fg); }
+
+/* ── Composer (Claude-Desktop "Code" style) ─────────────────────────────── */
+.cc-composer-wrap { position: relative; padding: 8px 12px 12px; flex-shrink: 0; }
+.cc-composer {
+  background: var(--cc-input-bg); border: 1px solid var(--cc-border);
+  border-radius: var(--cc-radius-lg); padding: 8px 10px;
+}
+.cc-composer--focus { border-color: var(--cc-accent); }
+.cc-textarea {
+  display: block; width: 100%; background: transparent; border: 0; outline: 0;
+  color: var(--vscode-input-foreground, var(--cc-fg)); font-family: inherit; font-size: 13px;
+  resize: none; line-height: 1.5; min-height: 22px; max-height: 168px; overflow-y: auto;
+  padding: 3px 4px 6px;
+}
+
+.cc-toolbar { display: flex; align-items: center; gap: 4px; padding: 4px 2px 2px; }
+.cc-toolbar__sp { flex: 1; }
+.cc-tbtn {
+  display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-family: inherit;
+  color: var(--cc-muted); background: transparent; border: 0; border-radius: 7px;
+  padding: 4px 7px; cursor: pointer; max-width: 160px;
+}
+.cc-tbtn:hover { background: var(--cc-hover); color: var(--cc-fg); }
+.cc-tbtn__chev { font-size: 9px; opacity: 0.7; }
+.cc-tbtn--mode { color: var(--cc-warning); }
+.cc-tbtn--plus { font-size: 15px; padding: 2px 7px; }
+
+.cc-menu-wrap { position: relative; display: inline-flex; }
+.cc-menu {
+  position: absolute; bottom: 120%; z-index: 30; min-width: 180px;
+  background: var(--vscode-editorWidget-background, #1e1e1e); border: 1px solid var(--cc-border);
+  border-radius: 8px; padding: 4px; box-shadow: 0 6px 22px rgba(0, 0, 0, 0.4);
+}
+.cc-menu--left { left: 0; }
+.cc-menu--right { right: 0; }
+.cc-menu__item {
+  display: flex; align-items: center; gap: 6px; width: 100%; text-align: left;
+  font-size: 12.5px; font-family: inherit; color: var(--cc-fg);
+  background: none; border: 0; border-radius: 5px; padding: 6px 8px; cursor: pointer;
+}
+.cc-menu__item:hover { background: var(--vscode-list-hoverBackground, var(--cc-hover)); }
+.cc-menu__item:disabled { opacity: 0.45; cursor: default; }
+.cc-menu__item--active { color: var(--cc-accent); }
+.cc-menu__check { width: 12px; color: var(--cc-accent); }
+.cc-menu__label { flex: 1; }
+.cc-menu__hint { color: var(--cc-muted); font-size: 11px; }
+
+.cc-send, .cc-stop {
+  flex-shrink: 0; width: 30px; height: 30px; border-radius: 9px; border: 0; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; margin-left: 2px; color: #fff;
+}
+.cc-send { background: var(--cc-accent); font-size: 15px; }
+.cc-send:hover:not(:disabled) { background: var(--cc-accent-hover); }
+.cc-send:disabled { cursor: default; }
+.cc-stop { background: var(--vscode-statusBarItem-warningBackground, #cc8a3a); font-size: 11px; }
+
+/* context-usage ring — percent-filled circle; hover for tokens/%, click to compact */
+.cc-ring-wrap { position: relative; display: inline-flex; align-items: center; }
+.cc-ring {
+  width: 18px; height: 18px; border-radius: 50%; border: 0; padding: 0; margin: 0 4px; cursor: pointer;
+  background: conic-gradient(var(--cc-accent) 0 var(--cc-ring-pct, 0%), var(--cc-hover) var(--cc-ring-pct, 0%) 100%);
+  -webkit-mask: radial-gradient(circle 5.5px at center, transparent 98%, #000 100%);
+  mask: radial-gradient(circle 5.5px at center, transparent 98%, #000 100%);
+}
+.cc-ring-wrap:hover .cc-ring__tip { opacity: 1; }
+.cc-ring__tip {
+  position: absolute; bottom: 150%; right: 0; white-space: nowrap; z-index: 30; pointer-events: none;
+  background: var(--vscode-editorWidget-background, #000); border: 1px solid var(--cc-border);
+  border-radius: 6px; padding: 5px 8px; font-size: 11px; color: var(--cc-fg); opacity: 0; transition: opacity 0.12s;
+}
+
+/* ── Context breakdown popover ──────────────────────────────────────────── */
+.cc-ctx {
+  position: absolute; bottom: 150%; right: 0; z-index: 40; width: 280px;
+  background: var(--vscode-editorWidget-background, #1e1e1e); border: 1px solid var(--cc-border);
+  border-radius: 10px; padding: 12px; box-shadow: 0 8px 26px rgba(0, 0, 0, 0.45);
+}
+.cc-ctx__head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px; }
+.cc-ctx__title { font-size: 12px; font-weight: 600; }
+.cc-ctx__total { font-size: 11px; color: var(--cc-muted); font-family: var(--cc-font-mono); }
+.cc-ctx__bar { height: 6px; border-radius: 3px; background: var(--cc-hover); overflow: hidden; margin-bottom: 10px; }
+.cc-ctx__bar-fill { display: block; height: 100%; background: var(--cc-accent); }
+.cc-ctx__rows { display: flex; flex-direction: column; gap: 2px; max-height: 240px; overflow-y: auto; }
+.cc-ctx__row { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 3px 2px; }
+.cc-ctx__row--deferred { opacity: 0.6; }
+.cc-ctx__dot { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+.cc-ctx__name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cc-ctx__tokens { color: var(--cc-fg); font-family: var(--cc-font-mono); font-size: 11px; }
+.cc-ctx__pct { width: 44px; text-align: right; color: var(--cc-muted); font-size: 11px; }
+.cc-ctx__compact {
+  width: 100%; margin-top: 10px; padding: 7px; border: 1px solid var(--cc-accent); border-radius: var(--cc-radius);
+  background: transparent; color: var(--cc-accent); font-family: inherit; font-size: 12px; cursor: pointer;
+}
+.cc-ctx__compact:hover { background: var(--cc-accent); color: #fff; }
+
+/* ── Result / error lines ───────────────────────────────────────────────── */
+.cc-result { display: flex; gap: 8px; align-items: center; margin: 4px 0 2px; font-size: 11.5px; color: var(--cc-muted); }
+.cc-result__ok { color: var(--cc-accent); }
+.cc-result__err, .cc-error { color: var(--vscode-testing-iconFailed, #e06c5e); font-size: 12px; padding: 4px 0 8px; }

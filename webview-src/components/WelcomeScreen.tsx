@@ -1,4 +1,3 @@
-import React from 'react';
 import { postMessage } from '../lib/ipc';
 
 interface Props {
@@ -10,14 +9,15 @@ interface Props {
 export function WelcomeScreen({ onNewSession, authenticated, loginUrl }: Props) {
   if (!authenticated) {
     return (
-      <div data-testid="welcome-screen" style={styles.container}>
-        <div style={styles.card}>
-          <h2 style={styles.title}>Sign in to Claude</h2>
-          <p style={styles.subtitle}>You need to sign in to use Claw Code.</p>
+      <div data-testid="welcome-screen" className="cc-welcome">
+        <div className="cc-welcome__card">
+          <div className="cc-welcome__mark">✻</div>
+          <h2 className="cc-welcome__title">Sign in to Claude</h2>
+          <p className="cc-welcome__sub">You need to sign in to use Claw Code.</p>
           {loginUrl && (
             <button
               data-testid="sign-in-button"
-              style={styles.primaryButton}
+              className="cc-btn cc-btn--primary"
               onClick={() => postMessage({ type: 'open_url', url: loginUrl })}
             >
               Sign In
@@ -25,7 +25,7 @@ export function WelcomeScreen({ onNewSession, authenticated, loginUrl }: Props) 
           )}
           <button
             data-testid="auth-cli-button"
-            style={styles.secondaryButton}
+            className="cc-btn cc-btn--secondary"
             onClick={() => postMessage({ type: 'login' })}
           >
             Authenticate with CLI
@@ -36,71 +36,18 @@ export function WelcomeScreen({ onNewSession, authenticated, loginUrl }: Props) 
   }
 
   return (
-    <div data-testid="welcome-screen" style={styles.container}>
-      <div style={styles.card}>
-        <h2 style={styles.title}>Claw Code</h2>
-        <p style={styles.subtitle}>Your AI coding partner</p>
-        <button data-testid="new-session-button" style={styles.primaryButton} onClick={onNewSession}>
+    <div data-testid="welcome-screen" className="cc-welcome">
+      <div className="cc-welcome__card">
+        <div className="cc-welcome__mark">✻</div>
+        <h2 className="cc-welcome__title">Claw Code</h2>
+        <p className="cc-welcome__sub">Your AI coding partner</p>
+        <button data-testid="new-session-button" className="cc-btn cc-btn--primary" onClick={onNewSession}>
           New Conversation
         </button>
-        <p style={styles.hint}>
+        <p className="cc-welcome__hint">
           Ask Claude to write code, explain errors, or review your changes.
         </p>
       </div>
     </div>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  container: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: '100%',
-    padding: '24px',
-  },
-  card: {
-    textAlign: 'center',
-    maxWidth: '320px',
-  },
-  title: {
-    fontSize: '20px',
-    fontWeight: 600,
-    margin: '0 0 8px',
-    color: 'var(--vscode-foreground)',
-  },
-  subtitle: {
-    fontSize: '14px',
-    color: 'var(--vscode-descriptionForeground)',
-    margin: '0 0 24px',
-  },
-  primaryButton: {
-    display: 'block',
-    width: '100%',
-    padding: '8px 16px',
-    marginBottom: '8px',
-    background: 'var(--vscode-button-background)',
-    color: 'var(--vscode-button-foreground)',
-    border: 'none',
-    borderRadius: '4px',
-    fontSize: '13px',
-    cursor: 'pointer',
-  },
-  secondaryButton: {
-    display: 'block',
-    width: '100%',
-    padding: '8px 16px',
-    marginBottom: '8px',
-    background: 'var(--vscode-button-secondaryBackground)',
-    color: 'var(--vscode-button-secondaryForeground)',
-    border: 'none',
-    borderRadius: '4px',
-    fontSize: '13px',
-    cursor: 'pointer',
-  },
-  hint: {
-    fontSize: '12px',
-    color: 'var(--vscode-descriptionForeground)',
-    marginTop: '16px',
-  },
-};

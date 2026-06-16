@@ -1,11 +1,13 @@
 import { useCallback } from 'react';
 import { postMessage } from '../lib/ipc';
-import type { PermissionMode } from '../lib/ipc';
+import type { PermissionMode, ThinkingLevel } from '../lib/ipc';
 
 interface LaunchOptions {
   resume?: string;
   cwd?: string;
   permissionMode?: PermissionMode;
+  thinkingLevel?: ThinkingLevel;
+  model?: string;
 }
 
 export function useSession() {
@@ -16,20 +18,28 @@ export function useSession() {
       ...(opts.resume !== undefined ? { resume: opts.resume } : {}),
       ...(opts.cwd !== undefined ? { cwd: opts.cwd } : {}),
       ...(opts.permissionMode !== undefined ? { permissionMode: opts.permissionMode } : {}),
+      ...(opts.thinkingLevel !== undefined ? { thinkingLevel: opts.thinkingLevel } : {}),
+      ...(opts.model !== undefined ? { model: opts.model } : {}),
     });
   }, []);
 
   const sendText = useCallback((channelId: string, text: string, requestId: string): void => {
-    postMessage({
-      type: 'control_request',
-      channelId,
-      requestId,
-      data: { type: 'user', message: text },
-    });
+    // Send raw text; the host wraps it in the CLI's stream-json user envelope.
+    postMessage({ type: 'control_request', channelId, requestId, text });
   }, []);
 
   const interrupt = useCallback((channelId: string): void => {
     postMessage({ type: 'interrupt_claude', channelId });
+  }, []);
+
+  const compact = useCallback((channelId: string): void => {
+    // Compaction is the /compact slash command over the stream-json input
+    // (the `compact` control subtype is unsupported — verified against the CLI).
+    postMessage({ type: 'control_request', channelId, requestId: crypto.randomUUID(), text: '/compact' });
+  }, []);
+
+  const requestContextUsage = useCallback((channelId: string): void => {
+    postMessage({ type: 'get_context_usage', channelId });
   }, []);
 
   const close = useCallback((channelId: string): void => {
@@ -48,5 +58,5 @@ export function useSession() {
     postMessage({ type: 'rename_session', sessionId, title });
   }, []);
 
-  return { launch, sendText, interrupt, close, listSessions, deleteSession, renameSession };
+  return { launch, sendText, interrupt, compact, requestContextUsage, close, listSessions, deleteSession, renameSession };
 }

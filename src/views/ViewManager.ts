@@ -20,7 +20,8 @@ export class ViewManager {
   private readonly allComms = new Set<IPostable>();
   private activeSessionId: string | undefined;
   private defaultPermissionMode: PermissionMode = 'default';
-  private thinkingLevel: ThinkingLevel = 'auto';
+  private thinkingLevel: ThinkingLevel = 'medium';
+  private model: string | undefined;
 
   constructor(private readonly sessionManager: ISessionManagerForBroadcast) {}
 
@@ -63,6 +64,7 @@ export class ViewManager {
       activeSessionId: this.activeSessionId,
       defaultPermissionMode: this.defaultPermissionMode,
       thinkingLevel: this.thinkingLevel,
+      ...(this.model !== undefined ? { model: this.model } : {}),
     });
   }
 
@@ -76,5 +78,9 @@ export class ViewManager {
 
   setThinkingLevel(level: ThinkingLevel): void {
     this.thinkingLevel = level;
+  }
+
+  setModel(model: string): void {
+    this.model = model;
   }
 }

@@ -88,7 +88,7 @@ function SessionItem({
 }: ItemProps) {
   const stateColor =
     session.state === 'running'
-      ? 'var(--vscode-testing-iconPassed)'
+      ? 'var(--cc-accent)'
       : session.state === 'error'
         ? 'var(--vscode-testing-iconFailed)'
         : 'var(--vscode-descriptionForeground)';

@@ -109,11 +109,10 @@ describe('MessageBroker', () => {
   });
 
   describe('control_request', () => {
-    it('writes data to the channel stdin', () => {
+    it('forwards the user text to the process via sendUserMessage', () => {
       const { h } = makebroker();
-      const data = { type: 'user_message', text: 'hello' };
-      h.dispatch({ type: 'control_request', channelId: 'ch-1', requestId: 'req-1', data });
-      expect(h.processManager.writeToChannel).toHaveBeenCalledWith('ch-1', data);
+      h.dispatch({ type: 'control_request', channelId: 'ch-1', requestId: 'req-1', text: 'hello' });
+      expect(h.processManager.sendUserMessage).toHaveBeenCalledWith('ch-1', 'hello');
     });
   });
 
