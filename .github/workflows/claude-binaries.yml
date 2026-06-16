@@ -1,0 +1,64 @@
+name: Publish Claude binaries
+
+# Republishes the pinned per-platform claude CLI binaries (sourced from npm's
+# @anthropic-ai/claude-code-<target> packages) as assets on a `claude-cli-v<ver>`
+# release. The extension downloads the right one on first run. Run manually when
+# bumping the pinned version. One ubuntu job suffices — npm pack pulls any
+# platform's tarball regardless of host.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Claude Code CLI version to publish
+        default: '2.1.168'
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: claude-binaries-${{ github.event.inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: pack + publish per-platform binaries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 20
+
+      - name: Pack per-platform binaries from npm
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist-bin
+          for t in darwin-arm64 darwin-x64 linux-x64 linux-arm64 win32-x64 win32-arm64; do
+            pkg="@anthropic-ai/claude-code-${t}@${VERSION}"
+            echo "::group::$pkg"
+            tmp="$(mktemp -d)"
+            tarball="$(npm pack "$pkg" --silent --pack-destination "$tmp")"
+            tar xzf "$tmp/$tarball" -C "$tmp"
+            case "$t" in win32-*) ext=".exe" ;; *) ext="" ;; esac
+            src="$tmp/package/claude$ext"
+            [ -f "$src" ] || src="$tmp/package/claude"
+            cp "$src" "dist-bin/claude-${t}${ext}"
+            [ "$ext" = ".exe" ] || chmod +x "dist-bin/claude-${t}${ext}"
+            echo "::endgroup::"
+          done
+          ( cd dist-bin && sha256sum * > checksums.txt )
+          ls -la dist-bin
+
+      - name: Create / update the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ github.event.inputs.version }}
+        run: |
+          set -euo pipefail
+          tag="claude-cli-v${VERSION}"
+          gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" \
+            --title "Claude Code CLI ${VERSION}" \
+            --notes "Per-platform \`claude\` binaries (pinned ${VERSION}) downloaded by the Claw Code extension on first run."
+          gh release upload "$tag" dist-bin/* --clobber

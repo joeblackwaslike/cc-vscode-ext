@@ -1,6 +1,5 @@
 import { spawn, type SpawnOptions } from 'child_process';
 import { buildArgs, type LaunchOptions } from './ProcessArgs';
-import { resolveBinaryPath } from '../utils/platform';
 import type { ChannelRouter } from './ChannelRouter';
 import { StreamJsonParser } from './StreamJsonParser';
 
@@ -34,24 +33,28 @@ export class ClaudeProcessManager {
   private readonly processes = new Map<string, ProcessHandle>();
 
   constructor(
-    private readonly extensionPath: string,
+    private readonly binaryProvider: () => Promise<string>,
     private readonly router: ChannelRouter,
     private readonly logger: ILogger,
     private readonly spawnFn: SpawnFn = spawn as unknown as SpawnFn,
   ) {}
 
-  /** Spawn a new claude process for the given channelId. Throws if already active. */
-  spawnClaude(
+  /**
+   * Spawn a new claude process for the given channelId. Throws if already active.
+   * Async because the pinned binary is downloaded on first use (cached after) —
+   * a per-launch `wrapper` override skips the provider.
+   */
+  async spawnClaude(
     channelId: string,
     options: ProcessLaunchOptions,
     cwd?: string,
     env?: NodeJS.ProcessEnv,
-  ): void {
+  ): Promise<void> {
     if (this.processes.has(channelId)) {
       throw new Error(`Channel "${channelId}" is already active`);
     }
 
-    const binary = resolveBinaryPath(this.extensionPath, options.wrapper);
+    const binary = options.wrapper ?? (await this.binaryProvider());
     const args = buildArgs(options);
 
     const proc = this.spawnFn(binary, args, {
@@ -86,6 +89,19 @@ export class ClaudeProcessManager {
     if (proc === undefined) return;
     if (proc.stdin === null || !proc.stdin.writable) return;
     proc.stdin.write(JSON.stringify(data) + '\n');
+  }
+
+  /**
+   * Send a user turn to the channel's claude process.
+   *
+   * The CLI's `--input-format stream-json` mode requires each user turn as an
+   * NDJSON line whose `message` is a full Anthropic message object
+   * (`{ role, content }`) — NOT a bare string. A bare string makes the CLI emit
+   * `Error: Expected message role 'user', got 'undefined'` and produce no
+   * response, so this envelope is the contract the whole send path depends on.
+   */
+  sendUserMessage(channelId: string, text: string): void {
+    this.writeToChannel(channelId, { type: 'user', message: { role: 'user', content: text } });
   }
 
   /** Send SIGINT to interrupt the channel's running command. No-op if inactive. */

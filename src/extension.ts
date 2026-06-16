@@ -7,6 +7,7 @@ import { SessionHistory } from './sessions/SessionHistory';
 import { SessionManager } from './sessions/SessionManager';
 import { ChannelRouter } from './process/ChannelRouter';
 import { ClaudeProcessManager } from './process/ClaudeProcessManager';
+import { createBinaryProvider, CLAUDE_PINNED_VERSION } from './process/ClaudeBinary';
 import { TempFileProvider } from './views/TempFileProvider';
 import { HtmlBuilder } from './views/HtmlBuilder';
 import { ViewManager } from './views/ViewManager';
@@ -40,9 +41,22 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // ─── Process layer ──────────────────────────────────────────────────────────
 
+  // The pinned claude binary is downloaded on first use into global storage and
+  // cached for the session (memoized). A per-launch wrapper override still wins.
+  const binaryProvider = createBinaryProvider({
+    storageDir: context.globalStorageUri.fsPath,
+    version: CLAUDE_PINNED_VERSION,
+    log: (m) => logger.info(m),
+    withProgress: (title, task) =>
+      vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title, cancellable: false },
+        () => task(),
+      ),
+  });
+
   const channelRouter = new ChannelRouter();
   const processManager = new ClaudeProcessManager(
-    context.extensionPath,
+    binaryProvider,
     channelRouter,
     logger,
   );
@@ -131,7 +145,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // ─── Feature modules ────────────────────────────────────────────────────────
 
-  const terminalLauncher = new TerminalLauncher(context.extensionPath);
+  const terminalLauncher = new TerminalLauncher(binaryProvider);
   const authManager = new AuthManager(new AuthChecker());
   const atMentionHandler = new AtMentionHandler();
   const worktreeManager = new WorktreeManager();
