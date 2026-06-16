@@ -37,7 +37,7 @@ jobs:
   # Integration tests drive a real VS Code extension host (single instance, no
   # CDP). They run on macOS because the launcher needs no xvfb there. Gates PRs
   # so a rename or activation regression (e.g. a stale extension id) is caught
-  # immediately. (These tests don't spawn claude, so no CLI install is needed.)
+  # immediately.
   integration:
     name: integration (VS Code host)
     runs-on: macos-latest
@@ -51,4 +51,10 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      # The `terminal.open` test resolves a claude binary. Until the
+      # claude-cli-v<ver> release assets are published, the first-run download
+      # 404s and the extension falls back to a `claude` on PATH — so install it,
+      # pinned to the same version the extension targets (package.json).
+      - name: Install claude CLI on PATH
+        run: npm i -g "@anthropic-ai/claude-code@$(node -p "require('./package.json').claudeCliVersion")"
       - run: npm run test:integration
