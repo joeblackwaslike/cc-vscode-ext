@@ -2,9 +2,8 @@ import * as assert from 'assert';
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
-import { execSync } from 'child_process';
 
-const EXT_ID = 'reference.claude-code-reference';
+const EXT_ID = 'reference.claw-code';
 
 function getExtensionPath(): string {
   const ext = vscode.extensions.getExtension(EXT_ID);
@@ -12,48 +11,10 @@ function getExtensionPath(): string {
   return ext.extensionPath;
 }
 
-suite('Claude binary availability', () => {
-  suiteSetup(async () => {
-    const ext = vscode.extensions.getExtension(EXT_ID);
-    if (ext && !ext.isActive) await ext.activate();
-  });
-
-  test('claude binary exists at expected path', () => {
-    const binaryPath = path.join(getExtensionPath(), 'resources', 'native-binary', 'claude');
-    assert.ok(
-      fs.existsSync(binaryPath),
-      `Expected claude binary at: ${binaryPath}`,
-    );
-  });
-
-  test('claude binary is executable', () => {
-    const binaryPath = path.join(getExtensionPath(), 'resources', 'native-binary', 'claude');
-    let accessible = false;
-    try {
-      fs.accessSync(binaryPath, fs.constants.X_OK);
-      accessible = true;
-    } catch {
-      // Not executable
-    }
-    assert.ok(accessible, `claude binary is not executable: ${binaryPath}`);
-  });
-
-  test('claude binary responds to --version', function () {
-    // Skip on CI environments that lack the binary
-    const binaryPath = path.join(getExtensionPath(), 'resources', 'native-binary', 'claude');
-    if (!fs.existsSync(binaryPath)) {
-      this.skip();
-    }
-    let output = '';
-    try {
-      output = execSync(`"${binaryPath}" --version`, { timeout: 5000 }).toString().trim();
-    } catch {
-      // claude might exit non-zero for --version; that's fine as long as it ran
-    }
-    // Just verify it ran (output or no output — the binary at least exists)
-    assert.ok(output !== undefined);
-  });
-});
+// The claude binary is no longer bundled in the repo — it's downloaded on first
+// run into the extension's global storage (see src/process/ClaudeBinary.ts), so
+// there is nothing to assert at a fixed `resources/native-binary` path here.
+// Binary resolution/download is covered by test/unit/process/ClaudeBinary.test.ts.
 
 suite('Extension dist bundle', () => {
   test('dist/extension.js exists (extension was built)', () => {

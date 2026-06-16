@@ -10,6 +10,9 @@ npm run build:integration
 echo "=== UNIT ==="
 npm run test:unit
 
+echo "=== WEBVIEW ==="
+npm run test:webview
+
 echo "=== INTEGRATION ==="
 npm run test:integration
 

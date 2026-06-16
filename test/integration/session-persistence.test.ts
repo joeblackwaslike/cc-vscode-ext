@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import * as vscode from 'vscode';
 
-const EXT_ID = 'reference.claude-code-reference';
+const EXT_ID = 'reference.claw-code';
 
 suite('Session persistence (globalState)', () => {
   suiteSetup(async () => {

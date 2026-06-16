@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import * as vscode from 'vscode';
 
-const EXT_ID = 'reference.claude-code-reference';
+const EXT_ID = 'reference.claw-code';
 
 // Expected command IDs from package.json contributes.commands
 const EXPECTED_COMMANDS = [
@@ -44,7 +44,7 @@ suite('Extension activation', () => {
 
   test('extension package.json has expected metadata', () => {
     const { packageJSON } = ext;
-    assert.strictEqual((packageJSON as Record<string, unknown>).name, 'claude-code-reference');
+    assert.strictEqual((packageJSON as Record<string, unknown>).name, 'claw-code');
     assert.strictEqual((packageJSON as Record<string, unknown>).publisher, 'reference');
   });
 });

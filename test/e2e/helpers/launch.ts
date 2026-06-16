@@ -26,7 +26,22 @@ function findFreePort(): Promise<number> {
   });
 }
 
-function findVSCodeCode(): string {
+// VS Code's downloaded layout differs per OS. @vscode/test-electron extracts a
+// macOS `.app` bundle, a Linux folder with `code` + `bin/code`, or a Windows
+// folder with `Code.exe` + `bin/code.cmd`. We probe candidates rather than
+// branching on process.platform so the resolver is robust to either.
+const GUI_BINARY_CANDIDATES = [
+  ['Visual Studio Code.app', 'Contents', 'MacOS', 'Code'], // macOS
+  ['code'], // Linux
+  ['Code.exe'], // Windows
+];
+const CLI_BINARY_CANDIDATES = [
+  ['Visual Studio Code.app', 'Contents', 'Resources', 'app', 'bin', 'code'], // macOS
+  ['bin', 'code'], // Linux
+  ['bin', 'code.cmd'], // Windows
+];
+
+function resolveFromCache(candidates: string[][], label: string): string {
   const cacheDir = path.join(REPO_ROOT, '.vscode-test');
   let entries: string[];
   try {
@@ -36,32 +51,28 @@ function findVSCodeCode(): string {
       `Could not read .vscode-test/. Run \`npm run test:integration\` once to download VS Code.`,
     );
   }
-
   entries.sort().reverse();
   for (const entry of entries) {
-    // Use the 'Code' launcher binary — it accepts VS Code flags including
-    // --remote-debugging-port (the raw 'Electron' binary rejects it).
-    const code = path.join(cacheDir, entry, 'Visual Studio Code.app', 'Contents', 'MacOS', 'Code');
-    if (fs.existsSync(code)) return code;
+    for (const rel of candidates) {
+      const candidate = path.join(cacheDir, entry, ...rel);
+      if (fs.existsSync(candidate)) return candidate;
+    }
   }
-  throw new Error('No VS Code binary found. Run `npm run test:integration` once to download it.');
+  throw new Error(`No VS Code ${label} found. Run \`npm run test:integration\` once to download it.`);
+}
+
+// The 'Code'/'code' launcher accepts VS Code flags including
+// --remote-debugging-port (the raw 'Electron' binary rejects it).
+function findVSCodeCode(): string {
+  return resolveFromCache(GUI_BINARY_CANDIDATES, 'binary');
 }
 
 /**
- * Resolve the VS Code CLI wrapper (`bin/code`). The GUI 'Code' binary rejects
+ * Resolve the VS Code CLI wrapper (`bin/code`). The GUI launcher rejects
  * `--install-extension` ("bad option") — only the CLI wrapper handles it.
  */
 function findVSCodeCli(): string {
-  const cacheDir = path.join(REPO_ROOT, '.vscode-test');
-  const entries = fs.readdirSync(cacheDir).filter((e) => e.startsWith('vscode-'));
-  entries.sort().reverse();
-  for (const entry of entries) {
-    const cli = path.join(
-      cacheDir, entry, 'Visual Studio Code.app', 'Contents', 'Resources', 'app', 'bin', 'code',
-    );
-    if (fs.existsSync(cli)) return cli;
-  }
-  throw new Error('No VS Code CLI (bin/code) found. Run `npm run test:integration` once to download it.');
+  return resolveFromCache(CLI_BINARY_CANDIDATES, 'CLI (bin/code)');
 }
 
 function findVsix(): string {

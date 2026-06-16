@@ -79,7 +79,7 @@ export class CommandRegistry {
       r('claw-vscode.openWalkthrough', () =>
         vscode.commands.executeCommand(
           'workbench.action.openWalkthrough',
-          'reference.claude-code-reference#claude-code-walkthrough',
+          'reference.claw-code#claude-code-walkthrough',
         ),
       ),
       r('claw-vscode.createWorktree', () => undefined),

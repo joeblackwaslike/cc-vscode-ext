@@ -27,6 +27,7 @@ import type { FromWebviewMessage, ToWebviewMessage } from '../../src/types/ipc';
 export interface MockProcessManager {
   spawnClaude: ReturnType<typeof vi.fn>;
   writeToChannel: ReturnType<typeof vi.fn>;
+  sendUserMessage: ReturnType<typeof vi.fn>;
   interruptClaude: ReturnType<typeof vi.fn>;
   closeChannel: ReturnType<typeof vi.fn>;
   hasChannel: ReturnType<typeof vi.fn>;
@@ -192,8 +193,9 @@ export function createIpcTestHarness(): IpcTestHarness {
   });
 
   const processManager: MockProcessManager = {
-    spawnClaude: vi.fn(),
+    spawnClaude: vi.fn(() => Promise.resolve()),
     writeToChannel: vi.fn(),
+    sendUserMessage: vi.fn(),
     interruptClaude: vi.fn(),
     closeChannel: vi.fn(),
     hasChannel: vi.fn(() => false),

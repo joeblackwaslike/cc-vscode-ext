@@ -46,7 +46,7 @@ export function createMockContext() {
     globalStoragePath: '/mock/global-storage',
     logPath: '/mock/logs',
     asAbsolutePath: vi.fn((rel: string) => `/mock/extension/${rel}`),
-    extension: { id: 'reference.claude-code-reference', packageJSON: {} },
+    extension: { id: 'reference.claw-code', packageJSON: {} },
   };
 }
 
