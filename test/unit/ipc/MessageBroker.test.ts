@@ -78,6 +78,16 @@ describe('MessageBroker', () => {
       h.dispatch({ type: 'launch_claude', channelId: 'ch-1' });
       expect(h.viewManager.broadcastSessionStates).toHaveBeenCalled();
     });
+
+    it('marks the session as error if the spawn fails', async () => {
+      const { h } = makebroker();
+      h.processManager.spawnClaude.mockRejectedValueOnce(new Error('binary download failed'));
+      h.dispatch({ type: 'launch_claude', channelId: 'ch-1' });
+      // The catch runs on a microtask after dispatch returns.
+      await vi.waitFor(() =>
+        expect(h.sessionManager.updateSession).toHaveBeenCalledWith('ch-1', 'error'),
+      );
+    });
   });
 
   describe('close_channel', () => {

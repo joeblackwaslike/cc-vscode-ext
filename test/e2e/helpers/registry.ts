@@ -113,6 +113,16 @@ export function assertUnderCap(): void {
  * whose group id equals its pid; the negative-pid signal targets the group.
  */
 export function killTree(pid: number): void {
+  if (process.platform === 'win32') {
+    // No POSIX process groups on Windows; taskkill /T kills the whole tree.
+    spawnSync('taskkill', ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore' });
+    try {
+      process.kill(pid, 'SIGKILL');
+    } catch {
+      /* process may already be gone */
+    }
+    return;
+  }
   try {
     process.kill(-pid, 'SIGKILL');
   } catch {
@@ -144,10 +154,17 @@ export async function sweepAll(): Promise<void> {
   }
   // Belt-and-suspenders: kill any marker-tagged process not in the registry
   // (e.g. from a run that crashed before it could register). Ignore failures —
-  // `pkill` exits non-zero when nothing matches, which is the common case.
+  // the sweeper exits non-zero when nothing matches, which is the common case.
   try {
-    spawnSync('pkill', ['-9', '-f', MARKER], { stdio: 'ignore' });
+    if (process.platform === 'win32') {
+      // No pkill on Windows; match the marker in the command line via WMIC.
+      spawnSync('wmic', ['process', 'where', `CommandLine like '%${MARKER}%'`, 'call', 'terminate'], {
+        stdio: 'ignore',
+      });
+    } else {
+      spawnSync('pkill', ['-9', '-f', MARKER], { stdio: 'ignore' });
+    }
   } catch {
-    /* pkill unavailable — registry kills above already covered tracked pids */
+    /* sweeper unavailable — registry kills above already covered tracked pids */
   }
 }

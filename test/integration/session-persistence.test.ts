@@ -41,7 +41,9 @@ suite('Session list webview view', () => {
     try {
       await vscode.commands.executeCommand('clawVSCodeSessionsList.focus');
     } catch {
-      // Command may not exist if view container is not visible; that's fine.
+      // Command may not exist if view container is not visible; record it so the
+      // assertion can actually fail instead of always passing.
+      threw = true;
     }
     assert.ok(!threw);
   });

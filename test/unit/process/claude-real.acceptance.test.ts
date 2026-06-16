@@ -9,7 +9,9 @@ import type { ClaudeStreamEvent } from '../../../src/types/process';
 // end. Skipped unless CLAUDE_ACCEPTANCE=1 (needs auth + network), so it never
 // runs in normal CI.
 const RUN = process.env.CLAUDE_ACCEPTANCE === '1';
-const CLAUDE_BIN = process.env.CLAUDE_BIN ?? '/opt/homebrew/bin/claude';
+// Default to PATH resolution (`claude`) so the gate works cross-platform; set
+// CLAUDE_BIN to pin a specific binary.
+const CLAUDE_BIN = process.env.CLAUDE_BIN ?? 'claude';
 
 function waitFor(predicate: () => boolean, timeoutMs = 40000): Promise<void> {
   return new Promise((resolve, reject) => {

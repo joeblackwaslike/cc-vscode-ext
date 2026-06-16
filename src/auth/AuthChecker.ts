@@ -29,9 +29,14 @@ export class AuthChecker implements IAuthChecker {
     try {
       const raw = await fsp.readFile(this.configPath(), 'utf8');
       const parsed = JSON.parse(raw) as { oauthAccount?: unknown };
-      const account = parsed.oauthAccount;
+      const account = parsed.oauthAccount as { accountUuid?: unknown } | null | undefined;
+      // Require the real `accountUuid` field — a non-empty but malformed object
+      // (e.g. {foo:'bar'}) must not be mistaken for a signed-in account.
       const authenticated =
-        typeof account === 'object' && account !== null && Object.keys(account).length > 0;
+        typeof account === 'object' &&
+        account !== null &&
+        typeof account.accountUuid === 'string' &&
+        account.accountUuid.length > 0;
       return { authenticated };
     } catch {
       // Missing file, bad JSON, permission error → treat as logged out.

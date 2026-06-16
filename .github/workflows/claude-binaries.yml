@@ -9,9 +9,8 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Claude Code CLI version to publish
-        default: '2.1.168'
-        required: true
+        description: Claude Code CLI version to publish (defaults to package.json `claudeCliVersion`)
+        required: false
 
 permissions:
   contents: write
@@ -25,13 +24,24 @@ jobs:
     name: pack + publish per-platform binaries
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: 20
 
+      # Single source of truth: package.json `claudeCliVersion`. A manual input
+      # still overrides it for one-off republishes.
+      - name: Resolve pinned version
+        run: |
+          set -euo pipefail
+          VERSION="${{ github.event.inputs.version }}"
+          [ -n "$VERSION" ] || VERSION="$(node -p "require('./package.json').claudeCliVersion")"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
       - name: Pack per-platform binaries from npm
-        env:
-          VERSION: ${{ github.event.inputs.version }}
         run: |
           set -euo pipefail
           mkdir -p dist-bin
@@ -54,7 +64,6 @@ jobs:
       - name: Create / update the release
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ github.event.inputs.version }}
         run: |
           set -euo pipefail
           tag="claude-cli-v${VERSION}"

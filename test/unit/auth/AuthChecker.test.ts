@@ -37,6 +37,11 @@ describe('AuthChecker', () => {
     expect((await new AuthChecker(dir).checkAuth()).authenticated).toBe(false);
   });
 
+  it('returns unauthenticated for a non-empty but malformed oauthAccount', async () => {
+    await writeConfig({ oauthAccount: { foo: 'bar' } });
+    expect((await new AuthChecker(dir).checkAuth()).authenticated).toBe(false);
+  });
+
   it('returns unauthenticated when the config file is missing', async () => {
     expect((await new AuthChecker(dir).checkAuth()).authenticated).toBe(false);
   });

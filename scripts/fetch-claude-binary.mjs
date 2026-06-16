@@ -9,17 +9,18 @@
  *   node scripts/fetch-claude-binary.mjs [platform] [arch] [destPath]
  * Defaults: host platform/arch → resources/native-binary/claude
  *
- * Keep VERSION in sync with CLAUDE_PINNED_VERSION in src/process/ClaudeBinary.ts.
+ * The pinned version is the single source of truth in package.json
+ * (`claudeCliVersion`), shared with src/process/ClaudeBinary.ts and the
+ * claude-binaries.yml release workflow.
  */
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, copyFileSync, chmodSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, copyFileSync, chmodSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const VERSION = '2.1.168';
-
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
+const VERSION = JSON.parse(readFileSync(join(repoRoot, 'package.json'), 'utf8')).claudeCliVersion;
 const platform = process.argv[2] || process.platform; // darwin | linux | win32
 const arch = process.argv[3] || process.arch; // arm64 | x64
 const dest = process.argv[4] || join(repoRoot, 'resources', 'native-binary', 'claude');

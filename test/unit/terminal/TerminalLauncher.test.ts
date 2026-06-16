@@ -3,9 +3,12 @@ import { mockVscode } from '../../helpers/mockVscode';
 
 vi.mock('vscode', () => mockVscode);
 
-import { TerminalLauncher } from '../../../src/terminal/TerminalLauncher';
+import { TerminalLauncher, shellQuote } from '../../../src/terminal/TerminalLauncher';
 
-const BINARY = '/global-storage/claude-cli/2.1.168/claude-darwin-arm64';
+// Mirror the real macOS global-storage path: it contains a space, which is why
+// the launcher must shell-quote before sendText.
+const BINARY =
+  '/Users/me/Library/Application Support/Code/User/globalStorage/claw-code/claude-cli/2.1.168/claude-darwin-arm64';
 
 describe('TerminalLauncher', () => {
   let launcher: TerminalLauncher;
@@ -27,9 +30,11 @@ describe('TerminalLauncher', () => {
       );
     });
 
-    it('sends the resolved binary path as the first command', async () => {
+    it('sends the resolved binary path, shell-quoted, as the first command', async () => {
       await launcher.openClaudeTerminal();
-      expect(mockTerminal.sendText).toHaveBeenCalledWith(BINARY);
+      expect(mockTerminal.sendText).toHaveBeenCalledWith(shellQuote(BINARY));
+      // The raw (space-containing) path must never be sent unquoted.
+      expect(mockTerminal.sendText).not.toHaveBeenCalledWith(BINARY);
     });
 
     it('calls show() on the created terminal', async () => {
@@ -42,6 +47,22 @@ describe('TerminalLauncher', () => {
       expect(mockVscode.window.createTerminal).toHaveBeenCalledWith(
         expect.objectContaining({ cwd: '/my/project' }),
       );
+    });
+  });
+
+  describe('shellQuote()', () => {
+    it('quotes a path with spaces so the shell runs it as one command', () => {
+      const quoted = shellQuote('/a b/claude');
+      if (process.platform === 'win32') {
+        expect(quoted).toBe('& "/a b/claude"');
+      } else {
+        expect(quoted).toBe(`'/a b/claude'`);
+      }
+    });
+
+    it('escapes embedded quote characters (POSIX)', () => {
+      if (process.platform === 'win32') return;
+      expect(shellQuote(`/a'b/claude`)).toBe(`'/a'\\''b/claude'`);
     });
   });
 

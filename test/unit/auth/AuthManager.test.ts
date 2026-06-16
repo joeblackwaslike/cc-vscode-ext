@@ -63,4 +63,24 @@ describe('AuthManager', () => {
     const m = new AuthManager();
     await expect(m.ensureChecked()).resolves.toBeUndefined();
   });
+
+  it('invalidate() forces the next ensureChecked() to re-query the checker', async () => {
+    let authed = false;
+    const checker = { checkAuth: vi.fn(async () => ({ authenticated: authed })) };
+    const m = new AuthManager(checker);
+
+    await m.ensureChecked();
+    expect(m.isAuthenticated()).toBe(false);
+
+    // Simulate the CLI login writing .claude.json after the first probe.
+    authed = true;
+    await m.ensureChecked(); // still cached → no re-check
+    expect(checker.checkAuth).toHaveBeenCalledOnce();
+    expect(m.isAuthenticated()).toBe(false);
+
+    m.invalidate();
+    await m.ensureChecked(); // cache dropped → re-checks and picks up the change
+    expect(checker.checkAuth).toHaveBeenCalledTimes(2);
+    expect(m.isAuthenticated()).toBe(true);
+  });
 });

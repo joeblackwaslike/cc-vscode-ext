@@ -22,9 +22,15 @@ rl.on('line', (line) => {
     return;
   }
   const m = msg && msg.message;
-  if (msg && msg.type === 'user' && m && typeof m === 'object' && m.role === 'user') {
-    const content = typeof m.content === 'string' ? m.content : '';
-    emit({ type: 'assistant', message: { content: [{ type: 'text', text: `pong:${content}` }] } });
+  if (
+    msg &&
+    msg.type === 'user' &&
+    m &&
+    typeof m === 'object' &&
+    m.role === 'user' &&
+    typeof m.content === 'string'
+  ) {
+    emit({ type: 'assistant', message: { content: [{ type: 'text', text: `pong:${m.content}` }] } });
     emit({ type: 'result', subtype: 'success' });
   } else {
     process.stderr.write("Error: Expected message role 'user', got 'undefined'\n");

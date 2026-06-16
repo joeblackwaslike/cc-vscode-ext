@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync } from 'fs';
+import { createHash } from 'crypto';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import {
@@ -76,6 +77,45 @@ describe('ensureClaudeBinary', () => {
     expect(r).toBe('/usr/bin/claude');
   });
 
+  it('verifies the downloaded asset against the published checksum', async () => {
+    const dir = tmp();
+    const asset = assetName('linux', 'x64');
+    const sha = createHash('sha256').update('bin').digest('hex');
+    const download = vi.fn(async (_url: string, d: string) => writeFileSync(d, 'bin'));
+    const fetchChecksums = vi.fn(async () => ({ [asset]: sha }));
+
+    const r = await ensureClaudeBinary({
+      storageDir: dir,
+      platform: 'linux',
+      arch: 'x64',
+      download,
+      fetchChecksums,
+    });
+
+    expect(fetchChecksums).toHaveBeenCalledWith(CLAUDE_PINNED_VERSION);
+    expect(existsSync(r)).toBe(true);
+  });
+
+  it('rejects and removes a binary whose checksum does not match', async () => {
+    const dir = tmp();
+    const asset = assetName('linux', 'x64');
+    const dest = join(dir, 'claude-cli', CLAUDE_PINNED_VERSION, asset);
+    const download = vi.fn(async (_url: string, d: string) => writeFileSync(d, 'bin'));
+    const fetchChecksums = vi.fn(async () => ({ [asset]: 'deadbeef'.repeat(8) }));
+
+    await expect(
+      ensureClaudeBinary({
+        storageDir: dir,
+        platform: 'linux',
+        arch: 'x64',
+        download,
+        fetchChecksums,
+        resolvePathClaude: () => null,
+      }),
+    ).rejects.toThrow(/Checksum mismatch/);
+    expect(existsSync(dest)).toBe(false);
+  });
+
   it('throws when the download fails and no PATH claude exists', async () => {
     const download = vi.fn(async () => {
       throw new Error('offline');
@@ -100,5 +140,25 @@ describe('createBinaryProvider', () => {
     const b = await provider();
     expect(a).toBe(b);
     expect(download).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not cache a failed resolution — retries on the next call', async () => {
+    let attempt = 0;
+    const download = vi.fn(async (_url: string, dest: string) => {
+      attempt += 1;
+      if (attempt === 1) throw new Error('transient network blip');
+      writeFileSync(dest, 'bin');
+    });
+    const provider = createBinaryProvider({
+      storageDir: tmp(),
+      platform: 'linux',
+      arch: 'x64',
+      download,
+      resolvePathClaude: () => null,
+    });
+
+    await expect(provider()).rejects.toThrow(/Failed to obtain/);
+    await expect(provider()).resolves.toMatch(/claude-linux-x64$/);
+    expect(download).toHaveBeenCalledTimes(2);
   });
 });

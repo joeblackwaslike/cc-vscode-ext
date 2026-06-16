@@ -62,6 +62,7 @@ export interface IWebview {
 export interface IAuthManager {
   ensureChecked(): Promise<void>;
   getAuthStatusResponse(): GetAuthStatusResponseMessage;
+  invalidate?(): void;
 }
 
 export interface IWorktreeManager {
@@ -231,6 +232,10 @@ export class MessageBroker {
         }
 
         case 'login':
+          // Logging in via the CLI can write ~/.claude.json after our first
+          // auth probe — drop the cached result so the next get_auth_status
+          // re-checks and the welcome screen can recover.
+          this.services.authManager?.invalidate?.();
           void this.services.terminalLauncher?.openClaudeTerminal();
           return;
 
@@ -339,6 +344,21 @@ export class MessageBroker {
     // process spawns. The binary may download on first launch — don't block.
     void this.processManager.spawnClaude(channelId, options, msg.cwd).catch((err) => {
       this.logger.info(`[MessageBroker] spawnClaude failed: ${String(err)}`);
+      // Don't leave the session stuck in 'running' — reflect the failure in the
+      // sidebar state and end the turn in the conversation view.
+      void this.sessionManager.updateSession(channelId, 'error');
+      this.viewManager.broadcastSessionStates();
+      this.viewManager.broadcastMessage({
+        type: 'request',
+        channelId,
+        requestId: channelId,
+        request: {
+          type: 'result',
+          subtype: 'error',
+          is_error: true,
+          error: `Failed to launch Claude: ${String(err)}`,
+        } as ClaudeStreamEvent,
+      });
     });
     void this.sessionManager.updateSession(channelId, 'running');
     this.viewManager.broadcastSessionStates();
@@ -346,6 +366,9 @@ export class MessageBroker {
 
   private handleCloseChannel(msg: Extract<FromWebviewMessage, { type: 'close_channel' }>): void {
     this.processManager.closeChannel(msg.channelId);
+    // Reject any in-flight control requests immediately instead of letting them
+    // hang until their 10s timeout after the channel is gone.
+    this.control.dispose();
     void this.sessionManager.updateSession(msg.channelId, 'idle');
     this.viewManager.broadcastSessionStates();
   }

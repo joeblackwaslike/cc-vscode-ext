@@ -1,6 +1,22 @@
 import * as vscode from 'vscode';
 
 /**
+ * Quote a filesystem path so a shell runs it as a single command. The
+ * first-run download lives in VS Code global storage, which on macOS contains
+ * a space (`Application Support`); sending it raw to `terminal.sendText` would
+ * split it on the space and fail to launch.
+ */
+export function shellQuote(path: string): string {
+  if (process.platform === 'win32') {
+    // PowerShell/cmd: wrap in double quotes and invoke via the call operator so
+    // a quoted path is executed rather than printed.
+    return `& "${path.replace(/"/g, '""')}"`;
+  }
+  // POSIX single-quote escaping: ' → '\'' — safe for spaces and metacharacters.
+  return `'${path.replace(/'/g, `'\\''`)}'`;
+}
+
+/**
  * Opens the claude CLI in a VS Code integrated terminal.
  *
  * Used by the `claw-vscode.terminal.open` command and by the `open_terminal`
@@ -17,7 +33,7 @@ export class TerminalLauncher {
       name: 'Claw Code',
       ...(resolvedCwd !== undefined ? { cwd: resolvedCwd } : {}),
     });
-    terminal.sendText(binaryPath);
+    terminal.sendText(shellQuote(binaryPath));
     terminal.show();
     return terminal;
   }

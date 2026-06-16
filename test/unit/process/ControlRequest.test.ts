@@ -53,11 +53,16 @@ describe('ControlRequestManager', () => {
 
   it('times out a request that never gets a response', async () => {
     vi.useFakeTimers();
-    const { mgr } = makeManager();
-    const p = mgr.send('ch1', 'interrupt');
-    const assertion = expect(p).rejects.toThrow(/timed out/);
-    await vi.advanceTimersByTimeAsync(60);
-    await assertion;
-    vi.useRealTimers();
+    try {
+      const { mgr } = makeManager();
+      const p = mgr.send('ch1', 'interrupt');
+      const assertion = expect(p).rejects.toThrow(/timed out/);
+      await vi.advanceTimersByTimeAsync(60);
+      await assertion;
+    } finally {
+      // Always restore real timers, even if an assertion throws — otherwise fake
+      // timers leak and cascade failures into later tests.
+      vi.useRealTimers();
+    }
   });
 });

@@ -37,29 +37,46 @@ export function PastConversationsDropdown({ sessions, onOpen, onDelete }: Props)
       {open && (
         <div className="cc-past-menu" data-testid="past-conversations-menu">
           {visible.length === 0 && <div className="cc-past-menu__empty">No past conversations</div>}
-          {visible.map((s) => (
-            <div
-              key={s.id}
-              className="cc-past-menu__item"
-              onClick={() => {
-                onOpen(s.id);
-                setOpen(false);
-              }}
-            >
-              <span className="cc-past-menu__dot" data-state={s.state} />
-              <span className="cc-past-menu__title">{s.title || 'Untitled'}</span>
-              <span
-                className="cc-past-menu__del"
-                title="Delete conversation"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDelete(s.id);
+          {visible.map((s) => {
+            const label = s.title || 'Untitled';
+            const openSession = () => {
+              onOpen(s.id);
+              setOpen(false);
+            };
+            return (
+              // Nested delete control rules out a <button> wrapper; use
+              // role="button" + keyboard activation, delete is a real button.
+              <div
+                key={s.id}
+                className="cc-past-menu__item"
+                role="button"
+                tabIndex={0}
+                aria-label={`Open conversation: ${label}`}
+                onClick={openSession}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    openSession();
+                  }
                 }}
               >
-                ×
-              </span>
-            </div>
-          ))}
+                <span className="cc-past-menu__dot" data-state={s.state} />
+                <span className="cc-past-menu__title">{label}</span>
+                <button
+                  type="button"
+                  className="cc-past-menu__del"
+                  aria-label={`Delete conversation: ${label}`}
+                  title="Delete conversation"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDelete(s.id);
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

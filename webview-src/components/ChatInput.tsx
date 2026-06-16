@@ -74,7 +74,9 @@ export function ChatInput({ channelId, onSend, onInterrupt, onCompact, onRefresh
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
+      // Skip while an IME is composing (Japanese/Chinese/Korean etc.) — Enter
+      // there commits the candidate, it should not send a half-typed message.
+      if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
         e.preventDefault();
         submit();
       }

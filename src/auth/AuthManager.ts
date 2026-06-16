@@ -42,6 +42,16 @@ export class AuthManager {
     return this.checkPromise;
   }
 
+  /**
+   * Drop the memoized auth check so the next `ensureChecked()` re-queries the
+   * CLI. The "Authenticate with CLI" flow can write `.claude.json` after the
+   * first probe ran; without this, the welcome screen would stay stuck on the
+   * cached `false` until the extension host reloads.
+   */
+  invalidate(): void {
+    this.checkPromise = undefined;
+  }
+
   /** Returns the current auth state as a response message ready for the webview. */
   getAuthStatusResponse(): GetAuthStatusResponseMessage {
     return {
