@@ -54,11 +54,10 @@ export class CommandRegistry {
       }),
 
       // ─── Diff accept / reject ─────────────────────────────────────────
-      // Only the claw-vscode.* IDs are registered. The original extension's
-      // `claude-code.*` IDs are intentionally NOT re-registered — doing so threw
-      // `command 'claude-code.acceptProposedDiff' already exists` whenever the
-      // real Anthropic.claude-code extension was also installed, crash-looping
-      // the host. (See the package.json menus/keybindings for compat aliases.)
+      // Never register claude-code.* — the official Anthropic.claude-code
+      // extension owns that namespace; re-registering threw
+      // `command 'claude-code.acceptProposedDiff' already exists` and
+      // crash-looped the host.
       r('claw-vscode.acceptProposedDiff', () => this.acceptActiveDiff()),
       r('claw-vscode.rejectProposedDiff', () => this.rejectActiveDiff()),
 
