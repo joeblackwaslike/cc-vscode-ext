@@ -19,9 +19,11 @@ const EXPECTED_COMMANDS = [
   'claw-vscode.openWalkthrough',
 ];
 
-// These collide with the real Anthropic.claude-code extension and must NOT be
-// registered — re-registering them threw and crash-looped the extension host.
-const FORBIDDEN_COMMANDS = [
+// The original Anthropic.claude-code command IDs. Claw Code is a drop-in
+// replacement, so it aliases these at RUNTIME when the real extension is absent
+// (it is, in this clean test host) — but must never *contribute* them statically
+// in package.json, which is what collided and crash-looped the host.
+const COMPAT_ALIAS_COMMANDS = [
   'claude-code.acceptProposedDiff',
   'claude-code.rejectProposedDiff',
   'claude-code.insertAtMentioned',
@@ -70,19 +72,30 @@ suite('Command registration', () => {
     );
   });
 
-  test('does not contribute commands that collide with Anthropic.claude-code', () => {
-    // The real extension may not be installed in the test host, so assert on our
-    // OWN manifest: we must never be the one to contribute these IDs (registering
-    // them threw `command '...' already exists` and crash-looped the host).
+  test('does not statically contribute claude-code.* commands (the collision)', () => {
+    // The crash came from a STATIC package.json contribution that re-registered
+    // the real extension's IDs. Those IDs must never appear in our manifest.
     const ours: Array<{ command: string }> =
       vscode.extensions.getExtension(EXT_ID)?.packageJSON?.contributes?.commands ?? [];
     const oursColliding = ours
       .map((c) => c.command)
-      .filter((id) => FORBIDDEN_COMMANDS.includes(id));
+      .filter((id) => COMPAT_ALIAS_COMMANDS.includes(id));
     assert.deepStrictEqual(
       oursColliding,
       [],
-      `claw-code contributes colliding command IDs: ${oursColliding.join(', ')}`,
+      `claw-code statically contributes colliding command IDs: ${oursColliding.join(', ')}`,
     );
+  });
+
+  test('registers claude-code.* compat aliases at runtime (real extension absent in test host)', async () => {
+    // The clean test host has no Anthropic.claude-code, so drop-in compatibility
+    // means our runtime aliases should be present and invokable by ID.
+    assert.ok(
+      !vscode.extensions.getExtension('anthropic.claude-code'),
+      'precondition: the real extension must be absent in the test host',
+    );
+    const registered = await vscode.commands.getCommands(true);
+    const missing = COMPAT_ALIAS_COMMANDS.filter((cmd) => !registered.includes(cmd));
+    assert.deepStrictEqual(missing, [], `Missing compat aliases: ${missing.join(', ')}`);
   });
 });
