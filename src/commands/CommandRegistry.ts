@@ -14,8 +14,44 @@ import type { ILogger } from '../process/ClaudeProcessManager';
  */
 const CLAUDE_CODE_EXTENSION_ID = 'anthropic.claude-code';
 
-/** Original command IDs we alias when the real extension is absent → our handler. */
+/**
+ * Command suffixes shared 1:1 between the official extension's primary
+ * `claude-vscode.*` namespace and our `claw-vscode.*` namespace (verified against
+ * anthropic.claude-code 2.1.181). Each `claude-vscode.<suffix>` is aliased onto
+ * `claw-vscode.<suffix>` so a stand-alone Claw Code answers the original IDs.
+ */
+const MIRRORED_COMMAND_SUFFIXES = [
+  'editor.open',
+  'editor.openLast',
+  'primaryEditor.open',
+  'window.open',
+  'createWorktree',
+  'sidebar.open',
+  'newConversation',
+  'reopenClosedSession',
+  'update',
+  'focus',
+  'blur',
+  'logout',
+  'terminal.open',
+  'terminal.open.keyboard',
+  'acceptProposedDiff',
+  'rejectProposedDiff',
+  'insertAtMention',
+  'installPlugin',
+  'showLogs',
+  'openWalkthrough',
+] as const;
+
+/**
+ * Original command IDs aliased onto our handlers when the real extension is
+ * absent (drop-in compatibility): the full primary `claude-vscode.*` namespace
+ * plus the older `claude-code.*` IDs the real extension still carries.
+ */
 const COMPAT_COMMAND_ALIASES: ReadonlyArray<[legacyId: string, ourId: string]> = [
+  ...MIRRORED_COMMAND_SUFFIXES.map(
+    (s): [string, string] => [`claude-vscode.${s}`, `claw-vscode.${s}`],
+  ),
   ['claude-code.acceptProposedDiff', 'claw-vscode.acceptProposedDiff'],
   ['claude-code.rejectProposedDiff', 'claw-vscode.rejectProposedDiff'],
   ['claude-code.insertAtMentioned', 'claw-vscode.insertAtMention'],

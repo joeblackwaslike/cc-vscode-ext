@@ -22,8 +22,33 @@ const EXPECTED_COMMANDS = [
 // The original Anthropic.claude-code command IDs. Claw Code is a drop-in
 // replacement, so it aliases these at RUNTIME when the real extension is absent
 // (it is, in this clean test host) — but must never *contribute* them statically
-// in package.json, which is what collided and crash-looped the host.
+// in package.json, which is what collided and crash-looped the host. Covers the
+// primary claude-vscode.* namespace (1:1 mirror of claw-vscode.*) plus the older
+// claude-code.* IDs the real extension still carries.
+const MIRRORED_SUFFIXES = [
+  'editor.open',
+  'editor.openLast',
+  'primaryEditor.open',
+  'window.open',
+  'createWorktree',
+  'sidebar.open',
+  'newConversation',
+  'reopenClosedSession',
+  'update',
+  'focus',
+  'blur',
+  'logout',
+  'terminal.open',
+  'terminal.open.keyboard',
+  'acceptProposedDiff',
+  'rejectProposedDiff',
+  'insertAtMention',
+  'installPlugin',
+  'showLogs',
+  'openWalkthrough',
+];
 const COMPAT_ALIAS_COMMANDS = [
+  ...MIRRORED_SUFFIXES.map((s) => `claude-vscode.${s}`),
   'claude-code.acceptProposedDiff',
   'claude-code.rejectProposedDiff',
   'claude-code.insertAtMentioned',
