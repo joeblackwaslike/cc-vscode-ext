@@ -68,17 +68,34 @@ describe('CommandRegistry', () => {
     expect(registeredIds).toContain('claw-vscode.reopenClosedSession');
   });
 
-  it('does not register any claude-code.* command (collides with Anthropic.claude-code)', () => {
-    const registry = makeRegistry();
-    registry.register();
+  const registeredIds = () =>
+    mockVscode.commands.registerCommand.mock.calls.map((c: [string, ...unknown[]]) => c[0]);
 
-    const registeredIds = mockVscode.commands.registerCommand.mock.calls.map(
-      (c: [string, ...unknown[]]) => c[0],
-    );
-    // Re-registering the real extension's command IDs threw
+  it('does NOT register claude-code.* when Anthropic.claude-code is installed', () => {
+    // The real extension owns those IDs — re-registering threw
     // `command '...' already exists` and crash-looped the host.
-    const colliding = registeredIds.filter((id: string) => id.startsWith('claude-code.'));
-    expect(colliding).toEqual([]);
+    mockVscode.extensions.getExtension.mockReturnValue({ id: 'anthropic.claude-code' });
+    makeRegistry().register();
+    expect(registeredIds().filter((id: string) => id.startsWith('claude-code.'))).toEqual([]);
+  });
+
+  it('registers claude-code.* compatibility aliases when the real extension is absent', () => {
+    mockVscode.extensions.getExtension.mockReturnValue(undefined);
+    makeRegistry().register();
+    const ids = registeredIds();
+    expect(ids).toContain('claude-code.acceptProposedDiff');
+    expect(ids).toContain('claude-code.rejectProposedDiff');
+    expect(ids).toContain('claude-code.insertAtMentioned');
+  });
+
+  it('a compat alias delegates to the canonical claw-vscode.* command', () => {
+    mockVscode.extensions.getExtension.mockReturnValue(undefined);
+    makeRegistry().register();
+    const call = mockVscode.commands.registerCommand.mock.calls.find(
+      (c: [string, ...unknown[]]) => c[0] === 'claude-code.acceptProposedDiff',
+    );
+    (call[1] as () => void)();
+    expect(mockVscode.commands.executeCommand).toHaveBeenCalledWith('claw-vscode.acceptProposedDiff');
   });
 
   it('editor.open calls panelOpener.openNewPanel', async () => {
