@@ -71,18 +71,27 @@ describe('CommandRegistry', () => {
   const registeredIds = () =>
     mockVscode.commands.registerCommand.mock.calls.map((c: [string, ...unknown[]]) => c[0]);
 
-  it('does NOT register claude-code.* when Anthropic.claude-code is installed', () => {
-    // The real extension owns those IDs — re-registering threw
-    // `command '...' already exists` and crash-looped the host.
+  const isOriginalId = (id: string) =>
+    id.startsWith('claude-code.') || id.startsWith('claude-vscode.');
+
+  it('does NOT register any original command ID when Anthropic.claude-code is installed', () => {
+    // The real extension owns claude-vscode.* / claude-code.* — re-registering
+    // threw `command '...' already exists` and crash-looped the host.
     mockVscode.extensions.getExtension.mockReturnValue({ id: 'anthropic.claude-code' });
     makeRegistry().register();
-    expect(registeredIds().filter((id: string) => id.startsWith('claude-code.'))).toEqual([]);
+    expect(registeredIds().filter(isOriginalId)).toEqual([]);
   });
 
-  it('registers claude-code.* compatibility aliases when the real extension is absent', () => {
+  it('registers the full compatibility alias set when the real extension is absent', () => {
     mockVscode.extensions.getExtension.mockReturnValue(undefined);
     makeRegistry().register();
     const ids = registeredIds();
+    // Primary namespace (1:1 mirror) …
+    expect(ids).toContain('claude-vscode.editor.open');
+    expect(ids).toContain('claude-vscode.acceptProposedDiff');
+    expect(ids).toContain('claude-vscode.insertAtMention');
+    expect(ids).toContain('claude-vscode.terminal.open.keyboard');
+    // … plus the older claude-code.* IDs the real extension still carries.
     expect(ids).toContain('claude-code.acceptProposedDiff');
     expect(ids).toContain('claude-code.rejectProposedDiff');
     expect(ids).toContain('claude-code.insertAtMentioned');
@@ -91,11 +100,16 @@ describe('CommandRegistry', () => {
   it('a compat alias delegates to the canonical claw-vscode.* command', () => {
     mockVscode.extensions.getExtension.mockReturnValue(undefined);
     makeRegistry().register();
-    const call = mockVscode.commands.registerCommand.mock.calls.find(
-      (c: [string, ...unknown[]]) => c[0] === 'claude-code.acceptProposedDiff',
-    );
-    (call[1] as () => void)();
-    expect(mockVscode.commands.executeCommand).toHaveBeenCalledWith('claw-vscode.acceptProposedDiff');
+    for (const [legacyId, ourId] of [
+      ['claude-vscode.editor.open', 'claw-vscode.editor.open'],
+      ['claude-code.acceptProposedDiff', 'claw-vscode.acceptProposedDiff'],
+    ]) {
+      const call = mockVscode.commands.registerCommand.mock.calls.find(
+        (c: [string, ...unknown[]]) => c[0] === legacyId,
+      );
+      (call[1] as () => void)();
+      expect(mockVscode.commands.executeCommand).toHaveBeenCalledWith(ourId);
+    }
   });
 
   it('editor.open calls panelOpener.openNewPanel', async () => {
