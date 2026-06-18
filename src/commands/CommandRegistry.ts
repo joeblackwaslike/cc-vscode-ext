@@ -54,10 +54,13 @@ export class CommandRegistry {
       }),
 
       // ─── Diff accept / reject ─────────────────────────────────────────
+      // Only the claw-vscode.* IDs are registered. The original extension's
+      // `claude-code.*` IDs are intentionally NOT re-registered — doing so threw
+      // `command 'claude-code.acceptProposedDiff' already exists` whenever the
+      // real Anthropic.claude-code extension was also installed, crash-looping
+      // the host. (See the package.json menus/keybindings for compat aliases.)
       r('claw-vscode.acceptProposedDiff', () => this.acceptActiveDiff()),
       r('claw-vscode.rejectProposedDiff', () => this.rejectActiveDiff()),
-      r('claude-code.acceptProposedDiff', () => this.acceptActiveDiff()),
-      r('claude-code.rejectProposedDiff', () => this.rejectActiveDiff()),
 
       // ─── Terminal ─────────────────────────────────────────────────────
       r('claw-vscode.terminal.open', () =>
@@ -73,13 +76,12 @@ export class CommandRegistry {
       r('claw-vscode.logout', () => undefined),
       r('claw-vscode.update', () => undefined),
       r('claw-vscode.insertAtMention', () => undefined),
-      r('claude-code.insertAtMentioned', () => undefined),
       r('claw-vscode.installPlugin', () => undefined),
       r('claw-vscode.showLogs', () => this.logger.info('showLogs command invoked')),
       r('claw-vscode.openWalkthrough', () =>
         vscode.commands.executeCommand(
           'workbench.action.openWalkthrough',
-          'reference.claw-code#claude-code-walkthrough',
+          'reference.claw-code#claw-code-walkthrough',
         ),
       ),
       r('claw-vscode.createWorktree', () => undefined),

@@ -63,11 +63,22 @@ describe('CommandRegistry', () => {
     expect(registeredIds).toContain('claw-vscode.editor.open');
     expect(registeredIds).toContain('claw-vscode.acceptProposedDiff');
     expect(registeredIds).toContain('claw-vscode.rejectProposedDiff');
-    expect(registeredIds).toContain('claude-code.acceptProposedDiff');
-    expect(registeredIds).toContain('claude-code.rejectProposedDiff');
     expect(registeredIds).toContain('claw-vscode.terminal.open');
     expect(registeredIds).toContain('claw-vscode.showLogs');
     expect(registeredIds).toContain('claw-vscode.reopenClosedSession');
+  });
+
+  it('does not register any claude-code.* command (collides with Anthropic.claude-code)', () => {
+    const registry = makeRegistry();
+    registry.register();
+
+    const registeredIds = mockVscode.commands.registerCommand.mock.calls.map(
+      (c: [string, ...unknown[]]) => c[0],
+    );
+    // Re-registering the real extension's command IDs threw
+    // `command '...' already exists` and crash-looped the host.
+    const colliding = registeredIds.filter((id: string) => id.startsWith('claude-code.'));
+    expect(colliding).toEqual([]);
   });
 
   it('editor.open calls panelOpener.openNewPanel', async () => {

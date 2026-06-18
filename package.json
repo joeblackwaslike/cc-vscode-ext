@@ -182,22 +182,6 @@
         "title": "Claw Code: Install Plugin"
       },
       {
-        "command": "claude-code.acceptProposedDiff",
-        "title": "Claw Code: Accept Proposed Changes",
-        "enablement": "claw-vscode.viewingProposedDiff",
-        "icon": "$(check)"
-      },
-      {
-        "command": "claude-code.rejectProposedDiff",
-        "title": "Claw Code: Reject Proposed Changes",
-        "enablement": "claw-vscode.viewingProposedDiff",
-        "icon": "$(discard)"
-      },
-      {
-        "command": "claude-code.insertAtMentioned",
-        "title": "Claw Code: Insert At-Mentioned"
-      },
-      {
         "command": "claw-vscode.showLogs",
         "title": "Claw Code: Show Logs"
       },
@@ -246,7 +230,7 @@
         "when": "config.claudeCode.useTerminal"
       },
       {
-        "command": "claude-code.insertAtMentioned",
+        "command": "claw-vscode.insertAtMention",
         "key": "cmd+alt+K",
         "mac": "cmd+alt+K",
         "win": "ctrl+alt+K",
@@ -322,7 +306,7 @@
     },
     "walkthroughs": [
       {
-        "id": "claude-code-walkthrough",
+        "id": "claw-code-walkthrough",
         "title": "Get started with Claude Code",
         "description": "Learn how to use Claude Code to write, edit, and understand your code.",
         "steps": [
@@ -378,16 +362,6 @@
           "group": "navigation"
         },
         {
-          "command": "claude-code.acceptProposedDiff",
-          "when": "claw-vscode.viewingProposedDiff",
-          "group": "navigation"
-        },
-        {
-          "command": "claude-code.rejectProposedDiff",
-          "when": "claw-vscode.viewingProposedDiff",
-          "group": "navigation"
-        },
-        {
           "command": "claw-vscode.editor.openLast",
           "when": "!config.claudeCode.useTerminal",
           "group": "navigation"
@@ -424,12 +398,7 @@
           "when": "false"
         },
         {
-          "command": "claude-code.insertAtMentioned",
-          "when": "config.claudeCode.useTerminal"
-        },
-        {
-          "command": "claw-vscode.insertAtMention",
-          "when": "!config.claudeCode.useTerminal"
+          "command": "claw-vscode.insertAtMention"
         },
         {
           "command": "claw-vscode.installPlugin",

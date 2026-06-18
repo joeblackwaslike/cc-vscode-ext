@@ -15,11 +15,16 @@ const EXPECTED_COMMANDS = [
   'claw-vscode.acceptProposedDiff',
   'claw-vscode.rejectProposedDiff',
   'claw-vscode.insertAtMention',
+  'claw-vscode.showLogs',
+  'claw-vscode.openWalkthrough',
+];
+
+// These collide with the real Anthropic.claude-code extension and must NOT be
+// registered — re-registering them threw and crash-looped the extension host.
+const FORBIDDEN_COMMANDS = [
   'claude-code.acceptProposedDiff',
   'claude-code.rejectProposedDiff',
   'claude-code.insertAtMentioned',
-  'claw-vscode.showLogs',
-  'claw-vscode.openWalkthrough',
 ];
 
 suite('Extension activation', () => {
@@ -62,6 +67,22 @@ suite('Command registration', () => {
       missing,
       [],
       `Missing commands: ${missing.join(', ')}`,
+    );
+  });
+
+  test('does not contribute commands that collide with Anthropic.claude-code', () => {
+    // The real extension may not be installed in the test host, so assert on our
+    // OWN manifest: we must never be the one to contribute these IDs (registering
+    // them threw `command '...' already exists` and crash-looped the host).
+    const ours: Array<{ command: string }> =
+      vscode.extensions.getExtension(EXT_ID)?.packageJSON?.contributes?.commands ?? [];
+    const oursColliding = ours
+      .map((c) => c.command)
+      .filter((id) => FORBIDDEN_COMMANDS.includes(id));
+    assert.deepStrictEqual(
+      oursColliding,
+      [],
+      `claw-code contributes colliding command IDs: ${oursColliding.join(', ')}`,
     );
   });
 });
