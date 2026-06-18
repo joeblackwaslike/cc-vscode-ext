@@ -5,7 +5,14 @@ webview-src/**
 out/**
 **/*.map
 **/*.ts
-!resources/**
+
+# The pinned claude binary is downloaded into global storage on first run
+# (src/process/ClaudeBinary.ts) — it must NOT be bundled. A stale local copy
+# under resources/native-binary/ would otherwise bloat the .vsix by ~200 MB.
+# (No `!resources/**` negation here: vsce gives `!` precedence over ignores
+# regardless of order, which would force the binary back in. Nothing else
+# ignores the svg/png/md under resources/, so they ship by default.)
+resources/native-binary/**
 
 # Tests & their artifacts
 test/**
@@ -36,5 +43,6 @@ tsconfig*.json
 .gitignore
 .gitattributes
 
-# Kept (NOT ignored): dist/, webview/, resources/ (icons, walkthrough,
-# native-binary/claude), package.json, README/LICENSE/CHANGELOG.
+# Kept (NOT ignored): dist/, webview/, resources/ (icons, walkthrough — but NOT
+# native-binary/, which is downloaded on first run), package.json,
+# README/LICENSE/CHANGELOG.
