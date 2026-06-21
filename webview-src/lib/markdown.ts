@@ -44,17 +44,51 @@ hljs.registerLanguage('html', xml);
 hljs.registerLanguage('yaml', yaml);
 hljs.registerLanguage('yml', yaml);
 
+/**
+ * Languages whose code blocks get a "Run in terminal" play button. The button +
+ * an empty output slot are emitted as fixed markup; a React portal mounts the
+ * collapsible output panel into the slot (see AssistantTurn's MarkdownText).
+ */
+const SHELL_LANGS = new Set(['bash', 'sh', 'shell', 'zsh', 'console']);
+
+/**
+ * Base64-encode the raw command so it survives as an HTML attribute value
+ * regardless of quoting/escaping. Decoded in the webview before it is run.
+ */
+function encodeCommand(command: string): string {
+  const bytes = new TextEncoder().encode(command);
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
 const md = new MarkdownIt({
   html: false, // escape raw HTML in model output (XSS guard)
   linkify: true,
   breaks: true,
   highlight(code: string, lang: string): string {
-    const language = lang && hljs.getLanguage(lang) ? lang : '';
+    const langKey = (lang || '').trim().toLowerCase();
+    const language = langKey && hljs.getLanguage(langKey) ? langKey : '';
     const value = language
       ? hljs.highlight(code, { language, ignoreIllegals: true }).value
       : md.utils.escapeHtml(code);
     // `hljs` class lets the bundled github-dark theme color the tokens.
-    return `<pre class="hljs"><code>${value}</code></pre>`;
+    const pre = `<pre class="hljs"><code>${value}</code></pre>`;
+    if (!SHELL_LANGS.has(langKey)) return pre;
+    // Shell block: wrap with a run/copy toolbar + a slot for the output portal.
+    // The base64 attribute is non-executable; we only ever emit our own markup,
+    // so `html: false` (model-text escaping) is preserved.
+    const cmd = encodeCommand(code.replace(/\n$/, ''));
+    return (
+      `<div class="cc-codeblock" data-cc-cmd="${cmd}">` +
+      `<div class="cc-cb-toolbar">` +
+      `<button class="cc-copy-btn" type="button" title="Copy" aria-label="Copy command">⧉</button>` +
+      `<button class="cc-run-btn" type="button" title="Run in terminal" aria-label="Run command">▷</button>` +
+      `</div>` +
+      pre +
+      `<div class="cc-run-slot"></div>` +
+      `</div>`
+    );
   },
 });
 

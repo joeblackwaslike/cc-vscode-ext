@@ -80,6 +80,36 @@ a { color: var(--vscode-textLink-foreground); }
 }
 .cc-markdown pre code { background: none; padding: 0; font-size: 12px; line-height: 1.55; }
 
+/* ── Inline run-command: shell-block toolbar + output panel ─────────────── */
+.cc-codeblock { position: relative; margin: 0 0 10px; }
+.cc-codeblock > pre.hljs { margin: 0; }
+.cc-codeblock:has(.cc-cmd-out) > pre.hljs {
+  border-bottom-left-radius: 0; border-bottom-right-radius: 0;
+}
+.cc-cb-toolbar {
+  position: absolute; top: 6px; right: 8px; display: flex; gap: 4px;
+  opacity: 0; transition: opacity .12s;
+}
+.cc-codeblock:hover .cc-cb-toolbar, .cc-cb-toolbar:focus-within { opacity: 1; }
+.cc-run-btn, .cc-copy-btn {
+  font: inherit; font-size: 12px; line-height: 1; padding: 3px 6px; cursor: pointer;
+  color: var(--cc-muted); background: var(--cc-code-bg);
+  border: 1px solid var(--cc-border); border-radius: 6px;
+}
+.cc-run-btn:hover { color: var(--cc-accent); border-color: var(--cc-accent); }
+.cc-copy-btn:hover { color: var(--cc-fg); }
+.cc-run-slot:empty { display: none; }
+.cc-cmd-out {
+  border-left: 1px solid var(--cc-border); border-right: 1px solid var(--cc-border);
+  border-bottom: 1px solid var(--cc-border);
+  border-bottom-left-radius: 8px; border-bottom-right-radius: 8px;
+}
+.cc-cmd-out__hd {
+  padding: 4px 12px; font-family: var(--cc-font-mono); font-size: 11px;
+  color: var(--cc-muted); border-bottom: 1px solid var(--cc-border);
+}
+.cc-cmd-out__hd--err { color: #e06c5e; }
+
 /* ── Welcome / auth screen ──────────────────────────────────────────────── */
 .cc-welcome { display: flex; align-items: center; justify-content: center; height: 100%; padding: 24px; }
 .cc-welcome__card { text-align: center; max-width: 320px; }

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { buildConversation, type ResultMeta } from '../lib/conversationModel';
 import { AssistantTurn } from './AssistantTurn';
 import { UserTurn } from './UserTurn';
+import { RunOutputProvider } from './RunOutputContext';
 import type { ClaudeStreamEvent } from '../lib/ipc';
 
 /** Renders the derived conversation and keeps the view pinned to the bottom. */
@@ -14,8 +15,9 @@ export function MessageList({ events }: { events: ClaudeStreamEvent[] }) {
   }, [events.length]);
 
   return (
-    <div data-testid="messages-list" className="cc-messages">
-      {turns.map((turn) => {
+    <RunOutputProvider>
+      <div data-testid="messages-list" className="cc-messages">
+        {turns.map((turn) => {
         switch (turn.kind) {
           case 'user':
             return <UserTurn key={turn.key} text={turn.text} />;
@@ -27,8 +29,9 @@ export function MessageList({ events }: { events: ClaudeStreamEvent[] }) {
             return <ErrorLine key={turn.key} message={turn.message} />;
         }
       })}
-      <div ref={bottomRef} />
-    </div>
+        <div ref={bottomRef} />
+      </div>
+    </RunOutputProvider>
   );
 }
 

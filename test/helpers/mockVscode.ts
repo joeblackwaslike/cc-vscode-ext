@@ -85,6 +85,11 @@ export const mockVscode = {
       sendText: vi.fn(),
       dispose: vi.fn(),
     })),
+    // Terminal shell-integration API (VS Code ≥1.93). Default: no integration —
+    // listeners never fire, so CommandRunner falls back to child_process capture.
+    onDidChangeTerminalShellIntegration: vi.fn(() => ({ dispose: vi.fn() })),
+    onDidEndTerminalShellExecution: vi.fn(() => ({ dispose: vi.fn() })),
+    onDidCloseTerminal: vi.fn(() => ({ dispose: vi.fn() })),
   },
 
   // workspace namespace
