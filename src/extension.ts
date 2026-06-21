@@ -20,6 +20,7 @@ import { MessageBroker } from './ipc/MessageBroker';
 import { CommandRegistry } from './commands/CommandRegistry';
 import { AtMentionHandler } from './mentions/AtMentionHandler';
 import { TerminalLauncher } from './terminal/TerminalLauncher';
+import { CommandRunner } from './terminal/CommandRunner';
 import { AuthManager } from './auth/AuthManager';
 import { AuthChecker } from './auth/AuthChecker';
 import { WorktreeManager } from './worktree/WorktreeManager';
@@ -114,7 +115,7 @@ export function activate(context: vscode.ExtensionContext): void {
       channelRouter,
       webview,
       logger,
-      { authManager, worktreeManager, atMentionHandler, fileListProvider, vscode: vscBridge, terminalLauncher },
+      { authManager, worktreeManager, atMentionHandler, fileListProvider, vscode: vscBridge, terminalLauncher, commandRunner },
     );
   };
 
@@ -146,6 +147,7 @@ export function activate(context: vscode.ExtensionContext): void {
   // ─── Feature modules ────────────────────────────────────────────────────────
 
   const terminalLauncher = new TerminalLauncher(binaryProvider);
+  const commandRunner = new CommandRunner((m) => viewManager.broadcastMessage(m));
   const authManager = new AuthManager(new AuthChecker());
   const atMentionHandler = new AtMentionHandler();
   const worktreeManager = new WorktreeManager();

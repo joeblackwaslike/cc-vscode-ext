@@ -9,6 +9,7 @@ describe('MessageList: tool call + inline result', () => {
   test('renders a compact tool header with its paired result, and no empty user bubble', () => {
     render(
       <MessageList
+        channelId="test-channel"
         events={[
           ev({
             type: 'assistant',

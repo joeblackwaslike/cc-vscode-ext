@@ -90,6 +90,10 @@ export interface ITerminalLauncher {
   openClaudeTerminal(cwd?: string): unknown;
 }
 
+export interface ICommandRunner {
+  run(execId: string, command: string, cwd?: string): Promise<void>;
+}
+
 export interface MessageBrokerServices {
   authManager?: IAuthManager;
   worktreeManager?: IWorktreeManager;
@@ -97,6 +101,7 @@ export interface MessageBrokerServices {
   fileListProvider?: IFileListProvider;
   vscode?: IVSCodeBridge;
   terminalLauncher?: ITerminalLauncher;
+  commandRunner?: ICommandRunner;
 }
 
 /**
@@ -265,6 +270,12 @@ export class MessageBroker {
             );
             void this.webview.postMessage(response);
           }
+          return;
+        }
+
+        // ─── Inline command execution ───────────────────────────────────
+        case 'run_command': {
+          void this.services.commandRunner?.run(msg.execId, msg.command, msg.cwd);
           return;
         }
 

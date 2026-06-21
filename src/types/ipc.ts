@@ -206,6 +206,20 @@ export interface CheckGitStatusMessage { type: 'check_git_status'; cwd: string }
 export interface CheckoutBranchMessage { type: 'checkout_branch'; branchName: string; cwd: string }
 export interface UpdateSkippedBranchMessage { type: 'update_skipped_branch'; branchName: string }
 
+// ─── Inline command execution ──────────────────────────────────────────────────
+
+/**
+ * Run a shell command from a code block's play button. The webview mints
+ * `execId` to correlate the streamed `run_command_output` / `run_command_done`
+ * events back to the originating output panel.
+ */
+export interface RunCommandMessage {
+  type: 'run_command';
+  execId: string;
+  command: string;
+  cwd?: string;
+}
+
 // ─── Plugin management ───────────────────────────────────────────────────────
 
 export interface InstallPluginMessage { type: 'install_plugin'; pluginId: string }
@@ -317,6 +331,7 @@ export type FromWebviewMessage =
   | CheckGitStatusMessage
   | CheckoutBranchMessage
   | UpdateSkippedBranchMessage
+  | RunCommandMessage
   | InstallPluginMessage
   | ListPluginsMessage
   | SetPluginEnabledMessage
@@ -486,6 +501,22 @@ export interface CheckoutBranchResponseMessage {
   error?: string;
 }
 
+/** One streamed chunk of output from an inline `run_command`. */
+export interface RunCommandOutputMessage {
+  type: 'run_command_output';
+  execId: string;
+  chunk: string;
+  stream: 'stdout' | 'stderr';
+}
+
+/** Terminal event for an inline `run_command` — carries the final exit code. */
+export interface RunCommandDoneMessage {
+  type: 'run_command_done';
+  execId: string;
+  /** Undefined when shell integration ran the command but couldn't report a code. */
+  exitCode: number | undefined;
+}
+
 /** Union of all messages sent from the extension host to the webview. */
 export type ToWebviewMessage =
   | StreamRequestMessage
@@ -510,4 +541,6 @@ export type ToWebviewMessage =
   | KeepAliveMessage
   | CreateWorktreeResponseMessage
   | CheckGitStatusResponseMessage
-  | CheckoutBranchResponseMessage;
+  | CheckoutBranchResponseMessage
+  | RunCommandOutputMessage
+  | RunCommandDoneMessage;
