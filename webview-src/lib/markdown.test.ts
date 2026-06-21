@@ -19,6 +19,18 @@ describe('renderMarkdown — shell code block run button', () => {
     expect(html).toContain('data-cc-cmd="ZWNobyBoaQ=="');
   });
 
+  it('base64-encodes non-ASCII commands as UTF-8 (round-trips)', () => {
+    const command = 'echo "héllo 🌮 世界"';
+    const html = renderMarkdown(fence('bash', command));
+    const expected = btoa(String.fromCharCode(...new TextEncoder().encode(command)));
+    expect(html).toContain(`data-cc-cmd="${expected}"`);
+    // Decoding the attribute must reproduce the exact UTF-8 command.
+    const decoded = new TextDecoder().decode(
+      Uint8Array.from(atob(expected), (c) => c.charCodeAt(0)),
+    );
+    expect(decoded).toBe(command);
+  });
+
   it.each(['sh', 'shell', 'zsh', 'console'])('adds the button for %s blocks too', (lang) => {
     expect(renderMarkdown(fence(lang, 'ls'))).toContain('cc-run-btn');
   });

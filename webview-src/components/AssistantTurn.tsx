@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { renderMarkdown } from '../lib/markdown';
 import { ToolCall } from './ToolCall';
 import { CommandOutput } from './CommandOutput';
-import { useRunOutputs } from './RunOutputContext';
+import { useRunCommand } from './RunOutputContext';
 import type { AssistantBlock } from '../lib/conversationModel';
 
 /** Decode a base64 `data-cc-cmd` attribute back into the raw command string. */
@@ -49,7 +49,7 @@ function MarkdownText({
   channelId: string;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const { runCommand } = useRunOutputs();
+  const runCommand = useRunCommand();
   const [slots, setSlots] = useState<{ el: HTMLElement; key: string }[]>([]);
   const [execIds, setExecIds] = useState<Map<string, string>>(() => new Map());
 

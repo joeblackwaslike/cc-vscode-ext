@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useRunOutputs } from './RunOutputContext';
+import { useOutputs } from './RunOutputContext';
 
 const COLLAPSE_AT = 15;
 
@@ -9,7 +9,7 @@ const COLLAPSE_AT = 15;
  * until its execId has state (i.e. the user has clicked Run).
  */
 export function CommandOutput({ execId }: { execId: string }) {
-  const { outputs } = useRunOutputs();
+  const outputs = useOutputs();
   const [expanded, setExpanded] = useState(false);
   const state = outputs.get(execId);
 
@@ -36,7 +36,7 @@ export function CommandOutput({ execId }: { execId: string }) {
       <div className={`cc-cmd-out__hd${isError ? ' cc-cmd-out__hd--err' : ''}`}>{header}</div>
       <pre className="cc-tool__text">{shown.join('\n')}</pre>
       {overflow && (
-        <button className="cc-tool__collapse" onClick={() => setExpanded((e) => !e)}>
+        <button type="button" className="cc-tool__collapse" onClick={() => setExpanded((e) => !e)}>
           {expanded ? '▾ Show less' : `▸ Show ${lines.length - COLLAPSE_AT} more lines`}
         </button>
       )}

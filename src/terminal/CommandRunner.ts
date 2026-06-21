@@ -53,6 +53,7 @@ export function stripAnsi(text: string): string {
  */
 export class CommandRunner {
   private terminal: vscode.Terminal | undefined;
+  private terminalCwd: string | undefined;
   private busy = false;
 
   constructor(
@@ -99,9 +100,16 @@ export class CommandRunner {
     }
   }
 
-  /** Reuse a single dedicated terminal; recreate after the user closes it. */
+  /**
+   * Reuse a single dedicated terminal; recreate it after the user closes it, or
+   * when the requested cwd changes. Recreating on cwd change keeps the
+   * shell-integration path consistent with the fallback path, which always runs
+   * `execFn` in `resolvedCwd` — without this, a reused terminal would keep its
+   * original cwd while the fallback honoured the new one.
+   */
   private getTerminal(cwd?: string): vscode.Terminal {
-    if (this.terminal) return this.terminal;
+    if (this.terminal && this.terminalCwd === cwd) return this.terminal;
+    if (this.terminal) this.terminal.dispose();
     const terminal = vscode.window.createTerminal({
       name: TERMINAL_NAME,
       ...(cwd !== undefined ? { cwd } : {}),
@@ -109,10 +117,12 @@ export class CommandRunner {
     const closeSub = vscode.window.onDidCloseTerminal((closed) => {
       if (closed === terminal) {
         this.terminal = undefined;
+        this.terminalCwd = undefined;
         closeSub.dispose();
       }
     });
     this.terminal = terminal;
+    this.terminalCwd = cwd;
     return terminal;
   }
 

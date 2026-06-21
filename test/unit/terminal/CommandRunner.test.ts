@@ -111,3 +111,45 @@ describe('CommandRunner (fallback path)', () => {
     await first;
   });
 });
+
+describe('CommandRunner (shell-integration path)', () => {
+  let posted: ToWebviewMessage[];
+  const collect = (m: ToWebviewMessage) => {
+    posted.push(m);
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    posted = [];
+    mockVscode.workspace.workspaceFolders = undefined;
+  });
+
+  it('streams executeCommand output (ANSI-stripped) and the exit code', async () => {
+    const execution = {
+      read: async function* () {
+        yield 'line1\n';
+        yield '\x1b[32mgreen\x1b[0m line2\n'; // color codes must be stripped
+      },
+    };
+    const shellIntegration = { executeCommand: vi.fn(() => execution) };
+    const mockTerminal = { show: vi.fn(), sendText: vi.fn(), shellIntegration };
+    mockVscode.window.createTerminal.mockReturnValue(mockTerminal);
+    // Fire the end event synchronously with our execution + a clean exit code.
+    mockVscode.window.onDidEndTerminalShellExecution.mockImplementation(
+      (listener: (e: { execution: unknown; exitCode: number }) => void) => {
+        listener({ execution, exitCode: 0 });
+        return { dispose: vi.fn() };
+      },
+    );
+    const execFn = vi.fn();
+
+    const runner = new CommandRunner(collect, execFn);
+    await runner.run('e1', 'echo hi');
+
+    expect(shellIntegration.executeCommand).toHaveBeenCalledWith('echo hi');
+    expect(execFn).not.toHaveBeenCalled(); // fallback must NOT run
+    expect(posted).toContainEqual({ type: 'run_command_output', execId: 'e1', chunk: 'line1\n', stream: 'stdout' });
+    expect(posted).toContainEqual({ type: 'run_command_output', execId: 'e1', chunk: 'green line2\n', stream: 'stdout' });
+    expect(posted).toContainEqual({ type: 'run_command_done', execId: 'e1', exitCode: 0 });
+  });
+});

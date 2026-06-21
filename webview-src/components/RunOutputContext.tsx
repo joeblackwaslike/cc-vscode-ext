@@ -9,13 +9,11 @@ export interface RunOutputState {
   running: boolean;
 }
 
-interface RunOutputContextValue {
-  outputs: Map<string, RunOutputState>;
-  /** Posts a `run_command` and returns the execId correlating its output. */
-  runCommand: (command: string) => string;
-}
-
-const RunOutputContext = createContext<RunOutputContextValue | null>(null);
+// Two contexts so that components which only run commands (MarkdownText) don't
+// re-render on every streamed output chunk — only the output panels do. The
+// runCommand reference is stable; the outputs map changes per chunk.
+const OutputsContext = createContext<Map<string, RunOutputState> | null>(null);
+const RunCommandContext = createContext<((command: string) => string) | null>(null);
 
 /**
  * Holds all inline command outputs in one map and registers a single message
@@ -62,14 +60,22 @@ export function RunOutputProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <RunOutputContext.Provider value={{ outputs, runCommand }}>
-      {children}
-    </RunOutputContext.Provider>
+    <RunCommandContext.Provider value={runCommand}>
+      <OutputsContext.Provider value={outputs}>{children}</OutputsContext.Provider>
+    </RunCommandContext.Provider>
   );
 }
 
-export function useRunOutputs(): RunOutputContextValue {
-  const ctx = useContext(RunOutputContext);
-  if (!ctx) throw new Error('useRunOutputs must be used within a RunOutputProvider');
+/** The stable command runner — does not change as output streams in. */
+export function useRunCommand(): (command: string) => string {
+  const ctx = useContext(RunCommandContext);
+  if (!ctx) throw new Error('useRunCommand must be used within a RunOutputProvider');
+  return ctx;
+}
+
+/** The output map — changes per streamed chunk. */
+export function useOutputs(): Map<string, RunOutputState> {
+  const ctx = useContext(OutputsContext);
+  if (!ctx) throw new Error('useOutputs must be used within a RunOutputProvider');
   return ctx;
 }
