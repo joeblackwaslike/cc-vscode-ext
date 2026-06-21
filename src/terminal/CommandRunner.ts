@@ -166,8 +166,14 @@ export class CommandRunner {
     cwd?: string,
   ): Promise<void> {
     // Visibility only — the captured output already streams to the panel, so we
-    // must NOT execute the command a second time in the terminal.
-    terminal.sendText(`# (ran via fallback) ${command}`);
+    // must NOT execute the command a second time. Comment out EVERY line:
+    // sendText preserves newlines, so a single `#` prefix would leave a
+    // multi-line command's later lines to run live in the terminal.
+    const banner = command
+      .split(/\r?\n/)
+      .map((line) => `# ${line}`)
+      .join('\n');
+    terminal.sendText(`# (ran via fallback)\n${banner}`);
     try {
       const { stdout, stderr } = await this.execFn(command, cwd !== undefined ? { cwd } : {});
       if (stdout) this.post({ type: 'run_command_output', execId, chunk: stdout, stream: 'stdout' });

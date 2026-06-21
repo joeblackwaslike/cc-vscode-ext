@@ -65,7 +65,18 @@ describe('CommandRunner (fallback path)', () => {
     const execFn = vi.fn().mockResolvedValue({ stdout: '', stderr: '' });
     const runner = new CommandRunner(collect, execFn, TIMEOUT);
     await runner.run('e1', 'rm -rf build');
-    expect(mockTerminal.sendText).toHaveBeenCalledWith('# (ran via fallback) rm -rf build');
+    expect(mockTerminal.sendText).toHaveBeenCalledWith('# (ran via fallback)\n# rm -rf build');
+  });
+
+  it('comments EVERY line of a multi-line command so none execute live', async () => {
+    const execFn = vi.fn().mockResolvedValue({ stdout: '', stderr: '' });
+    const runner = new CommandRunner(collect, execFn, TIMEOUT);
+    await runner.run('e1', 'echo one\nrm -rf x\necho two');
+    const sent = mockTerminal.sendText.mock.calls[0]?.[0] as string;
+    // No line may reach the shell as a live (uncommented) command.
+    for (const line of sent.split('\n')) {
+      expect(line.startsWith('#')).toBe(true);
+    }
   });
 
   it('captures stderr and a non-zero exit code on failure', async () => {

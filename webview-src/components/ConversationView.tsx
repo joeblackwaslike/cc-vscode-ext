@@ -27,7 +27,7 @@ export function ConversationView({
 }: Props) {
   return (
     <div data-testid="conversation-view" className="cc-conversation">
-      <MessageList events={events} />
+      <MessageList events={events} channelId={channelId} />
       <ChatInput
         channelId={channelId}
         onSend={onSend}

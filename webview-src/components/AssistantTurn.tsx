@@ -39,26 +39,36 @@ async function copyToClipboard(text: string): Promise<void> {
  * once the user runs it. Output state is keyed by execId in RunOutputContext, so
  * it survives the innerHTML rebuilds that happen while the message streams.
  */
-function MarkdownText({ block, blockKey }: { block: { text: string }; blockKey: number }) {
+function MarkdownText({
+  block,
+  blockKey,
+  channelId,
+}: {
+  block: { text: string };
+  blockKey: number;
+  channelId: string;
+}) {
   const containerRef = useRef<HTMLDivElement>(null);
   const { runCommand } = useRunOutputs();
   const [slots, setSlots] = useState<{ el: HTMLElement; key: string }[]>([]);
   const [execIds, setExecIds] = useState<Map<string, string>>(() => new Map());
 
   // After each (re)render of the markdown HTML, tag shell blocks with a stable
-  // key and collect their output slots for portal mounting.
+  // key and collect their output slots for portal mounting. The key includes
+  // channelId so a reused AssistantTurn instance (tab switch — turn keys are
+  // event indexes) can't surface one conversation's output under another's.
   useLayoutEffect(() => {
     const root = containerRef.current;
     if (!root) return;
     const next: { el: HTMLElement; key: string }[] = [];
     root.querySelectorAll<HTMLElement>('.cc-codeblock').forEach((cb, ordinal) => {
-      const key = `${blockKey}:${ordinal}`;
+      const key = `${channelId}:${blockKey}:${ordinal}`;
       cb.dataset.ccKey = key;
       const slot = cb.querySelector<HTMLElement>('.cc-run-slot');
       if (slot) next.push({ el: slot, key });
     });
     setSlots(next);
-  }, [block.text, blockKey]);
+  }, [block.text, blockKey, channelId]);
 
   const onClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
@@ -102,7 +112,13 @@ function MarkdownText({ block, blockKey }: { block: { text: string }; blockKey: 
 }
 
 /** An assistant turn — green dot gutter, then markdown text + tool calls. */
-export function AssistantTurn({ blocks }: { blocks: AssistantBlock[] }) {
+export function AssistantTurn({
+  blocks,
+  channelId,
+}: {
+  blocks: AssistantBlock[];
+  channelId: string;
+}) {
   return (
     <div className="cc-assistant" data-testid="chat-message-assistant">
       <div className="cc-assistant__gutter">
@@ -111,7 +127,7 @@ export function AssistantTurn({ blocks }: { blocks: AssistantBlock[] }) {
       <div className="cc-assistant__body">
         {blocks.map((block, i) =>
           block.type === 'text' ? (
-            <MarkdownText key={i} block={block} blockKey={i} />
+            <MarkdownText key={i} block={block} blockKey={i} channelId={channelId} />
           ) : (
             <ToolCall key={i} tool={block} />
           ),

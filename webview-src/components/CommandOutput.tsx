@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useRunOutputs } from './RunOutputContext';
 
 const COLLAPSE_AT = 15;
@@ -12,11 +12,16 @@ export function CommandOutput({ execId }: { execId: string }) {
   const { outputs } = useRunOutputs();
   const [expanded, setExpanded] = useState(false);
   const state = outputs.get(execId);
+
+  // Computed before the early return so the hook order stays stable.
+  const { lines, overflow } = useMemo(() => {
+    const text = (state?.chunks ?? []).map((c) => c.text).join('');
+    const all = text.replace(/\n$/, '').split('\n');
+    return { lines: all, overflow: all.length > COLLAPSE_AT };
+  }, [state?.chunks]);
+
   if (!state) return null;
 
-  const text = state.chunks.map((c) => c.text).join('');
-  const lines = text.replace(/\n$/, '').split('\n');
-  const overflow = lines.length > COLLAPSE_AT;
   const shown = expanded ? lines : lines.slice(0, COLLAPSE_AT);
   const isError = state.exitCode !== undefined && state.exitCode !== 0;
 

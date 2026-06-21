@@ -6,7 +6,13 @@ import { RunOutputProvider } from './RunOutputContext';
 import type { ClaudeStreamEvent } from '../lib/ipc';
 
 /** Renders the derived conversation and keeps the view pinned to the bottom. */
-export function MessageList({ events }: { events: ClaudeStreamEvent[] }) {
+export function MessageList({
+  events,
+  channelId,
+}: {
+  events: ClaudeStreamEvent[];
+  channelId: string;
+}) {
   const turns = useMemo(() => buildConversation(events), [events]);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -22,7 +28,7 @@ export function MessageList({ events }: { events: ClaudeStreamEvent[] }) {
           case 'user':
             return <UserTurn key={turn.key} text={turn.text} />;
           case 'assistant':
-            return <AssistantTurn key={turn.key} blocks={turn.blocks} />;
+            return <AssistantTurn key={turn.key} blocks={turn.blocks} channelId={channelId} />;
           case 'result':
             return <ResultLine key={turn.key} isError={turn.isError} meta={turn.meta} />;
           case 'error':
