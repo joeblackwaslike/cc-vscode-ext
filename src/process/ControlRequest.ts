@@ -18,6 +18,7 @@ export type ControlSubtype =
   | 'interrupt';
 
 interface Pending {
+  channelId: string;
   resolve: (response: Record<string, unknown> | undefined) => void;
   reject: (err: Error) => void;
   timer: ReturnType<typeof setTimeout>;
@@ -60,7 +61,7 @@ export class ControlRequestManager {
         this.pending.delete(requestId);
         reject(new Error(`control_request '${subtype}' timed out`));
       }, this.timeoutMs);
-      this.pending.set(requestId, { resolve, reject, timer });
+      this.pending.set(requestId, { channelId, resolve, reject, timer });
       this.write(channelId, {
         type: 'control_request',
         request_id: requestId,
@@ -87,6 +88,14 @@ export class ControlRequestManager {
       entry.resolve(response?.response);
     }
     return true;
+  }
+
+  /** True if any control_request for this channel is still awaiting a response. */
+  hasPending(channelId: string): boolean {
+    for (const entry of this.pending.values()) {
+      if (entry.channelId === channelId) return true;
+    }
+    return false;
   }
 
   /** Reject all in-flight requests (e.g. when a channel closes). */

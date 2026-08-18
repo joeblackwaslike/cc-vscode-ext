@@ -51,6 +51,32 @@ describe('ControlRequestManager', () => {
     ).toBe(false);
   });
 
+  it('hasPending() is true while a request for that channel is in flight', () => {
+    const { mgr } = makeManager();
+    expect(mgr.hasPending('ch1')).toBe(false);
+    mgr.send('ch1', 'get_context_usage').catch(() => {});
+    expect(mgr.hasPending('ch1')).toBe(true);
+    mgr.dispose();
+  });
+
+  it('hasPending() is false for a different channel', () => {
+    const { mgr } = makeManager();
+    mgr.send('ch1', 'get_context_usage').catch(() => {});
+    expect(mgr.hasPending('ch2')).toBe(false);
+    mgr.dispose();
+  });
+
+  it('hasPending() is false once the request settles', async () => {
+    const { mgr } = makeManager();
+    const p = mgr.send('ch1', 'get_context_usage');
+    mgr.handleResponse({
+      type: 'control_response',
+      response: { subtype: 'success', request_id: 'req_1' },
+    } as ControlResponseEvent);
+    await p;
+    expect(mgr.hasPending('ch1')).toBe(false);
+  });
+
   it('times out a request that never gets a response', async () => {
     vi.useFakeTimers();
     try {
