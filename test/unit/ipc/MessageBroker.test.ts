@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { createIpcTestHarness, createMockServices } from '../../helpers/ipcTestHarness';
 import { MessageBroker } from '../../../src/ipc/MessageBroker';
+import { HANDOFF_SYSTEM_PROMPT } from '../../../src/relay/handoffPrompt';
 
 function makebroker() {
   const h = createIpcTestHarness();
@@ -380,5 +381,114 @@ describe('MessageBroker', () => {
       h.dispatch({ type: 'login' });
       expect(services.terminalLauncher.openClaudeTerminal).toHaveBeenCalledOnce();
     });
+  });
+});
+
+function makeBrokerWithRelay() {
+  const h = createIpcTestHarness();
+  const sessionRelayManager = {
+    registerLaunch: vi.fn(),
+    unregisterChannel: vi.fn(),
+    onContextUsage: vi.fn(),
+    handleStreamEvent: vi.fn(),
+    getThreshold: vi.fn(() => 70),
+    setThreshold: vi.fn(),
+  };
+  const broker = new MessageBroker(
+    h.processManager,
+    h.sessionManager,
+    h.diffManager,
+    h.viewManager,
+    h.channelRouter,
+    h.webview,
+    h.logger,
+    { sessionRelayManager },
+  );
+  return { h, broker, sessionRelayManager };
+}
+
+describe('SessionRelayManager wiring', () => {
+  it('launch_claude registers the launch with SessionRelayManager', () => {
+    const { h, sessionRelayManager } = makeBrokerWithRelay();
+    h.dispatch({ type: 'launch_claude', channelId: 'ch-1', cwd: '/work', permissionMode: 'acceptEdits' });
+    expect(sessionRelayManager.registerLaunch).toHaveBeenCalledWith(
+      'ch-1',
+      expect.objectContaining({ permissionMode: 'acceptEdits' }),
+      '/work',
+    );
+  });
+
+  it('close_channel unregisters the channel from SessionRelayManager', () => {
+    const { h, sessionRelayManager } = makeBrokerWithRelay();
+    h.dispatch({ type: 'close_channel', channelId: 'ch-1' });
+    expect(sessionRelayManager.unregisterChannel).toHaveBeenCalledWith('ch-1');
+  });
+
+  it('a result event is forwarded to SessionRelayManager.handleStreamEvent', () => {
+    const { h, sessionRelayManager } = makeBrokerWithRelay();
+    h.dispatch({ type: 'launch_claude', channelId: 'ch-1' });
+    const routed = h.channelRouter.register.mock.calls[0][1] as (event: unknown) => void;
+
+    routed({ type: 'result', subtype: 'success', result: 'x' });
+
+    expect(sessionRelayManager.handleStreamEvent).toHaveBeenCalledWith('ch-1', {
+      type: 'result', subtype: 'success', result: 'x',
+    });
+  });
+
+  it('get_context_usage refresh forwards usage to SessionRelayManager.onContextUsage', async () => {
+    const { h, sessionRelayManager } = makeBrokerWithRelay();
+    // A real get_context_usage round-trip requires the channel's control_response
+    // to come back through the same channelRouter handler handleLaunchClaude
+    // registers — so launch first to capture that handler.
+    h.dispatch({ type: 'launch_claude', channelId: 'ch-1' });
+    const routed = h.channelRouter.register.mock.calls[0][1] as (event: unknown) => void;
+
+    h.dispatch({ type: 'get_context_usage', channelId: 'ch-1' });
+
+    // ControlRequestManager wrote the control_request to processManager.writeToChannel;
+    // pull the request_id it generated so the response we feed back matches it.
+    const writeCall = h.processManager.writeToChannel.mock.calls.find(
+      ([, data]) => (data as { request?: { subtype?: string } }).request?.subtype === 'get_context_usage',
+    );
+    expect(writeCall).toBeDefined();
+    const requestId = (writeCall![1] as { request_id: string }).request_id;
+
+    routed({
+      type: 'control_response',
+      response: {
+        subtype: 'success',
+        request_id: requestId,
+        response: { maxTokens: 100_000, totalTokens: 80_000, percentage: 80, categories: [] },
+      },
+    });
+
+    await vi.waitFor(() =>
+      expect(sessionRelayManager.onContextUsage).toHaveBeenCalledWith(
+        'ch-1',
+        expect.objectContaining({ percentage: 80 }),
+      ),
+    );
+  });
+
+  it('get_relay_threshold posts the current threshold', () => {
+    const { h, sessionRelayManager } = makeBrokerWithRelay();
+    h.dispatch({ type: 'get_relay_threshold', channelId: 'ch-1' });
+    expect(sessionRelayManager.getThreshold).toHaveBeenCalledWith('ch-1');
+    expect(h.postedMessages).toContainEqual({ type: 'relay_threshold', channelId: 'ch-1', threshold: 70 });
+  });
+
+  it('set_relay_threshold updates and echoes back the new threshold', () => {
+    const { h, sessionRelayManager } = makeBrokerWithRelay();
+    sessionRelayManager.getThreshold.mockReturnValue(55);
+    h.dispatch({ type: 'set_relay_threshold', threshold: 55, channelId: 'ch-1' });
+    expect(sessionRelayManager.setThreshold).toHaveBeenCalledWith(55, 'ch-1');
+    expect(h.postedMessages).toContainEqual({ type: 'relay_threshold', channelId: 'ch-1', threshold: 55 });
+  });
+
+  it('falls back to a real SessionRelayManager when none is injected', () => {
+    const { h } = makebroker();
+    expect(() => h.dispatch({ type: 'get_relay_threshold' })).not.toThrow();
+    expect(h.postedMessages).toContainEqual({ type: 'relay_threshold', channelId: undefined, threshold: 70 });
   });
 });

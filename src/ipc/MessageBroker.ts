@@ -7,6 +7,7 @@ import type {
   CheckGitStatusResponseMessage,
   CheckoutBranchResponseMessage,
   ThinkingLevel,
+  ContextUsage,
 } from '../types/ipc';
 import { EFFORT_THINKING_TOKENS, type PermissionMode } from '../process/ProcessArgs';
 import { parseContextUsage } from '../process/usage';
@@ -14,6 +15,12 @@ import { ControlRequestManager, type ControlResponseEvent } from '../process/Con
 import type { ClaudeStreamEvent } from '../types/process';
 import type { ProcessLaunchOptions } from '../process/ClaudeProcessManager';
 import type { ILogger } from '../process/ClaudeProcessManager';
+import {
+  SessionRelayManager,
+  type IRelayProcessManager,
+  type IRelayControlRequestManager,
+  type IRelayViewManager,
+} from '../relay/SessionRelayManager';
 
 // ─── Dependency interfaces ─────────────────────────────────────────────────────
 
@@ -29,6 +36,7 @@ export interface IClaudeProcessManager {
   interruptClaude(channelId: string): void;
   closeChannel(channelId: string): void;
   hasChannel(channelId: string): boolean;
+  swapChannel(channelId: string, options: ProcessLaunchOptions, cwd?: string): Promise<void>;
 }
 
 export interface ISessionManager {
@@ -55,6 +63,15 @@ export interface IViewManager {
 export interface IWebview {
   postMessage(msg: ToWebviewMessage): Thenable<boolean>;
   onDidReceiveMessage(handler: (msg: unknown) => void): { dispose(): void };
+}
+
+export interface ISessionRelayManager {
+  registerLaunch(channelId: string, options: ProcessLaunchOptions, cwd?: string): void;
+  unregisterChannel(channelId: string): void;
+  onContextUsage(channelId: string, usage: ContextUsage): void;
+  handleStreamEvent(channelId: string, event: ClaudeStreamEvent): void;
+  getThreshold(channelId?: string): number;
+  setThreshold(threshold: number, channelId?: string): void;
 }
 
 // ─── Optional service interfaces ──────────────────────────────────────────────
@@ -102,6 +119,7 @@ export interface MessageBrokerServices {
   vscode?: IVSCodeBridge;
   terminalLauncher?: ITerminalLauncher;
   commandRunner?: ICommandRunner;
+  sessionRelayManager?: ISessionRelayManager;
 }
 
 /**
@@ -114,6 +132,7 @@ export interface MessageBrokerServices {
 export class MessageBroker {
   /** Correlates control_request/control_response over the CLI stdin/stdout. */
   private readonly control: ControlRequestManager;
+  private readonly sessionRelayManager: ISessionRelayManager;
 
   constructor(
     private readonly processManager: IClaudeProcessManager,
@@ -128,6 +147,14 @@ export class MessageBroker {
     this.control = new ControlRequestManager((channelId, data) =>
       this.processManager.writeToChannel(channelId, data),
     );
+    this.sessionRelayManager =
+      this.services.sessionRelayManager ??
+      new SessionRelayManager(
+        this.processManager as IRelayProcessManager,
+        this.control as IRelayControlRequestManager,
+        this.viewManager as IRelayViewManager,
+        this.logger,
+      );
     webview.onDidReceiveMessage((raw: unknown) => {
       void this.handleMessage(raw as FromWebviewMessage);
     });
@@ -145,7 +172,10 @@ export class MessageBroker {
     try {
       const response = await this.control.send(channelId, 'get_context_usage');
       const usage = parseContextUsage(response);
-      if (usage) this.viewManager.broadcastMessage({ type: 'context_usage', channelId, usage });
+      if (usage) {
+        this.viewManager.broadcastMessage({ type: 'context_usage', channelId, usage });
+        this.sessionRelayManager.onContextUsage(channelId, usage);
+      }
     } catch (err) {
       this.logger.info(`[MessageBroker] get_context_usage failed: ${String(err)}`);
     }
@@ -193,6 +223,19 @@ export class MessageBroker {
         case 'get_context_usage':
           void this.refreshContextUsage(msg.channelId);
           return;
+
+        // ─── Session relay ──────────────────────────────────────────────
+        case 'get_relay_threshold': {
+          const threshold = this.sessionRelayManager.getThreshold(msg.channelId);
+          void this.webview.postMessage({ type: 'relay_threshold', channelId: msg.channelId, threshold });
+          return;
+        }
+        case 'set_relay_threshold': {
+          this.sessionRelayManager.setThreshold(msg.threshold, msg.channelId);
+          const threshold = this.sessionRelayManager.getThreshold(msg.channelId);
+          void this.webview.postMessage({ type: 'relay_threshold', channelId: msg.channelId, threshold });
+          return;
+        }
 
         // ─── Session management ─────────────────────────────────────────
         case 'list_sessions_request': {
@@ -331,6 +374,8 @@ export class MessageBroker {
       ...(msg.model !== undefined ? { model: msg.model } : {}),
     };
 
+    this.sessionRelayManager.registerLaunch(channelId, options, msg.cwd);
+
     // Forward stream events to all webviews. control_response lines are private
     // RPC plumbing — settle them here and never broadcast them as conversation
     // events. After each turn completes, refresh the context-usage breakdown.
@@ -347,6 +392,7 @@ export class MessageBroker {
         request: event as ClaudeStreamEvent,
       });
       if (typed.type === 'result') {
+        this.sessionRelayManager.handleStreamEvent(channelId, event as ClaudeStreamEvent);
         void this.refreshContextUsage(channelId);
       }
     });
@@ -380,6 +426,7 @@ export class MessageBroker {
     // Reject any in-flight control requests immediately instead of letting them
     // hang until their 10s timeout after the channel is gone.
     this.control.dispose();
+    this.sessionRelayManager.unregisterChannel(msg.channelId);
     void this.sessionManager.updateSession(msg.channelId, 'idle');
     this.viewManager.broadcastSessionStates();
   }

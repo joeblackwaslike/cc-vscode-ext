@@ -424,7 +424,7 @@ export interface RelayStartedMessage {
 /** Current relay threshold (percentage, 0-100) for a channel, or the global default when channelId is omitted. */
 export interface RelayThresholdMessage {
   type: 'relay_threshold';
-  channelId?: string;
+  channelId?: string | undefined;
   threshold: number;
 }
 
