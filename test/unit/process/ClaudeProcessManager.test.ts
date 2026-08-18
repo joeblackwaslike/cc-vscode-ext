@@ -454,5 +454,80 @@ describe('ClaudeProcessManager', () => {
 
       expect(handler).toHaveBeenCalledWith({ type: 'after-swap' });
     });
+
+    it('closeChannel() requested during an in-flight swap is deferred, not dropped: the channel ends up closed once the swap lands', async () => {
+      const router = new ChannelRouter();
+      const handler = vi.fn();
+      router.register('ch-1', handler);
+
+      // Same controllable-binary-resolution technique as the close/error test
+      // above: the swap's own binary resolution stays pending until we
+      // explicitly resolve it, giving us a window to call closeChannel()
+      // while `this.swapping.has('ch-1')` is still true.
+      let callCount = 0;
+      let resolveSwapBinary: (binary: string) => void = () => {};
+      const provider = vi.fn(() => {
+        callCount += 1;
+        if (callCount === 1) return Promise.resolve('/usr/local/bin/claude');
+        return new Promise<string>((resolve) => {
+          resolveSwapBinary = resolve;
+        });
+      });
+
+      const manager = new ClaudeProcessManager(provider, router, mockLogger, mockSpawn as never);
+      await manager.spawnClaude('ch-1', {});
+
+      const swapPromise = manager.swapChannel('ch-1', {});
+
+      // The user explicitly closes the channel WHILE the swap is still
+      // in-flight (before the new process has even been registered). Without
+      // deferring, this would kill the still-registered old process but skip
+      // cleanup (guarded by `swapping`), so the swap would go on to install
+      // a fresh process anyway — resurrecting a channel the user just closed.
+      manager.closeChannel('ch-1');
+      expect(mockProcess.kill).not.toHaveBeenCalled();
+
+      resolveSwapBinary('/usr/local/bin/claude');
+      await swapPromise;
+
+      // The channel must be gone, not resurrected with the freshly-swapped-in
+      // process still registered and routable.
+      expect(manager.hasChannel('ch-1')).toBe(false);
+      router.route('ch-1', { type: 'after-deferred-close' });
+      expect(handler).not.toHaveBeenCalled();
+    });
+
+    it('closeChannel() requested during a swap whose launch fails still leaves the channel fully cleaned up', async () => {
+      const router = new ChannelRouter();
+      const handler = vi.fn();
+      router.register('ch-1', handler);
+
+      let callCount = 0;
+      let rejectSwapBinary: (err: Error) => void = () => {};
+      const provider = vi.fn(() => {
+        callCount += 1;
+        if (callCount === 1) return Promise.resolve('/usr/local/bin/claude');
+        return new Promise<string>((_resolve, reject) => {
+          rejectSwapBinary = reject;
+        });
+      });
+
+      const manager = new ClaudeProcessManager(provider, router, mockLogger, mockSpawn as never);
+      await manager.spawnClaude('ch-1', {});
+
+      const swapPromise = manager.swapChannel('ch-1', {});
+      manager.closeChannel('ch-1');
+
+      rejectSwapBinary(new Error('binary resolution failed'));
+      await expect(swapPromise).rejects.toThrow('binary resolution failed');
+
+      // The old process (never overwritten, since the launch failed before
+      // this.processes.set() ran) must have been killed and cleaned up by
+      // the deferred close — not left registered with hasChannel() lying.
+      expect(manager.hasChannel('ch-1')).toBe(false);
+      expect(mockProcess.kill).toHaveBeenCalled();
+      router.route('ch-1', { type: 'after-failed-swap' });
+      expect(handler).not.toHaveBeenCalled();
+    });
   });
 });

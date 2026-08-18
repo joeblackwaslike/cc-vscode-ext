@@ -32,6 +32,7 @@ type SpawnFn = (cmd: string, args: string[], opts: SpawnOptions) => ProcessHandl
 export class ClaudeProcessManager {
   private readonly processes = new Map<string, ProcessHandle>();
   private readonly swapping = new Set<string>();
+  private readonly closeRequested = new Set<string>();
 
   constructor(
     private readonly binaryProvider: () => Promise<string>,
@@ -99,6 +100,16 @@ export class ClaudeProcessManager {
       this.processes.set(channelId, proc);
     } finally {
       this.swapping.delete(channelId);
+      // A close requested while the swap was in flight was deferred (see
+      // closeChannel()) rather than acted on immediately, since the process
+      // reference wasn't stable during that window. Act on it for real now,
+      // against whatever is CURRENTLY registered for this channel — the new
+      // process on success, or the still-registered old one if the launch
+      // above failed and this.processes.set() never ran.
+      if (this.closeRequested.has(channelId)) {
+        this.closeRequested.delete(channelId);
+        this.closeChannel(channelId);
+      }
     }
 
     if (oldProc !== undefined) {
@@ -182,8 +193,23 @@ export class ClaudeProcessManager {
     this.processes.get(channelId)?.kill('SIGINT');
   }
 
-  /** Kill and clean up a channel's process. No-op if inactive. */
+  /**
+   * Kill and clean up a channel's process. No-op if inactive.
+   *
+   * Deferred, not dropped, while a swap is in flight for this channelId: the
+   * process reference isn't stable during that window (see swapChannel's doc
+   * comment), so acting immediately here could kill the old process while
+   * leaving the map entry in place for `swapping`-guarded cleanup to skip —
+   * and the swap would then go on to install a fresh process anyway,
+   * resurrecting a channel the caller explicitly closed. Instead, record the
+   * request; swapChannel's `finally` block replays it for real once the swap
+   * settles, against whichever process is registered at that point.
+   */
   closeChannel(channelId: string): void {
+    if (this.swapping.has(channelId)) {
+      this.closeRequested.add(channelId);
+      return;
+    }
     const proc = this.processes.get(channelId);
     if (proc === undefined) return;
     proc.kill();
