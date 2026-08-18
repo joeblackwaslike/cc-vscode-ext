@@ -7,6 +7,7 @@ import type {
   CheckGitStatusResponseMessage,
   CheckoutBranchResponseMessage,
   ThinkingLevel,
+  ContextUsage,
 } from '../types/ipc';
 import { EFFORT_THINKING_TOKENS, type PermissionMode } from '../process/ProcessArgs';
 import { parseContextUsage } from '../process/usage';
@@ -14,6 +15,7 @@ import { ControlRequestManager, type ControlResponseEvent } from '../process/Con
 import type { ClaudeStreamEvent } from '../types/process';
 import type { ProcessLaunchOptions } from '../process/ClaudeProcessManager';
 import type { ILogger } from '../process/ClaudeProcessManager';
+import { SessionRelayManager } from '../relay/SessionRelayManager';
 
 // ─── Dependency interfaces ─────────────────────────────────────────────────────
 
@@ -29,6 +31,7 @@ export interface IClaudeProcessManager {
   interruptClaude(channelId: string): void;
   closeChannel(channelId: string): void;
   hasChannel(channelId: string): boolean;
+  swapChannel(channelId: string, options: ProcessLaunchOptions, cwd?: string): Promise<void>;
 }
 
 export interface ISessionManager {
@@ -55,6 +58,18 @@ export interface IViewManager {
 export interface IWebview {
   postMessage(msg: ToWebviewMessage): Thenable<boolean>;
   onDidReceiveMessage(handler: (msg: unknown) => void): { dispose(): void };
+}
+
+export interface ISessionRelayManager {
+  registerLaunch(channelId: string, options: ProcessLaunchOptions, cwd?: string): void;
+  unregisterChannel(channelId: string): void;
+  onContextUsage(channelId: string, usage: ContextUsage): void;
+  handleStreamEvent(channelId: string, event: ClaudeStreamEvent): void;
+  getThreshold(channelId?: string): number;
+  setThreshold(threshold: number, channelId?: string): void;
+  isRelaying(channelId: string): boolean;
+  enqueueIfRelaying(channelId: string, text: string): boolean;
+  updateLaunchOptions(channelId: string, patch: Partial<ProcessLaunchOptions>): void;
 }
 
 // ─── Optional service interfaces ──────────────────────────────────────────────
@@ -102,6 +117,7 @@ export interface MessageBrokerServices {
   vscode?: IVSCodeBridge;
   terminalLauncher?: ITerminalLauncher;
   commandRunner?: ICommandRunner;
+  sessionRelayManager?: ISessionRelayManager;
 }
 
 /**
@@ -114,6 +130,13 @@ export interface MessageBrokerServices {
 export class MessageBroker {
   /** Correlates control_request/control_response over the CLI stdin/stdout. */
   private readonly control: ControlRequestManager;
+  private readonly sessionRelayManager: ISessionRelayManager;
+  /** Per-channel counter, bumped on every REAL user-submitted turn. Lets an
+   * in-flight post-result usage refresh detect that a genuinely new turn
+   * started while it was awaiting its control round-trip, and drop its
+   * relay notification instead of racing that new turn (see
+   * `refreshContextUsage`). */
+  private readonly turnGenerations = new Map<string, number>();
 
   constructor(
     private readonly processManager: IClaudeProcessManager,
@@ -128,6 +151,9 @@ export class MessageBroker {
     this.control = new ControlRequestManager((channelId, data) =>
       this.processManager.writeToChannel(channelId, data),
     );
+    this.sessionRelayManager =
+      this.services.sessionRelayManager ??
+      new SessionRelayManager(this.processManager, this.control, this.viewManager, this.logger);
     webview.onDidReceiveMessage((raw: unknown) => {
       void this.handleMessage(raw as FromWebviewMessage);
     });
@@ -140,12 +166,29 @@ export class MessageBroker {
     });
   }
 
-  /** Query the CLI's context breakdown for a channel and broadcast it. */
-  private async refreshContextUsage(channelId: string): Promise<void> {
+  /** Query the CLI's context breakdown for a channel and broadcast it. `notifyRelay`
+   * should only be true when this refresh follows a genuine turn completion (a
+   * `result` stream event) — never for an on-demand refresh the webview requested
+   * (e.g. opening the usage ring popover), which can happen mid-turn and must not
+   * be allowed to trigger a relay while a real response is still in flight.
+   *
+   * Even when notifyRelay is true, this is an async round-trip: the `result`
+   * event flips the webview's `running` state to false before this resolves,
+   * so a user can submit a genuinely new turn while it's in flight. Snapshot
+   * the channel's turn generation up front and only notify the relay manager
+   * if it's unchanged by the time the response lands — otherwise the delayed
+   * usage reading would relay a process that's now mid-turn again. */
+  private async refreshContextUsage(channelId: string, notifyRelay = false): Promise<void> {
+    const generation = this.turnGenerations.get(channelId) ?? 0;
     try {
       const response = await this.control.send(channelId, 'get_context_usage');
       const usage = parseContextUsage(response);
-      if (usage) this.viewManager.broadcastMessage({ type: 'context_usage', channelId, usage });
+      if (usage) {
+        this.viewManager.broadcastMessage({ type: 'context_usage', channelId, usage });
+        if (notifyRelay && generation === (this.turnGenerations.get(channelId) ?? 0)) {
+          this.sessionRelayManager.onContextUsage(channelId, usage);
+        }
+      }
     } catch (err) {
       this.logger.info(`[MessageBroker] get_context_usage failed: ${String(err)}`);
     }
@@ -164,7 +207,10 @@ export class MessageBroker {
           this.processManager.interruptClaude(msg.channelId);
           return;
         case 'control_request':
-          this.processManager.sendUserMessage(msg.channelId, msg.text);
+          this.turnGenerations.set(msg.channelId, (this.turnGenerations.get(msg.channelId) ?? 0) + 1);
+          if (!this.sessionRelayManager.enqueueIfRelaying(msg.channelId, msg.text)) {
+            this.processManager.sendUserMessage(msg.channelId, msg.text);
+          }
           return;
 
         // ─── Live session controls (applied to the running process now, and
@@ -173,6 +219,7 @@ export class MessageBroker {
           this.viewManager.setPermissionMode(msg.mode);
           this.viewManager.broadcastSessionStates();
           this.sendControl(msg.channelId, 'set_permission_mode', { mode: msg.mode, userInitiated: true });
+          this.sessionRelayManager.updateLaunchOptions(msg.channelId, { permissionMode: msg.mode });
           return;
         case 'set_thinking_level':
           this.viewManager.setThinkingLevel(msg.level);
@@ -181,18 +228,35 @@ export class MessageBroker {
             this.sendControl(msg.channelId, 'set_max_thinking_tokens', {
               maxThinkingTokens: EFFORT_THINKING_TOKENS[msg.level],
             });
+            this.sessionRelayManager.updateLaunchOptions(msg.channelId, { effort: msg.level });
           }
           return;
         case 'set_model':
           this.viewManager.setModel(msg.model);
           this.viewManager.broadcastSessionStates();
-          if (msg.channelId) this.sendControl(msg.channelId, 'set_model', { model: msg.model });
+          if (msg.channelId) {
+            this.sendControl(msg.channelId, 'set_model', { model: msg.model });
+            this.sessionRelayManager.updateLaunchOptions(msg.channelId, { model: msg.model });
+          }
           return;
 
         // ─── Context-window breakdown (for the usage ring popover) ────────
         case 'get_context_usage':
           void this.refreshContextUsage(msg.channelId);
           return;
+
+        // ─── Session relay ──────────────────────────────────────────────
+        case 'get_relay_threshold': {
+          const threshold = this.sessionRelayManager.getThreshold(msg.channelId);
+          void this.webview.postMessage({ type: 'relay_threshold', channelId: msg.channelId, threshold });
+          return;
+        }
+        case 'set_relay_threshold': {
+          this.sessionRelayManager.setThreshold(msg.threshold, msg.channelId);
+          const threshold = this.sessionRelayManager.getThreshold(msg.channelId);
+          void this.webview.postMessage({ type: 'relay_threshold', channelId: msg.channelId, threshold });
+          return;
+        }
 
         // ─── Session management ─────────────────────────────────────────
         case 'list_sessions_request': {
@@ -331,23 +395,34 @@ export class MessageBroker {
       ...(msg.model !== undefined ? { model: msg.model } : {}),
     };
 
+    this.sessionRelayManager.registerLaunch(channelId, options, msg.cwd);
+
     // Forward stream events to all webviews. control_response lines are private
     // RPC plumbing — settle them here and never broadcast them as conversation
     // events. After each turn completes, refresh the context-usage breakdown.
+    // While a relay is in progress, its internal handoff/reseed turns must
+    // never reach the webview as ordinary conversation (it would flip
+    // `running` false mid-swap, re-enabling input while the process
+    // underneath is being torn down) and must not trigger a redundant
+    // relay-notifying refresh of their own.
     this.channelRouter.register(channelId, (event) => {
       const typed = event as { type?: string };
       if (typed.type === 'control_response') {
         this.control.handleResponse(event as ControlResponseEvent);
         return;
       }
-      this.viewManager.broadcastMessage({
-        type: 'request',
-        channelId,
-        requestId: channelId,
-        request: event as ClaudeStreamEvent,
-      });
+      const relaying = this.sessionRelayManager.isRelaying(channelId);
+      if (!relaying) {
+        this.viewManager.broadcastMessage({
+          type: 'request',
+          channelId,
+          requestId: channelId,
+          request: event as ClaudeStreamEvent,
+        });
+      }
       if (typed.type === 'result') {
-        void this.refreshContextUsage(channelId);
+        this.sessionRelayManager.handleStreamEvent(channelId, event as ClaudeStreamEvent);
+        if (!relaying) void this.refreshContextUsage(channelId, true);
       }
     });
 
@@ -380,6 +455,8 @@ export class MessageBroker {
     // Reject any in-flight control requests immediately instead of letting them
     // hang until their 10s timeout after the channel is gone.
     this.control.dispose();
+    this.turnGenerations.delete(msg.channelId);
+    this.sessionRelayManager.unregisterChannel(msg.channelId);
     void this.sessionManager.updateSession(msg.channelId, 'idle');
     this.viewManager.broadcastSessionStates();
   }

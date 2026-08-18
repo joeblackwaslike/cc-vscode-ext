@@ -86,6 +86,14 @@ export function useSessionReducer() {
 
   const handleMessage = useCallback(
     (msg: ToWebviewMessage): void => {
+      if (msg.type === 'relay_started') {
+        dispatch({
+          type: 'STREAM_EVENT',
+          channelId: msg.channelId,
+          event: { type: 'relay_marker', fromSessionId: msg.fromSessionId, toSessionId: msg.toSessionId },
+        });
+        return;
+      }
       if (msg.type === 'context_usage') {
         dispatch({ type: 'SET_USAGE', channelId: msg.channelId, usage: msg.usage });
         return;

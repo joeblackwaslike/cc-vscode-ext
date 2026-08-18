@@ -31,6 +31,8 @@ type SpawnFn = (cmd: string, args: string[], opts: SpawnOptions) => ProcessHandl
  */
 export class ClaudeProcessManager {
   private readonly processes = new Map<string, ProcessHandle>();
+  private readonly swapping = new Set<string>();
+  private readonly closeRequested = new Set<string>();
 
   constructor(
     private readonly binaryProvider: () => Promise<string>,
@@ -54,6 +56,80 @@ export class ClaudeProcessManager {
       throw new Error(`Channel "${channelId}" is already active`);
     }
 
+    const proc = await this._launchProcess(channelId, options, cwd, env);
+    this.processes.set(channelId, proc);
+  }
+
+  /**
+   * Atomically replace the process behind an already-active channelId with a
+   * freshly spawned one. Guarantees, across the whole swap window (including
+   * the `await` inside `_launchProcess` while the binary resolves — which can
+   * be a real download on first use, per spawnClaude's doc comment):
+   *
+   *  - `this.processes` never observes a gap for that key.
+   *  - The channel's router registration is never torn down. Without this,
+   *    if the OLD process's 'close'/'error' event fires while the new one is
+   *    still being launched, `_cleanupIfCurrent` would see the old process as
+   *    still "current" (the map hasn't flipped yet) and call
+   *    `router.unregister(channelId)` — and nothing ever re-registers it, so
+   *    the swapped-in process's stdout would be silently dropped forever by
+   *    `ChannelRouter.route()`'s no-op-on-unknown-handler behavior.
+   *
+   * `swapping` guards exactly that window: it's set before the launch begins
+   * and cleared immediately after `this.processes.set()` — not after
+   * `oldProc.kill()` — because once the map holds the new process, the
+   * existing identity check in `_cleanupIfCurrent` already correctly no-ops
+   * for the old process's later-arriving close/error event; the flag must
+   * not be held any longer than the window it actually protects.
+   *
+   * Unlike spawnClaude, this does not throw if the channel is already active
+   * — replacing an active channel is the whole point. The old process (if
+   * any) is killed after the new one is registered.
+   */
+  async swapChannel(
+    channelId: string,
+    options: ProcessLaunchOptions,
+    cwd?: string,
+    env?: NodeJS.ProcessEnv,
+  ): Promise<void> {
+    const oldProc = this.processes.get(channelId);
+    this.swapping.add(channelId);
+
+    try {
+      const proc = await this._launchProcess(channelId, options, cwd, env);
+      this.processes.set(channelId, proc);
+    } finally {
+      this.swapping.delete(channelId);
+      // A close requested while the swap was in flight was deferred (see
+      // closeChannel()) rather than acted on immediately, since the process
+      // reference wasn't stable during that window. Act on it for real now,
+      // against whatever is CURRENTLY registered for this channel — the new
+      // process on success, or the still-registered old one if the launch
+      // above failed and this.processes.set() never ran.
+      if (this.closeRequested.has(channelId)) {
+        this.closeRequested.delete(channelId);
+        this.closeChannel(channelId);
+      }
+    }
+
+    if (oldProc !== undefined) {
+      oldProc.kill();
+    }
+  }
+
+  /**
+   * Spawn a process for channelId and wire up its stdout parser and
+   * close/error handlers. Does not touch `this.processes` — callers decide
+   * when/whether to register the returned handle, which is what keeps the
+   * `await` (binary resolution) outside the atomic map-swap window in both
+   * spawnClaude and swapChannel.
+   */
+  private async _launchProcess(
+    channelId: string,
+    options: ProcessLaunchOptions,
+    cwd?: string,
+    env?: NodeJS.ProcessEnv,
+  ): Promise<ProcessHandle> {
     const binary = options.wrapper ?? (await this.binaryProvider());
     const args = buildArgs(options);
 
@@ -68,19 +144,27 @@ export class ClaudeProcessManager {
       (line) => this.logger.warn(`[channel:${channelId}] bad JSON: ${line}`),
     );
 
-    proc.stdout.on('data', (chunk: Buffer) => parser.feed(chunk.toString()));
+    proc.stdout.on('data', (chunk: Buffer) => {
+      // A superseded process (post-swapChannel) can still have buffered
+      // stdout to flush after this.processes has already moved on to the
+      // new process. ChannelRouter.route() dispatches purely by channelId,
+      // so without this identity check that trailing output would be
+      // routed indistinguishably from the new process's real output.
+      if (this.processes.get(channelId) !== proc) return;
+      parser.feed(chunk.toString());
+    });
 
     proc.on('close', (code: unknown) => {
       this.logger.info(`[channel:${channelId}] closed (code=${String(code)})`);
-      this._cleanup(channelId);
+      this._cleanupIfCurrent(channelId, proc);
     });
 
     proc.on('error', (err: unknown) => {
       this.logger.error(`[channel:${channelId}] process error`, err);
-      this._cleanup(channelId);
+      this._cleanupIfCurrent(channelId, proc);
     });
 
-    this.processes.set(channelId, proc);
+    return proc;
   }
 
   /** Write a JSON line to the channel's stdin. No-op if channel is inactive or stdin not writable. */
@@ -109,12 +193,27 @@ export class ClaudeProcessManager {
     this.processes.get(channelId)?.kill('SIGINT');
   }
 
-  /** Kill and clean up a channel's process. No-op if inactive. */
+  /**
+   * Kill and clean up a channel's process. No-op if inactive.
+   *
+   * Deferred, not dropped, while a swap is in flight for this channelId: the
+   * process reference isn't stable during that window (see swapChannel's doc
+   * comment), so acting immediately here could kill the old process while
+   * leaving the map entry in place for `swapping`-guarded cleanup to skip —
+   * and the swap would then go on to install a fresh process anyway,
+   * resurrecting a channel the caller explicitly closed. Instead, record the
+   * request; swapChannel's `finally` block replays it for real once the swap
+   * settles, against whichever process is registered at that point.
+   */
   closeChannel(channelId: string): void {
+    if (this.swapping.has(channelId)) {
+      this.closeRequested.add(channelId);
+      return;
+    }
     const proc = this.processes.get(channelId);
     if (proc === undefined) return;
     proc.kill();
-    this._cleanup(channelId);
+    this._cleanupIfCurrent(channelId, proc);
   }
 
   /** Kill all active processes and clean up. */
@@ -129,7 +228,25 @@ export class ClaudeProcessManager {
     return this.processes.has(channelId);
   }
 
-  private _cleanup(channelId: string): void {
+  /**
+   * Cleanup a process's map/router entries, but only if `proc` is still the
+   * entry registered for `channelId`. A process's close/error handlers are
+   * bound at spawn time; if that channelId has since been reassigned to a
+   * different process (see swapChannel), the old handler must not tear down
+   * the new process's registration.
+   *
+   * Also no-ops while a swap is in flight for this channelId, even though
+   * the identity check above would otherwise say "still current" — the old
+   * process is still the map entry until swapChannel's `this.processes.set()`
+   * runs, so without this guard a close/error firing mid-swap (e.g. while
+   * still awaiting binary resolution) would unregister the channel from the
+   * router. Nothing ever re-registers it, so the incoming process's stdout
+   * would be silently dropped forever. swapChannel owns this channel's
+   * lifecycle for the duration of the flag.
+   */
+  private _cleanupIfCurrent(channelId: string, proc: ProcessHandle): void {
+    if (this.processes.get(channelId) !== proc) return;
+    if (this.swapping.has(channelId)) return;
     this.processes.delete(channelId);
     this.router.unregister(channelId);
   }

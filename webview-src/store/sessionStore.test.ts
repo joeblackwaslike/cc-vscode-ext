@@ -34,4 +34,21 @@ describe('sessionStore', () => {
     });
     expect(result.current.state.channels.c1.running).toBe(false);
   });
+
+  test('relay_started is recorded as a relay_marker event in the channel transcript', () => {
+    const { result } = renderHook(() => useSessionReducer());
+
+    act(() => {
+      result.current.handleMessage({
+        type: 'relay_started',
+        channelId: 'c1',
+        fromSessionId: 'old-sess',
+        toSessionId: 'new-sess',
+      });
+    });
+
+    expect(result.current.state.channels.c1.events).toEqual([
+      { type: 'relay_marker', fromSessionId: 'old-sess', toSessionId: 'new-sess' },
+    ]);
+  });
 });

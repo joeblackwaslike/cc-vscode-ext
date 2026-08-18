@@ -382,3 +382,272 @@ describe('MessageBroker', () => {
     });
   });
 });
+
+function makeBrokerWithRelay() {
+  const h = createIpcTestHarness();
+  const sessionRelayManager = {
+    registerLaunch: vi.fn(),
+    unregisterChannel: vi.fn(),
+    onContextUsage: vi.fn(),
+    handleStreamEvent: vi.fn(),
+    getThreshold: vi.fn(() => 70),
+    setThreshold: vi.fn(),
+    isRelaying: vi.fn(() => false),
+    enqueueIfRelaying: vi.fn(() => false),
+    updateLaunchOptions: vi.fn(),
+  };
+  const broker = new MessageBroker(
+    h.processManager,
+    h.sessionManager,
+    h.diffManager,
+    h.viewManager,
+    h.channelRouter,
+    h.webview,
+    h.logger,
+    { sessionRelayManager },
+  );
+  return { h, broker, sessionRelayManager };
+}
+
+describe('SessionRelayManager wiring', () => {
+  it('launch_claude registers the launch with SessionRelayManager', () => {
+    const { h, sessionRelayManager } = makeBrokerWithRelay();
+    h.dispatch({ type: 'launch_claude', channelId: 'ch-1', cwd: '/work', permissionMode: 'acceptEdits' });
+    expect(sessionRelayManager.registerLaunch).toHaveBeenCalledWith(
+      'ch-1',
+      expect.objectContaining({ permissionMode: 'acceptEdits' }),
+      '/work',
+    );
+  });
+
+  it('close_channel unregisters the channel from SessionRelayManager', () => {
+    const { h, sessionRelayManager } = makeBrokerWithRelay();
+    h.dispatch({ type: 'close_channel', channelId: 'ch-1' });
+    expect(sessionRelayManager.unregisterChannel).toHaveBeenCalledWith('ch-1');
+  });
+
+  it('a result event is forwarded to SessionRelayManager.handleStreamEvent', () => {
+    const { h, sessionRelayManager } = makeBrokerWithRelay();
+    h.dispatch({ type: 'launch_claude', channelId: 'ch-1' });
+    const routed = h.channelRouter.register.mock.calls[0][1] as (event: unknown) => void;
+
+    routed({ type: 'result', subtype: 'success', result: 'x' });
+
+    expect(sessionRelayManager.handleStreamEvent).toHaveBeenCalledWith('ch-1', {
+      type: 'result', subtype: 'success', result: 'x',
+    });
+  });
+
+  it('a manual (webview-triggered) get_context_usage refresh does NOT notify SessionRelayManager', async () => {
+    const { h, sessionRelayManager } = makeBrokerWithRelay();
+    // A real get_context_usage round-trip requires the channel's control_response
+    // to come back through the same channelRouter handler handleLaunchClaude
+    // registers — so launch first to capture that handler.
+    h.dispatch({ type: 'launch_claude', channelId: 'ch-1' });
+    const routed = h.channelRouter.register.mock.calls[0][1] as (event: unknown) => void;
+
+    // This is the on-demand path the webview uses (e.g. opening the usage ring
+    // popover), which can fire mid-turn — it must never trigger a relay check.
+    h.dispatch({ type: 'get_context_usage', channelId: 'ch-1' });
+
+    // ControlRequestManager wrote the control_request to processManager.writeToChannel;
+    // pull the request_id it generated so the response we feed back matches it.
+    const writeCall = h.processManager.writeToChannel.mock.calls.find(
+      ([, data]) => (data as { request?: { subtype?: string } }).request?.subtype === 'get_context_usage',
+    );
+    expect(writeCall).toBeDefined();
+    const requestId = (writeCall![1] as { request_id: string }).request_id;
+
+    routed({
+      type: 'control_response',
+      response: {
+        subtype: 'success',
+        request_id: requestId,
+        response: { maxTokens: 100_000, totalTokens: 80_000, percentage: 80, categories: [] },
+      },
+    });
+
+    // The usage still gets broadcast to the webview — only the relay notification
+    // is suppressed for the manual path.
+    await vi.waitFor(() =>
+      expect(h.viewManager.broadcastMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'context_usage', channelId: 'ch-1' }),
+      ),
+    );
+    expect(sessionRelayManager.onContextUsage).not.toHaveBeenCalled();
+  });
+
+  it('the post-turn refresh triggered by a result event DOES notify SessionRelayManager.onContextUsage', async () => {
+    const { h, sessionRelayManager } = makeBrokerWithRelay();
+    h.dispatch({ type: 'launch_claude', channelId: 'ch-1' });
+    const routed = h.channelRouter.register.mock.calls[0][1] as (event: unknown) => void;
+
+    // A genuine turn completion — this is the only point that should ever
+    // trigger a relay-eligible context-usage refresh.
+    routed({ type: 'result', subtype: 'success', result: 'x' });
+
+    // The result handler fires a NEW get_context_usage control_request internally
+    // (via refreshContextUsage(channelId, true)); pull its request_id the same way.
+    const writeCall = h.processManager.writeToChannel.mock.calls.find(
+      ([, data]) => (data as { request?: { subtype?: string } }).request?.subtype === 'get_context_usage',
+    );
+    expect(writeCall).toBeDefined();
+    const requestId = (writeCall![1] as { request_id: string }).request_id;
+
+    routed({
+      type: 'control_response',
+      response: {
+        subtype: 'success',
+        request_id: requestId,
+        response: { maxTokens: 100_000, totalTokens: 80_000, percentage: 80, categories: [] },
+      },
+    });
+
+    await vi.waitFor(() =>
+      expect(sessionRelayManager.onContextUsage).toHaveBeenCalledWith(
+        'ch-1',
+        expect.objectContaining({ percentage: 80 }),
+      ),
+    );
+  });
+
+  it('a delayed post-result usage response is dropped if a real new turn started before it resolved', async () => {
+    const { h, sessionRelayManager } = makeBrokerWithRelay();
+    h.dispatch({ type: 'launch_claude', channelId: 'ch-1' });
+    const routed = h.channelRouter.register.mock.calls[0][1] as (event: unknown) => void;
+
+    // A genuine turn completes; MessageBroker fires the post-result usage
+    // refresh and starts awaiting the control round-trip.
+    routed({ type: 'result', subtype: 'success', result: 'x' });
+
+    const writeCall = h.processManager.writeToChannel.mock.calls.find(
+      ([, data]) => (data as { request?: { subtype?: string } }).request?.subtype === 'get_context_usage',
+    );
+    expect(writeCall).toBeDefined();
+    const requestId = (writeCall![1] as { request_id: string }).request_id;
+
+    // Before that round-trip resolves, the user submits a genuinely new turn
+    // (now possible because `running` flipped false on the earlier result).
+    h.dispatch({ type: 'control_request', channelId: 'ch-1', requestId: 'req-new', text: 'new turn' });
+
+    // The delayed usage response now arrives, crossing the threshold.
+    routed({
+      type: 'control_response',
+      response: {
+        subtype: 'success',
+        request_id: requestId,
+        response: { maxTokens: 100_000, totalTokens: 80_000, percentage: 80, categories: [] },
+      },
+    });
+
+    // Usage is still broadcast to the webview...
+    await vi.waitFor(() =>
+      expect(h.viewManager.broadcastMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'context_usage', channelId: 'ch-1' }),
+      ),
+    );
+    // ...but the relay manager must NOT be notified: a real new turn is now in flight,
+    // and relaying now would inject the handoff into a process mid-turn.
+    expect(sessionRelayManager.onContextUsage).not.toHaveBeenCalled();
+  });
+
+  it('does not broadcast a stream event to the webview while a relay is in progress on that channel', () => {
+    const { h, sessionRelayManager } = makeBrokerWithRelay();
+    sessionRelayManager.isRelaying.mockReturnValue(true);
+    h.dispatch({ type: 'launch_claude', channelId: 'ch-1' });
+    const routed = h.channelRouter.register.mock.calls[0][1] as (event: unknown) => void;
+
+    // The internal handoff turn's result event — must never reach the webview
+    // as an ordinary conversation message while relaying is in progress.
+    routed({ type: 'result', subtype: 'success', result: 'HANDOFF SUMMARY' });
+
+    expect(h.viewManager.broadcastMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'request' }),
+    );
+    // The relay's own capture mechanism must still see the event.
+    expect(sessionRelayManager.handleStreamEvent).toHaveBeenCalledWith('ch-1', {
+      type: 'result', subtype: 'success', result: 'HANDOFF SUMMARY',
+    });
+  });
+
+  it('does not run the relay-notifying context-usage refresh for a result event while relaying', () => {
+    const { h, sessionRelayManager } = makeBrokerWithRelay();
+    sessionRelayManager.isRelaying.mockReturnValue(true);
+    h.dispatch({ type: 'launch_claude', channelId: 'ch-1' });
+    const routed = h.channelRouter.register.mock.calls[0][1] as (event: unknown) => void;
+
+    routed({ type: 'result', subtype: 'success', result: 'HANDOFF SUMMARY' });
+
+    const writeCall = h.processManager.writeToChannel.mock.calls.find(
+      ([, data]) => (data as { request?: { subtype?: string } }).request?.subtype === 'get_context_usage',
+    );
+    expect(writeCall).toBeUndefined();
+  });
+
+  it('get_relay_threshold posts the current threshold', () => {
+    const { h, sessionRelayManager } = makeBrokerWithRelay();
+    h.dispatch({ type: 'get_relay_threshold', channelId: 'ch-1' });
+    expect(sessionRelayManager.getThreshold).toHaveBeenCalledWith('ch-1');
+    expect(h.postedMessages).toContainEqual({ type: 'relay_threshold', channelId: 'ch-1', threshold: 70 });
+  });
+
+  it('set_relay_threshold updates and echoes back the new threshold', () => {
+    const { h, sessionRelayManager } = makeBrokerWithRelay();
+    sessionRelayManager.getThreshold.mockReturnValue(55);
+    h.dispatch({ type: 'set_relay_threshold', threshold: 55, channelId: 'ch-1' });
+    expect(sessionRelayManager.setThreshold).toHaveBeenCalledWith(55, 'ch-1');
+    expect(h.postedMessages).toContainEqual({ type: 'relay_threshold', channelId: 'ch-1', threshold: 55 });
+  });
+
+  it('set_permission_mode keeps the relay launch-option snapshot synced', () => {
+    const { h, sessionRelayManager } = makeBrokerWithRelay();
+    h.dispatch({ type: 'set_permission_mode', channelId: 'ch-1', mode: 'default' });
+    expect(sessionRelayManager.updateLaunchOptions).toHaveBeenCalledWith('ch-1', { permissionMode: 'default' });
+  });
+
+  it('set_model keeps the relay launch-option snapshot synced', () => {
+    const { h, sessionRelayManager } = makeBrokerWithRelay();
+    h.dispatch({ type: 'set_model', channelId: 'ch-1', model: 'claude-opus' });
+    expect(sessionRelayManager.updateLaunchOptions).toHaveBeenCalledWith('ch-1', { model: 'claude-opus' });
+  });
+
+  it('set_thinking_level keeps the relay launch-option snapshot synced', () => {
+    const { h, sessionRelayManager } = makeBrokerWithRelay();
+    h.dispatch({ type: 'set_thinking_level', channelId: 'ch-1', level: 'high' });
+    expect(sessionRelayManager.updateLaunchOptions).toHaveBeenCalledWith('ch-1', { effort: 'high' });
+  });
+
+  it('set_thinking_level with no channelId does not touch any relay snapshot', () => {
+    const { h, sessionRelayManager } = makeBrokerWithRelay();
+    h.dispatch({ type: 'set_thinking_level', level: 'high' });
+    expect(sessionRelayManager.updateLaunchOptions).not.toHaveBeenCalled();
+  });
+
+  it('falls back to a real SessionRelayManager when none is injected', () => {
+    const { h } = makebroker();
+    expect(() => h.dispatch({ type: 'get_relay_threshold' })).not.toThrow();
+    expect(h.postedMessages).toContainEqual({ type: 'relay_threshold', channelId: undefined, threshold: 70 });
+  });
+
+  describe('control_request during an in-progress relay (Bug 1)', () => {
+    it('queues the message via SessionRelayManager instead of sending it directly while a relay is in progress', () => {
+      const { h, sessionRelayManager } = makeBrokerWithRelay();
+      sessionRelayManager.enqueueIfRelaying.mockReturnValue(true);
+
+      h.dispatch({ type: 'control_request', channelId: 'ch-1', requestId: 'req-1', text: 'hello' });
+
+      expect(sessionRelayManager.enqueueIfRelaying).toHaveBeenCalledWith('ch-1', 'hello');
+      expect(h.processManager.sendUserMessage).not.toHaveBeenCalled();
+    });
+
+    it('sends immediately when SessionRelayManager reports no relay in progress', () => {
+      const { h, sessionRelayManager } = makeBrokerWithRelay();
+      sessionRelayManager.enqueueIfRelaying.mockReturnValue(false);
+
+      h.dispatch({ type: 'control_request', channelId: 'ch-1', requestId: 'req-1', text: 'hello' });
+
+      expect(sessionRelayManager.enqueueIfRelaying).toHaveBeenCalledWith('ch-1', 'hello');
+      expect(h.processManager.sendUserMessage).toHaveBeenCalledWith('ch-1', 'hello');
+    });
+  });
+});

@@ -58,6 +58,8 @@ export interface GetClaudeStateMessage { type: 'get_claude_state' }
 export interface GetAuthStatusMessage { type: 'get_auth_status' }
 export interface AssetUrisMessage { type: 'asset_uris' }
 export interface GetContextUsageMessage { type: 'get_context_usage'; channelId: string }
+export interface GetRelayThresholdMessage { type: 'get_relay_threshold'; channelId?: string }
+export interface SetRelayThresholdMessage { type: 'set_relay_threshold'; threshold: number; channelId?: string }
 export interface GetMcpServersMessage { type: 'get_mcp_servers' }
 export interface GetTerminalContentsMessage { type: 'get_terminal_contents' }
 
@@ -287,6 +289,8 @@ export type FromWebviewMessage =
   | GetAuthStatusMessage
   | AssetUrisMessage
   | GetContextUsageMessage
+  | GetRelayThresholdMessage
+  | SetRelayThresholdMessage
   | GetMcpServersMessage
   | GetTerminalContentsMessage
   | ListSessionsRequestMessage
@@ -409,6 +413,21 @@ export interface ContextUsageMessage {
   usage: ContextUsage;
 }
 
+/** Sent once a SessionRelayManager swap completes, so the webview can mark the transcript. */
+export interface RelayStartedMessage {
+  type: 'relay_started';
+  channelId: string;
+  fromSessionId?: string | undefined;
+  toSessionId?: string | undefined;
+}
+
+/** Current relay threshold (percentage, 0-100) for a channel, or the global default when channelId is omitted. */
+export interface RelayThresholdMessage {
+  type: 'relay_threshold';
+  channelId?: string | undefined;
+  threshold: number;
+}
+
 export interface AssetUrisResponseMessage {
   type: 'asset_uris_response';
   assetUris: Record<string, { light: string; dark: string }>;
@@ -522,6 +541,8 @@ export type ToWebviewMessage =
   | StreamRequestMessage
   | UpdateStateMessage
   | ContextUsageMessage
+  | RelayStartedMessage
+  | RelayThresholdMessage
   | AssetUrisResponseMessage
   | GetClaudeStateResponseMessage
   | GetAuthStatusResponseMessage
