@@ -133,7 +133,15 @@ export class ClaudeProcessManager {
       (line) => this.logger.warn(`[channel:${channelId}] bad JSON: ${line}`),
     );
 
-    proc.stdout.on('data', (chunk: Buffer) => parser.feed(chunk.toString()));
+    proc.stdout.on('data', (chunk: Buffer) => {
+      // A superseded process (post-swapChannel) can still have buffered
+      // stdout to flush after this.processes has already moved on to the
+      // new process. ChannelRouter.route() dispatches purely by channelId,
+      // so without this identity check that trailing output would be
+      // routed indistinguishably from the new process's real output.
+      if (this.processes.get(channelId) !== proc) return;
+      parser.feed(chunk.toString());
+    });
 
     proc.on('close', (code: unknown) => {
       this.logger.info(`[channel:${channelId}] closed (code=${String(code)})`);

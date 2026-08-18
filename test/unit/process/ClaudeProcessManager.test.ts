@@ -328,6 +328,38 @@ describe('ClaudeProcessManager', () => {
       expect(handler).toHaveBeenCalledWith({ type: 'from-new-proc' });
     });
 
+    it("drops stale stdout output from a superseded process instead of routing it", async () => {
+      const { manager, router } = makeManager();
+      const handler = vi.fn();
+      router.register('ch-1', handler);
+      await manager.spawnClaude('ch-1', {});
+      // Capture the OLD process's own stdout 'data' listener before the swap
+      // registers the new process. Using .at(-1) here (rather than the shared
+      // triggerStdoutData() helper, which replays to every listener from every
+      // process spawned so far) is required to invoke specifically the
+      // pre-swap listener and prove it — and only it — is now inert.
+      const oldStdoutOn = mockProcess.stdout.on.mock.calls.at(-1) as [
+        string,
+        (chunk: Buffer) => void,
+      ];
+
+      await manager.swapChannel('ch-1', {});
+      const newStdoutOn = mockProcess.stdout.on.mock.calls.at(-1) as [
+        string,
+        (chunk: Buffer) => void,
+      ];
+
+      // The old process's buffered stdout flushes after the swap has already
+      // registered the new process for 'ch-1'. Without the identity check,
+      // this would be routed indistinguishably from real new-process output.
+      oldStdoutOn[1](Buffer.from(JSON.stringify({ type: 'stale-from-old-proc' }) + '\n'));
+      expect(handler).not.toHaveBeenCalledWith({ type: 'stale-from-old-proc' });
+
+      // The new process's own stdout must still route normally.
+      newStdoutOn[1](Buffer.from(JSON.stringify({ type: 'fresh-from-new-proc' }) + '\n'));
+      expect(handler).toHaveBeenCalledWith({ type: 'fresh-from-new-proc' });
+    });
+
     it("the old process's own close/error handlers do not tear down the new entry", async () => {
       const { manager, router } = makeManager();
       const handler = vi.fn();
