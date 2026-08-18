@@ -1,9 +1,13 @@
 # Session Relay Design
 
-Status: **proposed, not implemented**. This is a design doc, not a plan — it is the starting
-point for a `superpowers:writing-plans` pass in a dedicated future session, followed by
-`superpowers:subagent-driven-development` (this is real code, not the docs-only case that skips
-that pipeline).
+Status: **implemented**. Implementation plan:
+[docs/superpowers/plans/2026-08-18-session-relay-manager.md](superpowers/plans/2026-08-18-session-relay-manager.md),
+executed via `superpowers:subagent-driven-development` on branch `feat/session-relay`. Two design
+questions this doc deliberately left open were resolved during implementation: `ControlRequestManager`
+now tracks `channelId` per pending request (`hasPending(channelId)`), and the capture-and-reseed
+sequencing uses one mechanism (`captureNextResult`/`handleStreamEvent`) twice — once for the handoff
+response, once for the reseed acknowledgement — rather than two separate mechanisms. Known follow-up
+work tracked as beads tickets (see below) rather than fixed here.
 
 ## Problem statement
 
@@ -198,6 +202,20 @@ Integration-level verification (once implemented) should additionally exercise t
 permission-prompt race directly: start a relay-eligible channel, issue a tool call that requires
 approval, fire a relay trigger mid-prompt, and assert the relay defers rather than orphaning the
 pending `tool_permission_request`.
+
+## Follow-up work (filed post-implementation)
+
+Found during implementation/review, tracked as beads tickets rather than fixed pre-merge:
+
+- `session-relay-design-u8o` (P2) — handoff/reseed turns render as unmarked assistant messages in
+  the transcript, and the chat input re-enables before the swap actually completes.
+- `session-relay-design-kiw` (P3) — no timeout on `relay()`'s capture promises; a relay can hang
+  silently forever if a process never responds.
+- `session-relay-design-x45` (P3) — the integration-level permission-prompt-race test this doc
+  asks for above is still only covered by a fake-`ControlRequestManager` unit test, not a real
+  spawned process.
+- `session-relay-design-gyf` (P4) — two narrow, currently-unreachable `swapChannel()` edge cases
+  (compound-failure zombie registration; non-reentrant `swapping` flag).
 
 ## Non-goals for this doc
 
