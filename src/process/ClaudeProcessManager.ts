@@ -54,6 +54,49 @@ export class ClaudeProcessManager {
       throw new Error(`Channel "${channelId}" is already active`);
     }
 
+    const proc = await this._launchProcess(channelId, options, cwd, env);
+    this.processes.set(channelId, proc);
+  }
+
+  /**
+   * Atomically replace the process behind an already-active channelId with a
+   * freshly spawned one, without ever letting `this.processes` observe a gap
+   * for that key. Unlike spawnClaude, this does not throw if the channel is
+   * already active — replacing an active channel is the whole point.
+   *
+   * The old process (if any) is killed after the new one is registered; its
+   * close/error handlers are bound to the old ProcessHandle instance, so
+   * `_cleanupIfCurrent` no-ops for them once the map holds the new instance.
+   */
+  async swapChannel(
+    channelId: string,
+    options: ProcessLaunchOptions,
+    cwd?: string,
+    env?: NodeJS.ProcessEnv,
+  ): Promise<void> {
+    const oldProc = this.processes.get(channelId);
+
+    const proc = await this._launchProcess(channelId, options, cwd, env);
+    this.processes.set(channelId, proc);
+
+    if (oldProc !== undefined) {
+      oldProc.kill();
+    }
+  }
+
+  /**
+   * Spawn a process for channelId and wire up its stdout parser and
+   * close/error handlers. Does not touch `this.processes` — callers decide
+   * when/whether to register the returned handle, which is what keeps the
+   * `await` (binary resolution) outside the atomic map-swap window in both
+   * spawnClaude and swapChannel.
+   */
+  private async _launchProcess(
+    channelId: string,
+    options: ProcessLaunchOptions,
+    cwd?: string,
+    env?: NodeJS.ProcessEnv,
+  ): Promise<ProcessHandle> {
     const binary = options.wrapper ?? (await this.binaryProvider());
     const args = buildArgs(options);
 
@@ -80,7 +123,7 @@ export class ClaudeProcessManager {
       this._cleanupIfCurrent(channelId, proc);
     });
 
-    this.processes.set(channelId, proc);
+    return proc;
   }
 
   /** Write a JSON line to the channel's stdin. No-op if channel is inactive or stdin not writable. */

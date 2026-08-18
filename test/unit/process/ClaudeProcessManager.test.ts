@@ -18,7 +18,13 @@ const { mockProcess, mockSpawn } = vi.hoisted(() => {
     on: vi.fn(),
   };
 
-  const mockSpawn = vi.fn(() => proc);
+  // Each call returns a *new* wrapper object (matching real child_process.spawn(),
+  // which never returns the same instance twice), but every wrapper shares the
+  // same nested spies (on, stdout.on, kill, stdin.write) via shallow copy, so
+  // existing tests that assert against `mockProcess.<spy>` keep working. This
+  // is required for object-identity-sensitive assertions (e.g. swapChannel's
+  // old-vs-new process identity check) to be meaningful under the mock.
+  const mockSpawn = vi.fn(() => ({ ...proc }));
   return { mockProcess: proc, mockSpawn };
 });
 
@@ -268,5 +274,79 @@ describe('ClaudeProcessManager', () => {
   it('dispose() is safe when no channels are active', () => {
     const { manager } = makeManager();
     expect(() => manager.dispose()).not.toThrow();
+  });
+
+  describe('swapChannel()', () => {
+    it('spawns a new process and keeps the channel active under the same id', async () => {
+      const { manager } = makeManager();
+      await manager.spawnClaude('ch-1', {});
+      expect(manager.hasChannel('ch-1')).toBe(true);
+
+      await manager.swapChannel('ch-1', {});
+
+      expect(manager.hasChannel('ch-1')).toBe(true);
+      expect(mockSpawn).toHaveBeenCalledTimes(2);
+    });
+
+    it('kills the old process', async () => {
+      const { manager } = makeManager();
+      await manager.spawnClaude('ch-1', {});
+      const oldKill = mockProcess.kill;
+
+      await manager.swapChannel('ch-1', {});
+
+      expect(oldKill).toHaveBeenCalled();
+    });
+
+    it('routes stdout from the new process through the same router registration', async () => {
+      const { manager, router } = makeManager();
+      const handler = vi.fn();
+      router.register('ch-1', handler);
+      await manager.spawnClaude('ch-1', {});
+
+      await manager.swapChannel('ch-1', {});
+      triggerStdoutData(Buffer.from(JSON.stringify({ type: 'from-new-proc' }) + '\n'));
+
+      expect(handler).toHaveBeenCalledWith({ type: 'from-new-proc' });
+    });
+
+    it("the old process's own close/error handlers do not tear down the new entry", async () => {
+      const { manager, router } = makeManager();
+      const handler = vi.fn();
+      router.register('ch-1', handler);
+      await manager.spawnClaude('ch-1', {});
+      const oldHandlerCalls = mockProcess.on.mock.calls.slice();
+
+      await manager.swapChannel('ch-1', {});
+      // Fire the *old* process's close handler, simulating it finishing shutdown
+      // asynchronously after the swap already completed.
+      for (const call of oldHandlerCalls as [string, (...a: unknown[]) => void][]) {
+        if (call[0] === 'close') call[1](0);
+      }
+
+      expect(manager.hasChannel('ch-1')).toBe(true);
+      router.route('ch-1', { type: 'still-routed' });
+      expect(handler).toHaveBeenCalledWith({ type: 'still-routed' });
+    });
+
+    it('spawns with a fresh binary/args for the new process using the given options', async () => {
+      const { manager } = makeManager();
+      await manager.spawnClaude('ch-1', { resume: 'old-sess' });
+
+      await manager.swapChannel('ch-1', { permissionMode: 'acceptEdits' }, '/workspace');
+
+      expect(buildArgs).toHaveBeenLastCalledWith({ permissionMode: 'acceptEdits' });
+      expect(mockSpawn).toHaveBeenLastCalledWith(
+        '/usr/local/bin/claude',
+        expect.anything(),
+        expect.objectContaining({ cwd: '/workspace' }),
+      );
+    });
+
+    it('works when there is no existing process for the channel (cold swap)', async () => {
+      const { manager } = makeManager();
+      await manager.swapChannel('ch-1', {});
+      expect(manager.hasChannel('ch-1')).toBe(true);
+    });
   });
 });
