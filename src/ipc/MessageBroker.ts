@@ -67,6 +67,7 @@ export interface ISessionRelayManager {
   handleStreamEvent(channelId: string, event: ClaudeStreamEvent): void;
   getThreshold(channelId?: string): number;
   setThreshold(threshold: number, channelId?: string): void;
+  isRelaying(channelId: string): boolean;
 }
 
 // ─── Optional service interfaces ──────────────────────────────────────────────
@@ -390,21 +391,29 @@ export class MessageBroker {
     // Forward stream events to all webviews. control_response lines are private
     // RPC plumbing — settle them here and never broadcast them as conversation
     // events. After each turn completes, refresh the context-usage breakdown.
+    // While a relay is in progress, its internal handoff/reseed turns must
+    // never reach the webview as ordinary conversation (it would flip
+    // `running` false mid-swap, re-enabling input while the process
+    // underneath is being torn down) and must not trigger a redundant
+    // relay-notifying refresh of their own.
     this.channelRouter.register(channelId, (event) => {
       const typed = event as { type?: string };
       if (typed.type === 'control_response') {
         this.control.handleResponse(event as ControlResponseEvent);
         return;
       }
-      this.viewManager.broadcastMessage({
-        type: 'request',
-        channelId,
-        requestId: channelId,
-        request: event as ClaudeStreamEvent,
-      });
+      const relaying = this.sessionRelayManager.isRelaying(channelId);
+      if (!relaying) {
+        this.viewManager.broadcastMessage({
+          type: 'request',
+          channelId,
+          requestId: channelId,
+          request: event as ClaudeStreamEvent,
+        });
+      }
       if (typed.type === 'result') {
         this.sessionRelayManager.handleStreamEvent(channelId, event as ClaudeStreamEvent);
-        void this.refreshContextUsage(channelId, true);
+        if (!relaying) void this.refreshContextUsage(channelId, true);
       }
     });
 

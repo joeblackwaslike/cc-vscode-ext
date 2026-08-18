@@ -81,6 +81,15 @@ export class SessionRelayManager {
     return this.thresholds.get(channelId) ?? this.defaultThreshold;
   }
 
+  /** True while a relay is actively in progress for this channel (between the
+   * handoff turn starting and the reseed turn's acknowledgement). Lets callers
+   * suppress broadcasting the relay's internal handoff/reseed turns to the
+   * webview as ordinary conversation, and avoid recursive/redundant relay
+   * checks while one is already underway. */
+  isRelaying(channelId: string): boolean {
+    return this.relaying.has(channelId);
+  }
+
   setThreshold(threshold: number, channelId?: string): void {
     if (channelId === undefined) {
       this.defaultThreshold = threshold;

@@ -392,6 +392,7 @@ function makeBrokerWithRelay() {
     handleStreamEvent: vi.fn(),
     getThreshold: vi.fn(() => 70),
     setThreshold: vi.fn(),
+    isRelaying: vi.fn(() => false),
   };
   const broker = new MessageBroker(
     h.processManager,
@@ -546,6 +547,39 @@ describe('SessionRelayManager wiring', () => {
     // ...but the relay manager must NOT be notified: a real new turn is now in flight,
     // and relaying now would inject the handoff into a process mid-turn.
     expect(sessionRelayManager.onContextUsage).not.toHaveBeenCalled();
+  });
+
+  it('does not broadcast a stream event to the webview while a relay is in progress on that channel', () => {
+    const { h, sessionRelayManager } = makeBrokerWithRelay();
+    sessionRelayManager.isRelaying.mockReturnValue(true);
+    h.dispatch({ type: 'launch_claude', channelId: 'ch-1' });
+    const routed = h.channelRouter.register.mock.calls[0][1] as (event: unknown) => void;
+
+    // The internal handoff turn's result event — must never reach the webview
+    // as an ordinary conversation message while relaying is in progress.
+    routed({ type: 'result', subtype: 'success', result: 'HANDOFF SUMMARY' });
+
+    expect(h.viewManager.broadcastMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'request' }),
+    );
+    // The relay's own capture mechanism must still see the event.
+    expect(sessionRelayManager.handleStreamEvent).toHaveBeenCalledWith('ch-1', {
+      type: 'result', subtype: 'success', result: 'HANDOFF SUMMARY',
+    });
+  });
+
+  it('does not run the relay-notifying context-usage refresh for a result event while relaying', () => {
+    const { h, sessionRelayManager } = makeBrokerWithRelay();
+    sessionRelayManager.isRelaying.mockReturnValue(true);
+    h.dispatch({ type: 'launch_claude', channelId: 'ch-1' });
+    const routed = h.channelRouter.register.mock.calls[0][1] as (event: unknown) => void;
+
+    routed({ type: 'result', subtype: 'success', result: 'HANDOFF SUMMARY' });
+
+    const writeCall = h.processManager.writeToChannel.mock.calls.find(
+      ([, data]) => (data as { request?: { subtype?: string } }).request?.subtype === 'get_context_usage',
+    );
+    expect(writeCall).toBeUndefined();
   });
 
   it('get_relay_threshold posts the current threshold', () => {
