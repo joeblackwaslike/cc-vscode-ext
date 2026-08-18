@@ -68,6 +68,7 @@ export interface ISessionRelayManager {
   getThreshold(channelId?: string): number;
   setThreshold(threshold: number, channelId?: string): void;
   isRelaying(channelId: string): boolean;
+  updateLaunchOptions(channelId: string, patch: Partial<ProcessLaunchOptions>): void;
 }
 
 // ─── Optional service interfaces ──────────────────────────────────────────────
@@ -215,6 +216,7 @@ export class MessageBroker {
           this.viewManager.setPermissionMode(msg.mode);
           this.viewManager.broadcastSessionStates();
           this.sendControl(msg.channelId, 'set_permission_mode', { mode: msg.mode, userInitiated: true });
+          this.sessionRelayManager.updateLaunchOptions(msg.channelId, { permissionMode: msg.mode });
           return;
         case 'set_thinking_level':
           this.viewManager.setThinkingLevel(msg.level);
@@ -223,12 +225,16 @@ export class MessageBroker {
             this.sendControl(msg.channelId, 'set_max_thinking_tokens', {
               maxThinkingTokens: EFFORT_THINKING_TOKENS[msg.level],
             });
+            this.sessionRelayManager.updateLaunchOptions(msg.channelId, { effort: msg.level });
           }
           return;
         case 'set_model':
           this.viewManager.setModel(msg.model);
           this.viewManager.broadcastSessionStates();
-          if (msg.channelId) this.sendControl(msg.channelId, 'set_model', { model: msg.model });
+          if (msg.channelId) {
+            this.sendControl(msg.channelId, 'set_model', { model: msg.model });
+            this.sessionRelayManager.updateLaunchOptions(msg.channelId, { model: msg.model });
+          }
           return;
 
         // ─── Context-window breakdown (for the usage ring popover) ────────

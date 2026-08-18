@@ -55,6 +55,9 @@ export interface MockViewManager {
   broadcastMessage: ReturnType<typeof vi.fn>;
   broadcastSessionStates: ReturnType<typeof vi.fn>;
   postToSender: ReturnType<typeof vi.fn>;
+  setPermissionMode: ReturnType<typeof vi.fn>;
+  setThinkingLevel: ReturnType<typeof vi.fn>;
+  setModel: ReturnType<typeof vi.fn>;
 }
 
 export interface MockWebview {
@@ -224,6 +227,9 @@ export function createIpcTestHarness(): IpcTestHarness {
     broadcastMessage: vi.fn(),
     broadcastSessionStates: vi.fn(),
     postToSender: vi.fn(),
+    setPermissionMode: vi.fn(),
+    setThinkingLevel: vi.fn(),
+    setModel: vi.fn(),
   };
 
   const channelRouter: MockChannelRouter = {

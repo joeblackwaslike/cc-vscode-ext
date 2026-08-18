@@ -64,6 +64,18 @@ export class SessionRelayManager {
     this.launches.set(channelId, { options, cwd });
   }
 
+  /** Keep a channel's relay launch-option snapshot in sync with a live control
+   * change (set_permission_mode / set_model / set_thinking_level). Without
+   * this, a relay respawns from the stale options captured at registerLaunch()
+   * time, silently reverting any live change made since — most importantly, a
+   * channel switched from bypassPermissions back to default would revert to
+   * bypass mode after a relay. No-op for a channel with no registered launch. */
+  updateLaunchOptions(channelId: string, patch: Partial<ProcessLaunchOptions>): void {
+    const launch = this.launches.get(channelId);
+    if (!launch) return;
+    this.launches.set(channelId, { ...launch, options: { ...launch.options, ...patch } });
+  }
+
   /** Forget a channel entirely — called when the channel is explicitly closed. */
   unregisterChannel(channelId: string): void {
     this.launches.delete(channelId);

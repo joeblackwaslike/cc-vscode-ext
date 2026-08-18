@@ -152,6 +152,34 @@ describe('SessionRelayManager', () => {
     });
   });
 
+  describe('updateLaunchOptions()', () => {
+    it('a later relay respawns with the updated options, not the original launch snapshot', async () => {
+      const { relay, processManager } = makeFakes();
+      relay.registerLaunch('ch-1', { permissionMode: 'bypassPermissions' }, '/work');
+
+      // Live control changed permission mode on the running process after launch
+      // (e.g. via set_permission_mode) — the relay snapshot must track it.
+      relay.updateLaunchOptions('ch-1', { permissionMode: 'default' });
+
+      relay.onContextUsage('ch-1', usage(80));
+      relay.handleStreamEvent('ch-1', {
+        type: 'result', subtype: 'success', result: 'HANDOFF', session_id: 'old-sess',
+      });
+      await vi.waitFor(() => expect(processManager.swapChannel).toHaveBeenCalled());
+
+      expect(processManager.swapChannel).toHaveBeenCalledWith(
+        'ch-1',
+        { permissionMode: 'default', resume: undefined },
+        '/work',
+      );
+    });
+
+    it('is a no-op for a channel with no registered launch', () => {
+      const { relay } = makeFakes();
+      expect(() => relay.updateLaunchOptions('unknown-ch', { permissionMode: 'default' })).not.toThrow();
+    });
+  });
+
   describe('unregisterChannel()', () => {
     it('clears launch info so a later onContextUsage cannot relay it', () => {
       const { relay, sendUserMessage } = makeFakes();

@@ -393,6 +393,7 @@ function makeBrokerWithRelay() {
     getThreshold: vi.fn(() => 70),
     setThreshold: vi.fn(),
     isRelaying: vi.fn(() => false),
+    updateLaunchOptions: vi.fn(),
   };
   const broker = new MessageBroker(
     h.processManager,
@@ -595,6 +596,30 @@ describe('SessionRelayManager wiring', () => {
     h.dispatch({ type: 'set_relay_threshold', threshold: 55, channelId: 'ch-1' });
     expect(sessionRelayManager.setThreshold).toHaveBeenCalledWith(55, 'ch-1');
     expect(h.postedMessages).toContainEqual({ type: 'relay_threshold', channelId: 'ch-1', threshold: 55 });
+  });
+
+  it('set_permission_mode keeps the relay launch-option snapshot synced', () => {
+    const { h, sessionRelayManager } = makeBrokerWithRelay();
+    h.dispatch({ type: 'set_permission_mode', channelId: 'ch-1', mode: 'default' });
+    expect(sessionRelayManager.updateLaunchOptions).toHaveBeenCalledWith('ch-1', { permissionMode: 'default' });
+  });
+
+  it('set_model keeps the relay launch-option snapshot synced', () => {
+    const { h, sessionRelayManager } = makeBrokerWithRelay();
+    h.dispatch({ type: 'set_model', channelId: 'ch-1', model: 'claude-opus' });
+    expect(sessionRelayManager.updateLaunchOptions).toHaveBeenCalledWith('ch-1', { model: 'claude-opus' });
+  });
+
+  it('set_thinking_level keeps the relay launch-option snapshot synced', () => {
+    const { h, sessionRelayManager } = makeBrokerWithRelay();
+    h.dispatch({ type: 'set_thinking_level', channelId: 'ch-1', level: 'high' });
+    expect(sessionRelayManager.updateLaunchOptions).toHaveBeenCalledWith('ch-1', { effort: 'high' });
+  });
+
+  it('set_thinking_level with no channelId does not touch any relay snapshot', () => {
+    const { h, sessionRelayManager } = makeBrokerWithRelay();
+    h.dispatch({ type: 'set_thinking_level', level: 'high' });
+    expect(sessionRelayManager.updateLaunchOptions).not.toHaveBeenCalled();
   });
 
   it('falls back to a real SessionRelayManager when none is injected', () => {
