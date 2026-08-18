@@ -171,10 +171,12 @@ export class SessionRelayManager {
       const handoffCapture = this.captureNextResult(channelId);
       this.processManager.sendUserMessage(channelId, HANDOFF_SYSTEM_PROMPT);
       const handoff = await handoffCapture;
+      if (!this.launches.has(channelId)) return; // channel closed while awaiting the handoff response
 
       const freshOptions: ProcessLaunchOptions = { ...launch.options };
       delete freshOptions.resume;
       await this.processManager.swapChannel(channelId, freshOptions, launch.cwd);
+      if (!this.launches.has(channelId)) return; // channel closed during the swap
 
       const reseedCapture = this.captureNextResult(channelId);
       this.processManager.sendUserMessage(channelId, handoff.text);

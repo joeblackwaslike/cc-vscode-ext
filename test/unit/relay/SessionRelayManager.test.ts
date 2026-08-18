@@ -262,4 +262,59 @@ describe('SessionRelayManager', () => {
     });
   });
 
+  describe('relay() liveness checks between capture points (Bug 2)', () => {
+    it('aborts cleanly, without calling swapChannel, if the channel is closed right after the handoff response resolves', async () => {
+      const { relay, sendUserMessage, swapChannel } = makeFakes();
+      relay.registerLaunch('ch-1', {}, '/work');
+      relay.onContextUsage('ch-1', usage(80));
+
+      // Resolve the handoff capture, then close the channel in the same
+      // synchronous tick — before relay()'s `await handoffCapture` continuation
+      // (a microtask) gets a chance to run its liveness check.
+      relay.handleStreamEvent('ch-1', {
+        type: 'result', subtype: 'success', result: 'HANDOFF', session_id: 'old-sess',
+      });
+      relay.unregisterChannel('ch-1');
+
+      // Flush all pending microtasks/macrotasks so relay()'s continuation runs.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(swapChannel).not.toHaveBeenCalled();
+      expect(sendUserMessage).toHaveBeenCalledTimes(1); // only the original handoff prompt
+    });
+
+    it('aborts cleanly, without sending the reseed turn, if the channel is closed right after swapChannel resolves', async () => {
+      const sendUserMessage = vi.fn();
+      const hasPending = vi.fn(() => false);
+      const broadcastMessage = vi.fn();
+      const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+      let resolveSwap: () => void = () => {};
+      const swapChannel = vi.fn(() => new Promise<void>((resolve) => { resolveSwap = resolve; }));
+      const processManager = { sendUserMessage, swapChannel };
+      const control = { hasPending };
+      const viewManager = { broadcastMessage };
+      const relay = new SessionRelayManager(processManager, control, viewManager, logger);
+
+      relay.registerLaunch('ch-1', {}, '/work');
+      relay.onContextUsage('ch-1', usage(80));
+
+      relay.handleStreamEvent('ch-1', {
+        type: 'result', subtype: 'success', result: 'HANDOFF', session_id: 'old-sess',
+      });
+      await vi.waitFor(() => expect(swapChannel).toHaveBeenCalled());
+
+      // Resolve swapChannel, then close the channel in the same synchronous
+      // tick — before relay()'s `await swapChannel(...)` continuation (a
+      // microtask) gets a chance to register the reseed capture.
+      resolveSwap();
+      relay.unregisterChannel('ch-1');
+
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      // Only the handoff prompt was ever sent — the reseed turn
+      // (sendUserMessage(channelId, handoff.text)) must never fire.
+      expect(sendUserMessage).toHaveBeenCalledTimes(1);
+      expect(broadcastMessage).not.toHaveBeenCalled();
+    });
+  });
 });
