@@ -435,7 +435,7 @@ describe('SessionRelayManager wiring', () => {
     });
   });
 
-  it('get_context_usage refresh forwards usage to SessionRelayManager.onContextUsage', async () => {
+  it('a manual (webview-triggered) get_context_usage refresh does NOT notify SessionRelayManager', async () => {
     const { h, sessionRelayManager } = makeBrokerWithRelay();
     // A real get_context_usage round-trip requires the channel's control_response
     // to come back through the same channelRouter handler handleLaunchClaude
@@ -443,10 +443,48 @@ describe('SessionRelayManager wiring', () => {
     h.dispatch({ type: 'launch_claude', channelId: 'ch-1' });
     const routed = h.channelRouter.register.mock.calls[0][1] as (event: unknown) => void;
 
+    // This is the on-demand path the webview uses (e.g. opening the usage ring
+    // popover), which can fire mid-turn — it must never trigger a relay check.
     h.dispatch({ type: 'get_context_usage', channelId: 'ch-1' });
 
     // ControlRequestManager wrote the control_request to processManager.writeToChannel;
     // pull the request_id it generated so the response we feed back matches it.
+    const writeCall = h.processManager.writeToChannel.mock.calls.find(
+      ([, data]) => (data as { request?: { subtype?: string } }).request?.subtype === 'get_context_usage',
+    );
+    expect(writeCall).toBeDefined();
+    const requestId = (writeCall![1] as { request_id: string }).request_id;
+
+    routed({
+      type: 'control_response',
+      response: {
+        subtype: 'success',
+        request_id: requestId,
+        response: { maxTokens: 100_000, totalTokens: 80_000, percentage: 80, categories: [] },
+      },
+    });
+
+    // The usage still gets broadcast to the webview — only the relay notification
+    // is suppressed for the manual path.
+    await vi.waitFor(() =>
+      expect(h.viewManager.broadcastMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'context_usage', channelId: 'ch-1' }),
+      ),
+    );
+    expect(sessionRelayManager.onContextUsage).not.toHaveBeenCalled();
+  });
+
+  it('the post-turn refresh triggered by a result event DOES notify SessionRelayManager.onContextUsage', async () => {
+    const { h, sessionRelayManager } = makeBrokerWithRelay();
+    h.dispatch({ type: 'launch_claude', channelId: 'ch-1' });
+    const routed = h.channelRouter.register.mock.calls[0][1] as (event: unknown) => void;
+
+    // A genuine turn completion — this is the only point that should ever
+    // trigger a relay-eligible context-usage refresh.
+    routed({ type: 'result', subtype: 'success', result: 'x' });
+
+    // The result handler fires a NEW get_context_usage control_request internally
+    // (via refreshContextUsage(channelId, true)); pull its request_id the same way.
     const writeCall = h.processManager.writeToChannel.mock.calls.find(
       ([, data]) => (data as { request?: { subtype?: string } }).request?.subtype === 'get_context_usage',
     );

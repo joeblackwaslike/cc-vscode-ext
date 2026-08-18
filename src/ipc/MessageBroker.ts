@@ -157,14 +157,18 @@ export class MessageBroker {
     });
   }
 
-  /** Query the CLI's context breakdown for a channel and broadcast it. */
-  private async refreshContextUsage(channelId: string): Promise<void> {
+  /** Query the CLI's context breakdown for a channel and broadcast it. `notifyRelay`
+   * should only be true when this refresh follows a genuine turn completion (a
+   * `result` stream event) — never for an on-demand refresh the webview requested
+   * (e.g. opening the usage ring popover), which can happen mid-turn and must not
+   * be allowed to trigger a relay while a real response is still in flight. */
+  private async refreshContextUsage(channelId: string, notifyRelay = false): Promise<void> {
     try {
       const response = await this.control.send(channelId, 'get_context_usage');
       const usage = parseContextUsage(response);
       if (usage) {
         this.viewManager.broadcastMessage({ type: 'context_usage', channelId, usage });
-        this.sessionRelayManager.onContextUsage(channelId, usage);
+        if (notifyRelay) this.sessionRelayManager.onContextUsage(channelId, usage);
       }
     } catch (err) {
       this.logger.info(`[MessageBroker] get_context_usage failed: ${String(err)}`);
@@ -383,7 +387,7 @@ export class MessageBroker {
       });
       if (typed.type === 'result') {
         this.sessionRelayManager.handleStreamEvent(channelId, event as ClaudeStreamEvent);
-        void this.refreshContextUsage(channelId);
+        void this.refreshContextUsage(channelId, true);
       }
     });
 
