@@ -32,6 +32,7 @@ export interface MockProcessManager {
   closeChannel: ReturnType<typeof vi.fn>;
   hasChannel: ReturnType<typeof vi.fn>;
   dispose: ReturnType<typeof vi.fn>;
+  swapChannel: ReturnType<typeof vi.fn>;
 }
 
 export interface MockSessionManager {
@@ -200,6 +201,7 @@ export function createIpcTestHarness(): IpcTestHarness {
     closeChannel: vi.fn(),
     hasChannel: vi.fn(() => false),
     dispose: vi.fn(),
+    swapChannel: vi.fn(() => Promise.resolve()),
   };
 
   const sessionManager: MockSessionManager = {

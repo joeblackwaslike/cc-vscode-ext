@@ -15,12 +15,7 @@ import { ControlRequestManager, type ControlResponseEvent } from '../process/Con
 import type { ClaudeStreamEvent } from '../types/process';
 import type { ProcessLaunchOptions } from '../process/ClaudeProcessManager';
 import type { ILogger } from '../process/ClaudeProcessManager';
-import {
-  SessionRelayManager,
-  type IRelayProcessManager,
-  type IRelayControlRequestManager,
-  type IRelayViewManager,
-} from '../relay/SessionRelayManager';
+import { SessionRelayManager } from '../relay/SessionRelayManager';
 
 // ─── Dependency interfaces ─────────────────────────────────────────────────────
 
@@ -149,12 +144,7 @@ export class MessageBroker {
     );
     this.sessionRelayManager =
       this.services.sessionRelayManager ??
-      new SessionRelayManager(
-        this.processManager as IRelayProcessManager,
-        this.control as IRelayControlRequestManager,
-        this.viewManager as IRelayViewManager,
-        this.logger,
-      );
+      new SessionRelayManager(this.processManager, this.control, this.viewManager, this.logger);
     webview.onDidReceiveMessage((raw: unknown) => {
       void this.handleMessage(raw as FromWebviewMessage);
     });

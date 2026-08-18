@@ -417,8 +417,8 @@ export interface ContextUsageMessage {
 export interface RelayStartedMessage {
   type: 'relay_started';
   channelId: string;
-  fromSessionId?: string;
-  toSessionId?: string;
+  fromSessionId?: string | undefined;
+  toSessionId?: string | undefined;
 }
 
 /** Current relay threshold (percentage, 0-100) for a channel, or the global default when channelId is omitted. */
