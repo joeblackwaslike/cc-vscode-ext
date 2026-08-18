@@ -393,6 +393,7 @@ function makeBrokerWithRelay() {
     getThreshold: vi.fn(() => 70),
     setThreshold: vi.fn(),
     isRelaying: vi.fn(() => false),
+    enqueueIfRelaying: vi.fn(() => false),
     updateLaunchOptions: vi.fn(),
   };
   const broker = new MessageBroker(
@@ -626,5 +627,27 @@ describe('SessionRelayManager wiring', () => {
     const { h } = makebroker();
     expect(() => h.dispatch({ type: 'get_relay_threshold' })).not.toThrow();
     expect(h.postedMessages).toContainEqual({ type: 'relay_threshold', channelId: undefined, threshold: 70 });
+  });
+
+  describe('control_request during an in-progress relay (Bug 1)', () => {
+    it('queues the message via SessionRelayManager instead of sending it directly while a relay is in progress', () => {
+      const { h, sessionRelayManager } = makeBrokerWithRelay();
+      sessionRelayManager.enqueueIfRelaying.mockReturnValue(true);
+
+      h.dispatch({ type: 'control_request', channelId: 'ch-1', requestId: 'req-1', text: 'hello' });
+
+      expect(sessionRelayManager.enqueueIfRelaying).toHaveBeenCalledWith('ch-1', 'hello');
+      expect(h.processManager.sendUserMessage).not.toHaveBeenCalled();
+    });
+
+    it('sends immediately when SessionRelayManager reports no relay in progress', () => {
+      const { h, sessionRelayManager } = makeBrokerWithRelay();
+      sessionRelayManager.enqueueIfRelaying.mockReturnValue(false);
+
+      h.dispatch({ type: 'control_request', channelId: 'ch-1', requestId: 'req-1', text: 'hello' });
+
+      expect(sessionRelayManager.enqueueIfRelaying).toHaveBeenCalledWith('ch-1', 'hello');
+      expect(h.processManager.sendUserMessage).toHaveBeenCalledWith('ch-1', 'hello');
+    });
   });
 });

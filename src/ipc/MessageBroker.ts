@@ -68,6 +68,7 @@ export interface ISessionRelayManager {
   getThreshold(channelId?: string): number;
   setThreshold(threshold: number, channelId?: string): void;
   isRelaying(channelId: string): boolean;
+  enqueueIfRelaying(channelId: string, text: string): boolean;
   updateLaunchOptions(channelId: string, patch: Partial<ProcessLaunchOptions>): void;
 }
 
@@ -207,7 +208,9 @@ export class MessageBroker {
           return;
         case 'control_request':
           this.turnGenerations.set(msg.channelId, (this.turnGenerations.get(msg.channelId) ?? 0) + 1);
-          this.processManager.sendUserMessage(msg.channelId, msg.text);
+          if (!this.sessionRelayManager.enqueueIfRelaying(msg.channelId, msg.text)) {
+            this.processManager.sendUserMessage(msg.channelId, msg.text);
+          }
           return;
 
         // ─── Live session controls (applied to the running process now, and

@@ -50,6 +50,7 @@ export class SessionRelayManager {
   private readonly thresholds = new Map<string, number>();
   private readonly relaying = new Set<string>();
   private readonly pendingCaptures = new Map<string, PendingCapture>();
+  private readonly queuedMessages = new Map<string, string[]>();
   private defaultThreshold = DEFAULT_THRESHOLD;
 
   constructor(
@@ -81,6 +82,7 @@ export class SessionRelayManager {
     this.launches.delete(channelId);
     this.thresholds.delete(channelId);
     this.relaying.delete(channelId);
+    this.queuedMessages.delete(channelId);
     const pending = this.pendingCaptures.get(channelId);
     if (pending) {
       this.pendingCaptures.delete(channelId);
@@ -100,6 +102,22 @@ export class SessionRelayManager {
    * checks while one is already underway. */
   isRelaying(channelId: string): boolean {
     return this.relaying.has(channelId);
+  }
+
+  /**
+   * Called by MessageBroker for every real (non-relay-internal) user turn.
+   * Returns true if the message was queued because a relay is currently in
+   * progress for this channel (the caller must NOT also call sendUserMessage
+   * itself — this method owns delivery, either now or once the relay settles).
+   * Returns false if no relay is in progress, meaning the caller should send
+   * the message immediately as normal.
+   */
+  enqueueIfRelaying(channelId: string, text: string): boolean {
+    if (!this.relaying.has(channelId)) return false;
+    const queue = this.queuedMessages.get(channelId) ?? [];
+    queue.push(text);
+    this.queuedMessages.set(channelId, queue);
+    return true;
   }
 
   setThreshold(threshold: number, channelId?: string): void {
@@ -172,6 +190,13 @@ export class SessionRelayManager {
       this.logger.error(`[SessionRelayManager] relay failed for channel "${channelId}"`, err);
     } finally {
       this.relaying.delete(channelId);
+      const queued = this.queuedMessages.get(channelId);
+      if (queued && queued.length > 0) {
+        this.queuedMessages.delete(channelId);
+        for (const text of queued) {
+          this.processManager.sendUserMessage(channelId, text);
+        }
+      }
     }
   }
 }

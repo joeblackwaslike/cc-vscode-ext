@@ -195,5 +195,71 @@ describe('SessionRelayManager', () => {
       relay.unregisterChannel('ch-1');
       expect(relay.getThreshold('ch-1')).toBe(70);
     });
+
+    it('clears any queued messages for a closed channel so they are never flushed', async () => {
+      const { relay, sendUserMessage, logger } = makeFakes();
+      relay.registerLaunch('ch-1', {}, '/work');
+      relay.onContextUsage('ch-1', usage(80));
+      expect(relay.enqueueIfRelaying('ch-1', 'will be discarded')).toBe(true);
+
+      relay.unregisterChannel('ch-1');
+
+      // The pending handoff capture is rejected by unregisterChannel, so relay()
+      // fails and its finally block runs — but the queue must already be gone.
+      await vi.waitFor(() => expect(logger.error).toHaveBeenCalled());
+      expect(sendUserMessage).toHaveBeenCalledTimes(1); // only the original handoff prompt
+    });
   });
+
+  describe('enqueueIfRelaying() / mid-relay message queueing (Bug 1)', () => {
+    it('returns false and does not queue when no relay is in progress', () => {
+      const { relay } = makeFakes();
+      expect(relay.enqueueIfRelaying('ch-1', 'hello')).toBe(false);
+    });
+
+    it('queues a real user message while a relay is in progress instead of sending it immediately', () => {
+      const { relay, sendUserMessage } = makeFakes();
+      relay.registerLaunch('ch-1', {}, '/work');
+      relay.onContextUsage('ch-1', usage(80));
+      expect(sendUserMessage).toHaveBeenCalledTimes(1); // just the handoff prompt
+
+      expect(relay.enqueueIfRelaying('ch-1', 'real user message')).toBe(true);
+      expect(sendUserMessage).toHaveBeenCalledTimes(1); // still not sent
+    });
+
+    it('flushes a queued message to the fresh process once the relay finishes successfully', async () => {
+      const { relay, sendUserMessage, swapChannel } = makeFakes();
+      relay.registerLaunch('ch-1', {}, '/work');
+      relay.onContextUsage('ch-1', usage(80));
+      expect(relay.enqueueIfRelaying('ch-1', 'real user message')).toBe(true);
+
+      relay.handleStreamEvent('ch-1', {
+        type: 'result', subtype: 'success', result: 'HANDOFF', session_id: 'old-sess',
+      });
+      await vi.waitFor(() => expect(swapChannel).toHaveBeenCalled());
+      await vi.waitFor(() => expect(sendUserMessage).toHaveBeenCalledTimes(2));
+      expect(sendUserMessage).toHaveBeenNthCalledWith(2, 'ch-1', 'HANDOFF');
+
+      relay.handleStreamEvent('ch-1', {
+        type: 'result', subtype: 'success', result: 'ack', session_id: 'new-sess',
+      });
+
+      await vi.waitFor(() => expect(sendUserMessage).toHaveBeenCalledTimes(3));
+      expect(sendUserMessage).toHaveBeenNthCalledWith(3, 'ch-1', 'real user message');
+    });
+
+    it('flushes a queued message to the original process if the relay fails', async () => {
+      const { relay, sendUserMessage, logger } = makeFakes();
+      relay.registerLaunch('ch-1', {}, '/work');
+      relay.onContextUsage('ch-1', usage(80));
+      expect(relay.enqueueIfRelaying('ch-1', 'queued during failure')).toBe(true);
+
+      relay.handleStreamEvent('ch-1', { type: 'result', subtype: 'error' });
+      await vi.waitFor(() => expect(logger.error).toHaveBeenCalled());
+
+      await vi.waitFor(() => expect(sendUserMessage).toHaveBeenCalledTimes(2));
+      expect(sendUserMessage).toHaveBeenNthCalledWith(2, 'ch-1', 'queued during failure');
+    });
+  });
+
 });
