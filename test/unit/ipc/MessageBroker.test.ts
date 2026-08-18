@@ -1,7 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { createIpcTestHarness, createMockServices } from '../../helpers/ipcTestHarness';
 import { MessageBroker } from '../../../src/ipc/MessageBroker';
-import { HANDOFF_SYSTEM_PROMPT } from '../../../src/relay/handoffPrompt';
 
 function makebroker() {
   const h = createIpcTestHarness();
