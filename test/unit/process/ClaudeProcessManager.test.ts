@@ -236,6 +236,27 @@ describe('ClaudeProcessManager', () => {
     );
   });
 
+  it('a stale close handler from a replaced process does not delete the current entry', async () => {
+    const { manager, router } = makeManager();
+    await manager.spawnClaude('ch-1', {});
+    // Simulate an external replace of the map entry for ch-1 (what swapChannel
+    // will do in Task 3) without going through manager's own APIs, so this test
+    // exercises only the identity check in isolation.
+    const currentHandlers = mockProcess.on.mock.calls.slice(); // capture ch-1's own handlers
+    const replacement = { ...mockProcess, kill: vi.fn() };
+    (manager as unknown as { processes: Map<string, unknown> }).processes.set('ch-1', replacement);
+
+    for (const call of currentHandlers as [string, (...a: unknown[]) => void][]) {
+      if (call[0] === 'close') call[1](0); // fire ch-1's now-stale close handler
+    }
+
+    expect(manager.hasChannel('ch-1')).toBe(true);
+    const handler = vi.fn();
+    router.register('ch-1', handler);
+    router.route('ch-1', { type: 'still-here' });
+    expect(handler).toHaveBeenCalledWith({ type: 'still-here' });
+  });
+
   it('dispose() kills all active processes', async () => {
     const { manager } = makeManager();
     await manager.spawnClaude('ch-1', {});

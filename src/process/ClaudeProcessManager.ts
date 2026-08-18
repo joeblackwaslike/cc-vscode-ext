@@ -72,12 +72,12 @@ export class ClaudeProcessManager {
 
     proc.on('close', (code: unknown) => {
       this.logger.info(`[channel:${channelId}] closed (code=${String(code)})`);
-      this._cleanup(channelId);
+      this._cleanupIfCurrent(channelId, proc);
     });
 
     proc.on('error', (err: unknown) => {
       this.logger.error(`[channel:${channelId}] process error`, err);
-      this._cleanup(channelId);
+      this._cleanupIfCurrent(channelId, proc);
     });
 
     this.processes.set(channelId, proc);
@@ -114,7 +114,7 @@ export class ClaudeProcessManager {
     const proc = this.processes.get(channelId);
     if (proc === undefined) return;
     proc.kill();
-    this._cleanup(channelId);
+    this._cleanupIfCurrent(channelId, proc);
   }
 
   /** Kill all active processes and clean up. */
@@ -129,7 +129,15 @@ export class ClaudeProcessManager {
     return this.processes.has(channelId);
   }
 
-  private _cleanup(channelId: string): void {
+  /**
+   * Cleanup a process's map/router entries, but only if `proc` is still the
+   * entry registered for `channelId`. A process's close/error handlers are
+   * bound at spawn time; if that channelId has since been reassigned to a
+   * different process (see swapChannel), the old handler must not tear down
+   * the new process's registration.
+   */
+  private _cleanupIfCurrent(channelId: string, proc: ProcessHandle): void {
+    if (this.processes.get(channelId) !== proc) return;
     this.processes.delete(channelId);
     this.router.unregister(channelId);
   }
