@@ -31,6 +31,7 @@ type SpawnFn = (cmd: string, args: string[], opts: SpawnOptions) => ProcessHandl
  */
 export class ClaudeProcessManager {
   private readonly processes = new Map<string, ProcessHandle>();
+  private readonly swapping = new Set<string>();
 
   constructor(
     private readonly binaryProvider: () => Promise<string>,
@@ -60,13 +61,29 @@ export class ClaudeProcessManager {
 
   /**
    * Atomically replace the process behind an already-active channelId with a
-   * freshly spawned one, without ever letting `this.processes` observe a gap
-   * for that key. Unlike spawnClaude, this does not throw if the channel is
-   * already active — replacing an active channel is the whole point.
+   * freshly spawned one. Guarantees, across the whole swap window (including
+   * the `await` inside `_launchProcess` while the binary resolves — which can
+   * be a real download on first use, per spawnClaude's doc comment):
    *
-   * The old process (if any) is killed after the new one is registered; its
-   * close/error handlers are bound to the old ProcessHandle instance, so
-   * `_cleanupIfCurrent` no-ops for them once the map holds the new instance.
+   *  - `this.processes` never observes a gap for that key.
+   *  - The channel's router registration is never torn down. Without this,
+   *    if the OLD process's 'close'/'error' event fires while the new one is
+   *    still being launched, `_cleanupIfCurrent` would see the old process as
+   *    still "current" (the map hasn't flipped yet) and call
+   *    `router.unregister(channelId)` — and nothing ever re-registers it, so
+   *    the swapped-in process's stdout would be silently dropped forever by
+   *    `ChannelRouter.route()`'s no-op-on-unknown-handler behavior.
+   *
+   * `swapping` guards exactly that window: it's set before the launch begins
+   * and cleared immediately after `this.processes.set()` — not after
+   * `oldProc.kill()` — because once the map holds the new process, the
+   * existing identity check in `_cleanupIfCurrent` already correctly no-ops
+   * for the old process's later-arriving close/error event; the flag must
+   * not be held any longer than the window it actually protects.
+   *
+   * Unlike spawnClaude, this does not throw if the channel is already active
+   * — replacing an active channel is the whole point. The old process (if
+   * any) is killed after the new one is registered.
    */
   async swapChannel(
     channelId: string,
@@ -75,9 +92,14 @@ export class ClaudeProcessManager {
     env?: NodeJS.ProcessEnv,
   ): Promise<void> {
     const oldProc = this.processes.get(channelId);
+    this.swapping.add(channelId);
 
-    const proc = await this._launchProcess(channelId, options, cwd, env);
-    this.processes.set(channelId, proc);
+    try {
+      const proc = await this._launchProcess(channelId, options, cwd, env);
+      this.processes.set(channelId, proc);
+    } finally {
+      this.swapping.delete(channelId);
+    }
 
     if (oldProc !== undefined) {
       oldProc.kill();
@@ -178,9 +200,19 @@ export class ClaudeProcessManager {
    * bound at spawn time; if that channelId has since been reassigned to a
    * different process (see swapChannel), the old handler must not tear down
    * the new process's registration.
+   *
+   * Also no-ops while a swap is in flight for this channelId, even though
+   * the identity check above would otherwise say "still current" — the old
+   * process is still the map entry until swapChannel's `this.processes.set()`
+   * runs, so without this guard a close/error firing mid-swap (e.g. while
+   * still awaiting binary resolution) would unregister the channel from the
+   * router. Nothing ever re-registers it, so the incoming process's stdout
+   * would be silently dropped forever. swapChannel owns this channel's
+   * lifecycle for the duration of the flag.
    */
   private _cleanupIfCurrent(channelId: string, proc: ProcessHandle): void {
     if (this.processes.get(channelId) !== proc) return;
+    if (this.swapping.has(channelId)) return;
     this.processes.delete(channelId);
     this.router.unregister(channelId);
   }

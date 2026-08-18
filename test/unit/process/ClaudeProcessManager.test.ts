@@ -24,6 +24,15 @@ const { mockProcess, mockSpawn } = vi.hoisted(() => {
   // existing tests that assert against `mockProcess.<spy>` keep working. This
   // is required for object-identity-sensitive assertions (e.g. swapChannel's
   // old-vs-new process identity check) to be meaningful under the mock.
+  //
+  // Caveat: because those nested spies are shared, `triggerStdoutData()` /
+  // `triggerProcessEvent()` replay to EVERY listener registered by EVERY
+  // process spawned so far in a test — once a test does more than one spawn
+  // (e.g. spawnClaude then swapChannel), that fires both the old and the new
+  // process's handlers. A test asserting something is wired to the *new*
+  // process specifically must target `mockProcess.stdout.on.mock.calls.at(-1)`
+  // (the most-recently-registered listener) rather than replaying broadly, or
+  // it will stay green even if the new process's own wiring is broken.
   const mockSpawn = vi.fn(() => ({ ...proc }));
   return { mockProcess: proc, mockSpawn };
 });
@@ -305,7 +314,16 @@ describe('ClaudeProcessManager', () => {
       await manager.spawnClaude('ch-1', {});
 
       await manager.swapChannel('ch-1', {});
-      triggerStdoutData(Buffer.from(JSON.stringify({ type: 'from-new-proc' }) + '\n'));
+      // Target only the most-recently-registered stdout listener (the new
+      // process's own). triggerStdoutData() would replay to BOTH the old and
+      // new process's listeners here (they share the mock's stdout.on spy),
+      // which would leave this test green even if _launchProcess never wired
+      // up the new process's stdout at all.
+      const newestStdoutOn = mockProcess.stdout.on.mock.calls.at(-1) as [
+        string,
+        (chunk: Buffer) => void,
+      ];
+      newestStdoutOn[1](Buffer.from(JSON.stringify({ type: 'from-new-proc' }) + '\n'));
 
       expect(handler).toHaveBeenCalledWith({ type: 'from-new-proc' });
     });
@@ -347,6 +365,62 @@ describe('ClaudeProcessManager', () => {
       const { manager } = makeManager();
       await manager.swapChannel('ch-1', {});
       expect(manager.hasChannel('ch-1')).toBe(true);
+    });
+
+    it('a close/error event on the OLD process during the swap-in-flight window does not unregister the router', async () => {
+      const router = new ChannelRouter();
+      const handler = vi.fn();
+      router.register('ch-1', handler);
+
+      // The provider auto-resolves on the FIRST call (the initial
+      // spawnClaude) but returns a controllable, not-yet-resolved promise on
+      // the SECOND call (the swap's own binary resolution) — real behavior,
+      // per spawnClaude's doc comment: the binary can be a real download on
+      // first use. This lets the test fire the old process's close handler
+      // while swapChannel is still awaiting, before this.processes.set() has
+      // run for the new process.
+      let callCount = 0;
+      let resolveSwapBinary: (binary: string) => void = () => {};
+      const provider = vi.fn(() => {
+        callCount += 1;
+        if (callCount === 1) return Promise.resolve('/usr/local/bin/claude');
+        return new Promise<string>((resolve) => {
+          resolveSwapBinary = resolve;
+        });
+      });
+
+      const manager = new ClaudeProcessManager(provider, router, mockLogger, mockSpawn as never);
+      await manager.spawnClaude('ch-1', {});
+      const oldHandlerCalls = mockProcess.on.mock.calls.slice();
+
+      const swapPromise = manager.swapChannel('ch-1', {});
+
+      // Fire the OLD process's close handler *during* the await window —
+      // the map still points at the old process at this instant, since
+      // swapChannel hasn't resolved the new binary yet.
+      for (const call of oldHandlerCalls as [string, (...a: unknown[]) => void][]) {
+        if (call[0] === 'close') call[1](0);
+      }
+
+      // Without the `swapping` guard, _cleanupIfCurrent would see the old
+      // process as still "current" (this.processes hasn't flipped yet) and
+      // call router.unregister('ch-1') right here, with nothing left to ever
+      // re-register it.
+      expect(manager.hasChannel('ch-1')).toBe(true);
+      router.route('ch-1', { type: 'mid-swap' });
+      expect(handler).toHaveBeenCalledWith({ type: 'mid-swap' });
+
+      resolveSwapBinary('/usr/local/bin/claude');
+      await swapPromise;
+
+      expect(manager.hasChannel('ch-1')).toBe(true);
+      const newestStdoutOn = mockProcess.stdout.on.mock.calls.at(-1) as [
+        string,
+        (chunk: Buffer) => void,
+      ];
+      newestStdoutOn[1](Buffer.from(JSON.stringify({ type: 'after-swap' }) + '\n'));
+
+      expect(handler).toHaveBeenCalledWith({ type: 'after-swap' });
     });
   });
 });
