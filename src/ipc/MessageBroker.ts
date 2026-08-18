@@ -128,6 +128,12 @@ export class MessageBroker {
   /** Correlates control_request/control_response over the CLI stdin/stdout. */
   private readonly control: ControlRequestManager;
   private readonly sessionRelayManager: ISessionRelayManager;
+  /** Per-channel counter, bumped on every REAL user-submitted turn. Lets an
+   * in-flight post-result usage refresh detect that a genuinely new turn
+   * started while it was awaiting its control round-trip, and drop its
+   * relay notification instead of racing that new turn (see
+   * `refreshContextUsage`). */
+  private readonly turnGenerations = new Map<string, number>();
 
   constructor(
     private readonly processManager: IClaudeProcessManager,
@@ -161,14 +167,24 @@ export class MessageBroker {
    * should only be true when this refresh follows a genuine turn completion (a
    * `result` stream event) — never for an on-demand refresh the webview requested
    * (e.g. opening the usage ring popover), which can happen mid-turn and must not
-   * be allowed to trigger a relay while a real response is still in flight. */
+   * be allowed to trigger a relay while a real response is still in flight.
+   *
+   * Even when notifyRelay is true, this is an async round-trip: the `result`
+   * event flips the webview's `running` state to false before this resolves,
+   * so a user can submit a genuinely new turn while it's in flight. Snapshot
+   * the channel's turn generation up front and only notify the relay manager
+   * if it's unchanged by the time the response lands — otherwise the delayed
+   * usage reading would relay a process that's now mid-turn again. */
   private async refreshContextUsage(channelId: string, notifyRelay = false): Promise<void> {
+    const generation = this.turnGenerations.get(channelId) ?? 0;
     try {
       const response = await this.control.send(channelId, 'get_context_usage');
       const usage = parseContextUsage(response);
       if (usage) {
         this.viewManager.broadcastMessage({ type: 'context_usage', channelId, usage });
-        if (notifyRelay) this.sessionRelayManager.onContextUsage(channelId, usage);
+        if (notifyRelay && generation === (this.turnGenerations.get(channelId) ?? 0)) {
+          this.sessionRelayManager.onContextUsage(channelId, usage);
+        }
       }
     } catch (err) {
       this.logger.info(`[MessageBroker] get_context_usage failed: ${String(err)}`);
@@ -188,6 +204,7 @@ export class MessageBroker {
           this.processManager.interruptClaude(msg.channelId);
           return;
         case 'control_request':
+          this.turnGenerations.set(msg.channelId, (this.turnGenerations.get(msg.channelId) ?? 0) + 1);
           this.processManager.sendUserMessage(msg.channelId, msg.text);
           return;
 
@@ -420,6 +437,7 @@ export class MessageBroker {
     // Reject any in-flight control requests immediately instead of letting them
     // hang until their 10s timeout after the channel is gone.
     this.control.dispose();
+    this.turnGenerations.delete(msg.channelId);
     this.sessionRelayManager.unregisterChannel(msg.channelId);
     void this.sessionManager.updateSession(msg.channelId, 'idle');
     this.viewManager.broadcastSessionStates();

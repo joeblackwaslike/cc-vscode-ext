@@ -508,6 +508,46 @@ describe('SessionRelayManager wiring', () => {
     );
   });
 
+  it('a delayed post-result usage response is dropped if a real new turn started before it resolved', async () => {
+    const { h, sessionRelayManager } = makeBrokerWithRelay();
+    h.dispatch({ type: 'launch_claude', channelId: 'ch-1' });
+    const routed = h.channelRouter.register.mock.calls[0][1] as (event: unknown) => void;
+
+    // A genuine turn completes; MessageBroker fires the post-result usage
+    // refresh and starts awaiting the control round-trip.
+    routed({ type: 'result', subtype: 'success', result: 'x' });
+
+    const writeCall = h.processManager.writeToChannel.mock.calls.find(
+      ([, data]) => (data as { request?: { subtype?: string } }).request?.subtype === 'get_context_usage',
+    );
+    expect(writeCall).toBeDefined();
+    const requestId = (writeCall![1] as { request_id: string }).request_id;
+
+    // Before that round-trip resolves, the user submits a genuinely new turn
+    // (now possible because `running` flipped false on the earlier result).
+    h.dispatch({ type: 'control_request', channelId: 'ch-1', requestId: 'req-new', text: 'new turn' });
+
+    // The delayed usage response now arrives, crossing the threshold.
+    routed({
+      type: 'control_response',
+      response: {
+        subtype: 'success',
+        request_id: requestId,
+        response: { maxTokens: 100_000, totalTokens: 80_000, percentage: 80, categories: [] },
+      },
+    });
+
+    // Usage is still broadcast to the webview...
+    await vi.waitFor(() =>
+      expect(h.viewManager.broadcastMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'context_usage', channelId: 'ch-1' }),
+      ),
+    );
+    // ...but the relay manager must NOT be notified: a real new turn is now in flight,
+    // and relaying now would inject the handoff into a process mid-turn.
+    expect(sessionRelayManager.onContextUsage).not.toHaveBeenCalled();
+  });
+
   it('get_relay_threshold posts the current threshold', () => {
     const { h, sessionRelayManager } = makeBrokerWithRelay();
     h.dispatch({ type: 'get_relay_threshold', channelId: 'ch-1' });
