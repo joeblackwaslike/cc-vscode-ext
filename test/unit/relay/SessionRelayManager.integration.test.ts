@@ -131,15 +131,16 @@ describe('SessionRelayManager defers while a control request is pending (real sp
       expect(relayLogger.error).not.toHaveBeenCalled();
       expect(control.hasPending('ch')).toBe(true); // still unresolved — never fabricated a response
     } finally {
-      control.dispose();
-      // pm.closeChannel('ch') runs here, BEFORE the assertions below, and
-      // unconditionally — this test spawns a REAL child process
-      // (fake-claude.mjs). If either expect() below throws (exactly the
-      // failure mode this block exists to catch — an unexpected rejection
-      // reason), the process must still be torn down; leaving
-      // pm.closeChannel() after the assertions would leak that real spawned
-      // child on any such failure and risk a hung vitest worker.
+      // pm.closeChannel('ch') runs first, before control.dispose() and the
+      // assertions below, and unconditionally — this test spawns a REAL
+      // child process (fake-claude.mjs). If dispose() or either expect()
+      // below throws (exactly the failure mode this block exists to catch
+      // — an unexpected rejection reason), the process must still be torn
+      // down; running closeChannel() after any of those would leak that
+      // real spawned child on any such failure and risk a hung vitest
+      // worker.
       pm.closeChannel('ch');
+      control.dispose();
       // `dispose()` above rejects the pending control_send synchronously;
       // await its (already-swallowed-into-a-variable) settlement so the
       // assertion below observes the final reason. Only skipped if the
