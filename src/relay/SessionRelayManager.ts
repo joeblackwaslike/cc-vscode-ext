@@ -5,6 +5,17 @@ import type { ClaudeStreamEvent } from '../types/process';
 import { HANDOFF_SYSTEM_PROMPT } from './handoffPrompt';
 
 const DEFAULT_THRESHOLD = 70;
+// captureNextResult bounds an LLM generation turn (the handoff/reseed turns),
+// not a CLI control-protocol RPC — unlike ControlRequest.ts's 10s default,
+// which bounds a sub-second round-trip. The handoff prompt (handoffPrompt.ts)
+// asks for a thorough summary of a conversation already at >=70% of the
+// context window; prefill alone can exceed 10s, with output adding tens of
+// seconds more. A short timeout here fires on essentially every real relay,
+// which (a) lets the abandoned turn's later `result` leak into the user's
+// transcript once `relaying` is cleared, since MessageBroker's suppression
+// gate no longer applies, and (b) can trigger a second handoff prompt with no
+// staleness guard to catch it. 180s comfortably bounds a full generation turn.
+const DEFAULT_TIMEOUT_MS = 180_000;
 
 export interface IRelayProcessManager {
   sendUserMessage(channelId: string, text: string): void;
@@ -37,6 +48,7 @@ interface CapturedResult {
 interface PendingCapture {
   resolve: (result: CapturedResult) => void;
   reject: (err: Error) => void;
+  timer: ReturnType<typeof setTimeout>;
 }
 
 /**
@@ -58,6 +70,7 @@ export class SessionRelayManager {
     private readonly control: IRelayControlRequestManager,
     private readonly viewManager: IRelayViewManager,
     private readonly logger: ILogger,
+    private readonly timeoutMs: number = DEFAULT_TIMEOUT_MS,
   ) {}
 
   /** Record how a channel was launched, so a later relay knows how to respawn it. */
@@ -86,6 +99,7 @@ export class SessionRelayManager {
     const pending = this.pendingCaptures.get(channelId);
     if (pending) {
       this.pendingCaptures.delete(channelId);
+      clearTimeout(pending.timer);
       pending.reject(new Error(`channel "${channelId}" closed`));
     }
   }
@@ -145,6 +159,7 @@ export class SessionRelayManager {
     const pending = this.pendingCaptures.get(channelId);
     if (!pending) return;
     this.pendingCaptures.delete(channelId);
+    clearTimeout(pending.timer);
 
     const sessionId = typeof event.session_id === 'string' ? event.session_id : undefined;
     if (event.subtype === 'success' && typeof event.result === 'string') {
@@ -156,7 +171,37 @@ export class SessionRelayManager {
 
   private captureNextResult(channelId: string): Promise<CapturedResult> {
     return new Promise((resolve, reject) => {
-      this.pendingCaptures.set(channelId, { resolve, reject });
+      const timer = setTimeout(() => {
+        // A swapChannel() between this timer being set and firing can have
+        // registered a different (e.g. reseed) capture for the same
+        // channelId — only delete the map entry if it's still the one this
+        // timer belongs to, so a stale timer can't clobber a live capture.
+        //
+        // reject() below runs UNCONDITIONALLY, even when this timer is
+        // stale — that's deliberate, not an oversight. `reject` is this
+        // specific captureNextResult() call's own closure-captured
+        // function: calling it can only ever settle THIS call's promise,
+        // never a newer capture's, regardless of what the map currently
+        // holds. A prior round guarded reject() with the same identity
+        // check as the delete, on the theory that an unconditional reject
+        // could reach the live capture — it can't, so that guard bought
+        // nothing, and it introduced a real regression: a superseded
+        // promise that's left permanently unsettled is a latent infinite
+        // hang for whatever's awaiting it, since relay() awaits every
+        // captureNextResult() call. Every real code path that removes a
+        // pendingCaptures entry today (handleStreamEvent(),
+        // unregisterChannel(), and this timer itself) also calls
+        // clearTimeout(), so a stale timer for a since-superseded capture
+        // is unreachable in practice — but "always settle, never hang" is
+        // the safer invariant to hold regardless, in case a future edit
+        // changes that.
+        const current = this.pendingCaptures.get(channelId);
+        if (current?.timer === timer) {
+          this.pendingCaptures.delete(channelId);
+        }
+        reject(new Error(`relay turn on channel "${channelId}" timed out`));
+      }, this.timeoutMs);
+      this.pendingCaptures.set(channelId, { resolve, reject, timer });
     });
   }
 

@@ -497,7 +497,7 @@ describe('ClaudeProcessManager', () => {
       expect(handler).not.toHaveBeenCalled();
     });
 
-    it('closeChannel() requested during a swap whose launch fails still leaves the channel fully cleaned up', async () => {
+    it('closeChannel() requested during a swap whose launch fails kills and cleans up an otherwise-healthy old process (case 2 of the three-case contract)', async () => {
       const router = new ChannelRouter();
       const handler = vi.fn();
       router.register('ch-1', handler);
@@ -521,13 +521,221 @@ describe('ClaudeProcessManager', () => {
       rejectSwapBinary(new Error('binary resolution failed'));
       await expect(swapPromise).rejects.toThrow('binary resolution failed');
 
-      // The old process (never overwritten, since the launch failed before
-      // this.processes.set() ran) must have been killed and cleaned up by
-      // the deferred close — not left registered with hasChannel() lying.
+      // oldProc is healthy throughout this test — its own close/error
+      // handler is never fired (unlike the compound-failure test above,
+      // which fires it to set up case 1). That makes the ONLY reason it
+      // gets killed and cleaned up here the explicit closeChannel() call
+      // made above while the swap was still in flight: case 2 of the
+      // three-case contract documented on swapChannel() (a close was
+      // requested during the swap window, so it's honored even though the
+      // swap attempt itself failed). Assert `logger.info` was never called
+      // with the "closed" message oldProc's own 'close' handler would log,
+      // so the "healthy" precondition for case 2 is explicit here rather
+      // than merely implied by the test never triggering that handler.
+      expect(mockLogger.info).not.toHaveBeenCalled();
       expect(manager.hasChannel('ch-1')).toBe(false);
       expect(mockProcess.kill).toHaveBeenCalled();
       router.route('ch-1', { type: 'after-failed-swap' });
       expect(handler).not.toHaveBeenCalled();
+    });
+
+    it('leaves a still-healthy old process running and routable when _launchProcess throws mid-swap', async () => {
+      const router = new ChannelRouter();
+      const handler = vi.fn();
+      router.register('ch-1', handler);
+
+      let callCount = 0;
+      let rejectSwapBinary: (err: Error) => void = () => {};
+      const provider = vi.fn(() => {
+        callCount += 1;
+        if (callCount === 1) return Promise.resolve('/usr/local/bin/claude');
+        return new Promise<string>((_resolve, reject) => {
+          rejectSwapBinary = reject;
+        });
+      });
+
+      const manager = new ClaudeProcessManager(provider, router, mockLogger, mockSpawn as never);
+      await manager.spawnClaude('ch-1', {});
+      const oldProcKill = mockProcess.kill;
+
+      const swapPromise = manager.swapChannel('ch-1', {});
+      rejectSwapBinary(new Error('binary resolution failed'));
+
+      // The error must still propagate to the caller.
+      await expect(swapPromise).rejects.toThrow('binary resolution failed');
+
+      // The old process never exited on its own — a failed swap attempt must
+      // not kill a perfectly healthy session process. Only the swap attempt
+      // failed; the session itself must remain usable.
+      expect(oldProcKill).not.toHaveBeenCalled();
+
+      // The channel must remain registered and routable to the healthy old
+      // process, exactly as it was before the failed swap attempt.
+      expect(manager.hasChannel('ch-1')).toBe(true);
+      router.route('ch-1', { type: 'still-routed-after-failed-swap' });
+      expect(handler).toHaveBeenCalledWith({ type: 'still-routed-after-failed-swap' });
+    });
+
+    it('cleans up the old process\'s stale registration when it already exited on its own before the subsequent launch also fails (compound failure)', async () => {
+      const router = new ChannelRouter();
+      const handler = vi.fn();
+      router.register('ch-1', handler);
+
+      let callCount = 0;
+      let rejectSwapBinary: (err: Error) => void = () => {};
+      const provider = vi.fn(() => {
+        callCount += 1;
+        if (callCount === 1) return Promise.resolve('/usr/local/bin/claude');
+        return new Promise<string>((_resolve, reject) => {
+          rejectSwapBinary = reject;
+        });
+      });
+
+      const manager = new ClaudeProcessManager(provider, router, mockLogger, mockSpawn as never);
+      await manager.spawnClaude('ch-1', {});
+      const oldHandlerCalls = mockProcess.on.mock.calls.slice();
+      const oldProcKill = mockProcess.kill;
+
+      const swapPromise = manager.swapChannel('ch-1', {});
+
+      // The old process exits on its own WHILE the swap is still in-flight
+      // (binary resolution hasn't settled yet). The `swapping` guard
+      // suppresses real cleanup at this point (see _cleanupIfCurrent's doc
+      // comment) — this is the "compound failure" scenario
+      // session-relay-design-gyf originally documented: nothing will ever
+      // re-trigger cleanup for this stale entry once the swap also fails,
+      // since close/error events don't refire.
+      for (const call of oldHandlerCalls as [string, (...a: unknown[]) => void][]) {
+        if (call[0] === 'close') call[1](0);
+      }
+      expect(manager.hasChannel('ch-1')).toBe(true); // cleanup was suppressed, not skipped
+
+      rejectSwapBinary(new Error('binary resolution failed'));
+
+      // The error must propagate to the caller (SessionRelayManager relies on
+      // this to know the relay attempt failed) rather than being swallowed.
+      await expect(swapPromise).rejects.toThrow('binary resolution failed');
+
+      // The already-dead old process is not killed again — it already
+      // exited on its own.
+      expect(oldProcKill).not.toHaveBeenCalled();
+
+      // But its now-stale bookkeeping (map entry + router registration) must
+      // be torn down here, since nothing else will ever re-trigger cleanup
+      // for it now that the launch has also failed.
+      expect(manager.hasChannel('ch-1')).toBe(false);
+      router.route('ch-1', { type: 'after-compound-failure' });
+      expect(handler).not.toHaveBeenCalled();
+    });
+
+    it('handles the fourth reachable combination: oldProc already exited on its own AND a close was explicitly requested, then the launch also fails', async () => {
+      const router = new ChannelRouter();
+      const handler = vi.fn();
+      router.register('ch-1', handler);
+
+      let callCount = 0;
+      let rejectSwapBinary: (err: Error) => void = () => {};
+      const provider = vi.fn(() => {
+        callCount += 1;
+        if (callCount === 1) return Promise.resolve('/usr/local/bin/claude');
+        return new Promise<string>((_resolve, reject) => {
+          rejectSwapBinary = reject;
+        });
+      });
+
+      const manager = new ClaudeProcessManager(provider, router, mockLogger, mockSpawn as never);
+      await manager.spawnClaude('ch-1', {});
+      const oldHandlerCalls = mockProcess.on.mock.calls.slice();
+      const oldProcKill = mockProcess.kill;
+
+      const swapPromise = manager.swapChannel('ch-1', {});
+
+      // oldProc exits on its own while the swap is still in flight — same
+      // setup as the compound-failure test above, landing it in
+      // exitedProcesses while the `swapping` guard suppresses real cleanup.
+      for (const call of oldHandlerCalls as [string, (...a: unknown[]) => void][]) {
+        if (call[0] === 'close') call[1](0);
+      }
+      expect(manager.hasChannel('ch-1')).toBe(true); // cleanup suppressed, not skipped
+
+      // A close is ALSO explicitly requested for the channel while the swap
+      // is still in flight — deferred (not acted on immediately) since
+      // `swapping` is still held for this channelId.
+      manager.closeChannel('ch-1');
+      expect(oldProcKill).not.toHaveBeenCalled();
+
+      rejectSwapBinary(new Error('binary resolution failed'));
+      await expect(swapPromise).rejects.toThrow('binary resolution failed');
+
+      // Both case 1 (already-exited) and case 2 (deferred close) apply to
+      // the same oldProc here. The failure-path `if (!alreadyExited) {
+      // oldProc.kill(); }` guard must not kill it redundantly — it's
+      // already dead, so no kill call is needed or made, whether from
+      // closeChannel()'s deferred request or from this failure-path
+      // cleanup. Only the map/router cleanup needs to happen.
+      expect(oldProcKill).not.toHaveBeenCalled();
+      expect(manager.hasChannel('ch-1')).toBe(false);
+      router.route('ch-1', { type: 'after-combined-failure' });
+      expect(handler).not.toHaveBeenCalled();
+    });
+
+    it('an overlapping second swapChannel() call is not left unprotected when the first call finishes first', async () => {
+      const router = new ChannelRouter();
+      const handler = vi.fn();
+      router.register('ch-1', handler);
+
+      // Three provider calls: (1) the initial spawnClaude, auto-resolved;
+      // (2) the first swap ("call A"), auto-resolved so it completes while
+      // (3) the second swap ("call B"), started immediately after A without
+      // awaiting it, stays controllably pending — reproducing two genuinely
+      // overlapping swapChannel() calls for the same channelId.
+      let callCount = 0;
+      let resolveB: (binary: string) => void = () => {};
+      const provider = vi.fn(() => {
+        callCount += 1;
+        if (callCount <= 2) return Promise.resolve('/usr/local/bin/claude');
+        return new Promise<string>((resolve) => {
+          resolveB = resolve;
+        });
+      });
+
+      const manager = new ClaudeProcessManager(provider, router, mockLogger, mockSpawn as never);
+      await manager.spawnClaude('ch-1', {});
+
+      const swapAPromise = manager.swapChannel('ch-1', {});
+      const swapBPromise = manager.swapChannel('ch-1', {});
+
+      // Let call A's auto-resolved provider promise settle and its `finally`
+      // run, while call B is still awaiting its own (controllable) binary
+      // resolution.
+      await swapAPromise;
+
+      // Fire a close/error event on the process call A just installed, while
+      // call B is still mid-launch. Without the per-call token, call A's
+      // `finally` would have unconditionally cleared the shared `swapping`
+      // guard, so this would be treated as "no swap in flight" and would
+      // unregister the router — with nothing left to ever re-register it
+      // once call B lands.
+      const procAOnCalls = mockProcess.on.mock.calls.slice();
+      for (const call of procAOnCalls as [string, (...a: unknown[]) => void][]) {
+        if (call[0] === 'close') call[1](0);
+      }
+
+      expect(manager.hasChannel('ch-1')).toBe(true);
+      router.route('ch-1', { type: 'mid-second-swap' });
+      expect(handler).toHaveBeenCalledWith({ type: 'mid-second-swap' });
+
+      resolveB('/usr/local/bin/claude');
+      await swapBPromise;
+
+      // Call B's own completion must still tear the guard down normally.
+      expect(manager.hasChannel('ch-1')).toBe(true);
+      const newestStdoutOn = mockProcess.stdout.on.mock.calls.at(-1) as [
+        string,
+        (chunk: Buffer) => void,
+      ];
+      newestStdoutOn[1](Buffer.from(JSON.stringify({ type: 'after-second-swap' }) + '\n'));
+      expect(handler).toHaveBeenCalledWith({ type: 'after-second-swap' });
     });
   });
 });

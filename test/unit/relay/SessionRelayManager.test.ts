@@ -262,6 +262,165 @@ describe('SessionRelayManager', () => {
     });
   });
 
+  describe('captureNextResult() timeout', () => {
+    it('times out a relay turn that never emits a result event', async () => {
+      vi.useFakeTimers();
+      try {
+        const { relay, sendUserMessage, logger } = makeFakes();
+        relay.registerLaunch('ch-1', {}, '/work');
+        relay.onContextUsage('ch-1', usage(80));
+        expect(sendUserMessage).toHaveBeenCalledWith('ch-1', HANDOFF_SYSTEM_PROMPT);
+
+        // The handoff turn never emits a result event, so the capture promise
+        // will timeout after DEFAULT_TIMEOUT_MS (180 seconds — an LLM
+        // generation turn, not a CLI control-protocol RPC; see the constant's
+        // doc comment in SessionRelayManager.ts). Advance timers to exceed
+        // that timeout.
+        await vi.advanceTimersByTimeAsync(181_000);
+
+        // The timeout should reject the capture, causing relay() to catch the
+        // error and log it.
+        await vi.waitFor(() => expect(logger.error).toHaveBeenCalled());
+
+        // After the relay fails due to timeout, the relaying flag should be
+        // released so future relay attempts are possible.
+        expect(relay.isRelaying('ch-1')).toBe(false);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('clears the timeout if a result arrives before expiry', async () => {
+      vi.useFakeTimers();
+      try {
+        const { relay, swapChannel, sendUserMessage, broadcastMessage } = makeFakes();
+        relay.registerLaunch('ch-1', {}, '/work');
+        relay.onContextUsage('ch-1', usage(80));
+
+        // Advance time partway, but not past the timeout.
+        await vi.advanceTimersByTimeAsync(5_000);
+
+        // Result arrives before timeout.
+        relay.handleStreamEvent('ch-1', {
+          type: 'result', subtype: 'success', result: 'HANDOFF', session_id: 'old-sess',
+        });
+
+        // The promise should resolve immediately and the relay should proceed to
+        // swapChannel. If the timeout wasn't cleared, it would fire later and
+        // interfere with the relay flow. By checking that swapChannel was called
+        // (which means the relay reached that point), we verify the timeout was
+        // properly cleared and didn't interfere.
+        await vi.waitFor(() => expect(swapChannel).toHaveBeenCalled());
+        await vi.waitFor(() => expect(sendUserMessage).toHaveBeenCalledTimes(2));
+
+        // Now advance to t=182_000: past t=180_000, where the ORIGINAL
+        // handoff timer would have fired had `clearTimeout(pending.timer)`
+        // in handleStreamEvent() been dropped (it started at t=0, deadline
+        // DEFAULT_TIMEOUT_MS=180_000) — but comfortably short of t=185_000,
+        // the reseed capture's own legitimate deadline (its timer started at
+        // t=5_000, when swapChannel resolved and the reseed capture was
+        // registered), so this advance doesn't trip a real timeout of its
+        // own. If that clearTimeout call were ever removed, the stale
+        // handoff timer would fire here and — without the identity check
+        // added in captureNextResult()'s timer callback (fix for the
+        // "timer callback deletes the map entry without an identity check"
+        // finding) — would delete the *reseed* capture's map entry, causing
+        // the reseed result fed below to hit handleStreamEvent()'s "no
+        // pending capture" no-op path instead of completing the relay.
+        await vi.advanceTimersByTimeAsync(177_000);
+
+        // Reseed turn's result arrives; the relay should still complete
+        // normally, proving the stale first-turn timer never interfered.
+        relay.handleStreamEvent('ch-1', {
+          type: 'result', subtype: 'success', result: 'ack', session_id: 'new-sess',
+        });
+
+        await vi.waitFor(() =>
+          expect(broadcastMessage).toHaveBeenCalledWith({
+            type: 'relay_started',
+            channelId: 'ch-1',
+            fromSessionId: 'old-sess',
+            toSessionId: 'new-sess',
+          }),
+        );
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('a stale timer for an already-replaced capture never touches the newer capture, but still settles its OWN promise rather than hanging forever', async () => {
+      vi.useFakeTimers();
+      try {
+        const { relay } = makeFakes();
+
+        interface PendingCapture {
+          resolve: (result: { text: string; sessionId: string | undefined }) => void;
+          reject: (err: Error) => void;
+          timer: ReturnType<typeof setTimeout>;
+        }
+        const internals = relay as unknown as {
+          captureNextResult(channelId: string): Promise<{ text: string; sessionId: string | undefined }>;
+          pendingCaptures: Map<string, PendingCapture>;
+        };
+
+        // Register a real capture (and its real timer) directly, bypassing
+        // relay()'s own flow so this test targets only captureNextResult()'s
+        // timer callback in isolation.
+        const staleCapture = internals.captureNextResult('ch-1');
+        let staleSettled: 'pending' | 'rejected' = 'pending';
+        let staleRejection: unknown;
+        staleCapture.catch((err: unknown) => {
+          staleSettled = 'rejected';
+          staleRejection = err;
+        });
+
+        // Simulate a newer capture (e.g. the reseed turn's) having replaced
+        // the map entry for the same channelId while the original timer is
+        // still outstanding — the exact race the identity check guards
+        // against.
+        const freshResolve = vi.fn();
+        const freshReject = vi.fn();
+        const freshTimer = setTimeout(() => {}, 999_999);
+        internals.pendingCaptures.set('ch-1', { resolve: freshResolve, reject: freshReject, timer: freshTimer });
+
+        // Advance past the ORIGINAL (now-stale) timer's deadline.
+        await vi.advanceTimersByTimeAsync(181_000);
+        await Promise.resolve(); // flush the stale promise's catch() microtask
+
+        // The stale timer must not touch the newer capture's map entry, or
+        // call either of its functions, at all.
+        expect(freshReject).not.toHaveBeenCalled();
+        expect(freshResolve).not.toHaveBeenCalled();
+        expect(internals.pendingCaptures.get('ch-1')).toEqual({
+          resolve: freshResolve,
+          reject: freshReject,
+          timer: freshTimer,
+        });
+
+        // ...but it MUST still settle its OWN (stale) promise instead of
+        // leaving it permanently pending. Each captureNextResult() call
+        // owns its own resolve/reject pair via closure, so calling this
+        // timer's reject() can only ever settle the promise created by
+        // THIS call — never the fresh capture's — regardless of what's
+        // currently in the map. This is the assertion that actually
+        // distinguishes this test from the old code shape: a prior version
+        // of this fix guarded reject() itself behind the same identity
+        // check as the map delete, which left a superseded capture's
+        // promise permanently unsettled — a latent infinite hang for
+        // relay(), which awaits every captureNextResult() call. If reject()
+        // were ever guarded that way again, staleSettled would stay
+        // 'pending' here and this assertion would fail.
+        expect(staleSettled).toBe('rejected');
+        expect(staleRejection).toBeInstanceOf(Error);
+        expect((staleRejection as Error).message).toBe('relay turn on channel "ch-1" timed out');
+
+        clearTimeout(freshTimer);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
   describe('relay() liveness checks between capture points (Bug 2)', () => {
     it('aborts cleanly, without calling swapChannel, if the channel is closed right after the handoff response resolves', async () => {
       const { relay, sendUserMessage, swapChannel } = makeFakes();

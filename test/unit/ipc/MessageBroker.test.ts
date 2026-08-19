@@ -108,6 +108,36 @@ describe('MessageBroker', () => {
       h.dispatch({ type: 'close_channel', channelId: 'ch-1' });
       expect(h.viewManager.broadcastSessionStates).toHaveBeenCalled();
     });
+
+    it('disposes pending control requests so they reject immediately', async () => {
+      const { h } = makebroker();
+      // Dispatch get_context_usage to create a pending control request.
+      // This starts an async control round-trip that would normally timeout
+      // after 10 seconds if no response arrives.
+      h.dispatch({ type: 'get_context_usage', channelId: 'ch-1' });
+
+      // Immediately close the channel. This should trigger dispose() on the
+      // ControlRequestManager, rejecting all pending requests with
+      // 'control channel disposed' instead of letting them hang.
+      h.dispatch({ type: 'close_channel', channelId: 'ch-1' });
+
+      // The pending control request promise will reject. refreshContextUsage
+      // catches the error and logs it via logger.info().
+      // Wait for that async microtask to complete.
+      await vi.waitFor(() =>
+        expect(h.logger.info).toHaveBeenCalledWith(
+          expect.stringContaining('get_context_usage failed'),
+        ),
+      );
+
+      // Verify the error message includes the dispose message.
+      const calls = h.logger.info.mock.calls;
+      const errorCall = calls.find((c) =>
+        String(c[0]).includes('get_context_usage failed'),
+      );
+      expect(errorCall).toBeDefined();
+      expect(String(errorCall?.[0])).toContain('control channel disposed');
+    });
   });
 
   describe('interrupt_claude', () => {
