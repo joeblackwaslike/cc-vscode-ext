@@ -184,7 +184,9 @@ export class ClaudeProcessManager {
         }
       }
       this.closeRequested.delete(channelId);
-      throw launchError instanceof Error ? launchError : new Error(String(launchError));
+      throw launchError instanceof Error
+        ? launchError
+        : new Error(String(launchError), { cause: launchError });
     }
 
     // A close requested while the swap was in flight was deferred (see
