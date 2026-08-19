@@ -5,7 +5,17 @@ import type { ClaudeStreamEvent } from '../types/process';
 import { HANDOFF_SYSTEM_PROMPT } from './handoffPrompt';
 
 const DEFAULT_THRESHOLD = 70;
-const DEFAULT_TIMEOUT_MS = 10_000;
+// captureNextResult bounds an LLM generation turn (the handoff/reseed turns),
+// not a CLI control-protocol RPC — unlike ControlRequest.ts's 10s default,
+// which bounds a sub-second round-trip. The handoff prompt (handoffPrompt.ts)
+// asks for a thorough summary of a conversation already at >=70% of the
+// context window; prefill alone can exceed 10s, with output adding tens of
+// seconds more. A short timeout here fires on essentially every real relay,
+// which (a) lets the abandoned turn's later `result` leak into the user's
+// transcript once `relaying` is cleared, since MessageBroker's suppression
+// gate no longer applies, and (b) can trigger a second handoff prompt with no
+// staleness guard to catch it. 180s comfortably bounds a full generation turn.
+const DEFAULT_TIMEOUT_MS = 180_000;
 
 export interface IRelayProcessManager {
   sendUserMessage(channelId: string, text: string): void;
@@ -60,6 +70,7 @@ export class SessionRelayManager {
     private readonly control: IRelayControlRequestManager,
     private readonly viewManager: IRelayViewManager,
     private readonly logger: ILogger,
+    private readonly timeoutMs: number = DEFAULT_TIMEOUT_MS,
   ) {}
 
   /** Record how a channel was launched, so a later relay knows how to respawn it. */
@@ -161,9 +172,15 @@ export class SessionRelayManager {
   private captureNextResult(channelId: string): Promise<CapturedResult> {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
-        this.pendingCaptures.delete(channelId);
+        // A swapChannel() between this timer being set and firing can have
+        // registered a different (e.g. reseed) capture for the same
+        // channelId — only delete the entry if it's still the one this timer
+        // belongs to, so a stale timer can't clobber a live capture.
+        if (this.pendingCaptures.get(channelId)?.timer === timer) {
+          this.pendingCaptures.delete(channelId);
+        }
         reject(new Error(`relay turn on channel "${channelId}" timed out`));
-      }, DEFAULT_TIMEOUT_MS);
+      }, this.timeoutMs);
       this.pendingCaptures.set(channelId, { resolve, reject, timer });
     });
   }

@@ -272,9 +272,11 @@ describe('SessionRelayManager', () => {
         expect(sendUserMessage).toHaveBeenCalledWith('ch-1', HANDOFF_SYSTEM_PROMPT);
 
         // The handoff turn never emits a result event, so the capture promise
-        // will timeout after DEFAULT_TIMEOUT_MS (10 seconds).
-        // Advance timers to exceed that timeout.
-        await vi.advanceTimersByTimeAsync(11_000);
+        // will timeout after DEFAULT_TIMEOUT_MS (180 seconds — an LLM
+        // generation turn, not a CLI control-protocol RPC; see the constant's
+        // doc comment in SessionRelayManager.ts). Advance timers to exceed
+        // that timeout.
+        await vi.advanceTimersByTimeAsync(181_000);
 
         // The timeout should reject the capture, causing relay() to catch the
         // error and log it.
@@ -291,7 +293,7 @@ describe('SessionRelayManager', () => {
     it('clears the timeout if a result arrives before expiry', async () => {
       vi.useFakeTimers();
       try {
-        const { relay, swapChannel } = makeFakes();
+        const { relay, swapChannel, sendUserMessage, broadcastMessage } = makeFakes();
         relay.registerLaunch('ch-1', {}, '/work');
         relay.onContextUsage('ch-1', usage(80));
 
@@ -309,6 +311,38 @@ describe('SessionRelayManager', () => {
         // (which means the relay reached that point), we verify the timeout was
         // properly cleared and didn't interfere.
         await vi.waitFor(() => expect(swapChannel).toHaveBeenCalled());
+        await vi.waitFor(() => expect(sendUserMessage).toHaveBeenCalledTimes(2));
+
+        // Now advance to t=182_000: past t=180_000, where the ORIGINAL
+        // handoff timer would have fired had `clearTimeout(pending.timer)`
+        // in handleStreamEvent() been dropped (it started at t=0, deadline
+        // DEFAULT_TIMEOUT_MS=180_000) — but comfortably short of t=185_000,
+        // the reseed capture's own legitimate deadline (its timer started at
+        // t=5_000, when swapChannel resolved and the reseed capture was
+        // registered), so this advance doesn't trip a real timeout of its
+        // own. If that clearTimeout call were ever removed, the stale
+        // handoff timer would fire here and — without the identity check
+        // added in captureNextResult()'s timer callback (fix for the
+        // "timer callback deletes the map entry without an identity check"
+        // finding) — would delete the *reseed* capture's map entry, causing
+        // the reseed result fed below to hit handleStreamEvent()'s "no
+        // pending capture" no-op path instead of completing the relay.
+        await vi.advanceTimersByTimeAsync(177_000);
+
+        // Reseed turn's result arrives; the relay should still complete
+        // normally, proving the stale first-turn timer never interfered.
+        relay.handleStreamEvent('ch-1', {
+          type: 'result', subtype: 'success', result: 'ack', session_id: 'new-sess',
+        });
+
+        await vi.waitFor(() =>
+          expect(broadcastMessage).toHaveBeenCalledWith({
+            type: 'relay_started',
+            channelId: 'ch-1',
+            fromSessionId: 'old-sess',
+            toSessionId: 'new-sess',
+          }),
+        );
       } finally {
         vi.useRealTimers();
       }

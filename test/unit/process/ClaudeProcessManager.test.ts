@@ -522,8 +522,10 @@ describe('ClaudeProcessManager', () => {
       await expect(swapPromise).rejects.toThrow('binary resolution failed');
 
       // The old process (never overwritten, since the launch failed before
-      // this.processes.set() ran) must have been killed and cleaned up by
-      // the deferred close — not left registered with hasChannel() lying.
+      // this.processes.set() ran) is killed and cleaned up by swapChannel's
+      // own failure-path cleanup (mirroring closeChannel()), not by the
+      // deferred close — closeRequested is unconditionally cleared in the
+      // failure path rather than replayed, so hasChannel() must not lie.
       expect(manager.hasChannel('ch-1')).toBe(false);
       expect(mockProcess.kill).toHaveBeenCalled();
       router.route('ch-1', { type: 'after-failed-swap' });

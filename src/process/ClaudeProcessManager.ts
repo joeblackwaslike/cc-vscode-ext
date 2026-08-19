@@ -129,6 +129,13 @@ export class ClaudeProcessManager {
       // The swap never landed, so nothing else will ever kill or clean up
       // the old process (or replay a close request against it) — do it here
       // before rethrowing, the same way closeChannel() would.
+      //
+      // Must run after the finally block above, not inside a catch: at the
+      // point a catch block would run, `swapping` still holds this call's
+      // token, and `_cleanupIfCurrent()` no-ops while that guard is set (see
+      // the swapChannel doc comment above). Moving this cleanup into `catch`
+      // would look equivalent but silently break — `_cleanupIfCurrent(channelId,
+      // oldProc)` below would no-op instead of actually tearing the channel down.
       if (oldProc !== undefined) {
         oldProc.kill();
         this._cleanupIfCurrent(channelId, oldProc);

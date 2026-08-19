@@ -6,7 +6,6 @@ import { ChannelRouter } from '../../../src/process/ChannelRouter';
 import { ClaudeProcessManager } from '../../../src/process/ClaudeProcessManager';
 import { ControlRequestManager, type ControlResponseEvent } from '../../../src/process/ControlRequest';
 import { SessionRelayManager } from '../../../src/relay/SessionRelayManager';
-import { HANDOFF_SYSTEM_PROMPT } from '../../../src/relay/handoffPrompt';
 import type { ClaudeStreamEvent } from '../../../src/types/process';
 
 // End-to-end coverage for SessionRelayManager's "defer while a control
@@ -80,16 +79,26 @@ describe('SessionRelayManager defers while a control request is pending (real sp
 
       // Drive the real fixture into "needs approval" mid-turn: it emits a
       // control_request (subtype 'can_use_tool') instead of the usual
-      // assistant/result pair for this turn.
+      // assistant/result pair for this turn. This narratively illustrates "a
+      // tool call is blocked pending approval" and exercises the fixture's
+      // control_request support, but it is NOT what makes hasPending('ch')
+      // true below — the router only ever forwards control_response messages
+      // into the ControlRequestManager (see the router.register callback
+      // above), never incoming control_requests, so this emission is only
+      // pushed into `events` for observation.
       pm.sendUserMessage('ch', 'NEEDS_APPROVAL');
       await waitFor(() => events.some((e) => e.type === 'control_request'));
 
-      // Open the host-side control request this signals against the SAME
-      // real ControlRequestManager instance the relay checks. fake-claude.mjs
-      // deliberately never answers control_request lines (see its header
-      // comment), so this stays pending for the rest of the test — proving
-      // hasPending() reflects a genuine unresolved round-trip with the real
-      // child process, not a mock.
+      // This is what actually drives hasPending('ch') to true, independent
+      // of the control_request emitted above: a separate host-initiated
+      // control request against the SAME real ControlRequestManager instance
+      // the relay checks. fake-claude.mjs deliberately never answers
+      // control_request lines (see its header comment), so this stays
+      // pending for the rest of the test — proving hasPending() reflects a
+      // genuine unresolved round-trip with the real child process, not a
+      // mock. A future maintainer should not assume resolving/answering the
+      // fixture's own control_request above is what's needed to un-defer the
+      // relay — it isn't; this call is.
       void control.send('ch', 'get_context_usage').catch(() => {});
       expect(control.hasPending('ch')).toBe(true);
 
@@ -100,7 +109,11 @@ describe('SessionRelayManager defers while a control request is pending (real sp
       // through afterward.
       await new Promise((resolve) => setTimeout(resolve, 50));
 
-      expect(sendSpy).not.toHaveBeenCalledWith('ch', HANDOFF_SYSTEM_PROMPT);
+      // The spy is installed after the NEEDS_APPROVAL fixture turn, so
+      // asserting it was never called at all is strictly stronger than (and
+      // equally true as) checking it wasn't called with the handoff prompt
+      // specifically.
+      expect(sendSpy).not.toHaveBeenCalled();
       expect(relay.isRelaying('ch')).toBe(false);
       expect(relayLogger.error).not.toHaveBeenCalled();
       expect(control.hasPending('ch')).toBe(true); // still unresolved — never fabricated a response
