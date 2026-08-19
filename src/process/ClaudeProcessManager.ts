@@ -31,8 +31,9 @@ type SpawnFn = (cmd: string, args: string[], opts: SpawnOptions) => ProcessHandl
  */
 export class ClaudeProcessManager {
   private readonly processes = new Map<string, ProcessHandle>();
-  private readonly swapping = new Set<string>();
+  private readonly swapping = new Map<string, number>();
   private readonly closeRequested = new Set<string>();
+  private swapTokenSeq = 0;
 
   constructor(
     private readonly binaryProvider: () => Promise<string>,
@@ -75,12 +76,26 @@ export class ClaudeProcessManager {
    *    the swapped-in process's stdout would be silently dropped forever by
    *    `ChannelRouter.route()`'s no-op-on-unknown-handler behavior.
    *
-   * `swapping` guards exactly that window: it's set before the launch begins
-   * and cleared immediately after `this.processes.set()` — not after
-   * `oldProc.kill()` — because once the map holds the new process, the
-   * existing identity check in `_cleanupIfCurrent` already correctly no-ops
-   * for the old process's later-arriving close/error event; the flag must
-   * not be held any longer than the window it actually protects.
+   * `swapping` guards exactly that window: it holds a token for this call,
+   * set before the launch begins and cleared right after `this.processes.set()`
+   * — not after `oldProc.kill()` — because once the map holds the new
+   * process, the existing identity check in `_cleanupIfCurrent` already
+   * correctly no-ops for the old process's later-arriving close/error event;
+   * the guard must not be held any longer than the window it actually
+   * protects.
+   *
+   * The token (rather than a plain per-channel flag) makes two overlapping
+   * `swapChannel()` calls for the same channelId safe: each call only clears
+   * the guard if its own token is still the one stored for that channelId.
+   * If a second, later call for the same channel has since overwritten the
+   * entry, the first call's completion leaves it alone — it does not
+   * silently drop protection for a swap that's still mid-launch.
+   *
+   * If `_launchProcess` throws (the binary can't be resolved, or the launch
+   * otherwise fails), this method does not leave the old process orphaned:
+   * it kills `oldProc` and tears down its bookkeeping itself (mirroring
+   * `closeChannel()`) before rethrowing, rather than leaving a channel whose
+   * map entry silently outlives the process it points to.
    *
    * Unlike spawnClaude, this does not throw if the channel is already active
    * — replacing an active channel is the whole point. The old process (if
@@ -93,23 +108,42 @@ export class ClaudeProcessManager {
     env?: NodeJS.ProcessEnv,
   ): Promise<void> {
     const oldProc = this.processes.get(channelId);
-    this.swapping.add(channelId);
+    const token = ++this.swapTokenSeq;
+    this.swapping.set(channelId, token);
 
+    let launchFailed = false;
+    let launchError: unknown;
     try {
       const proc = await this._launchProcess(channelId, options, cwd, env);
       this.processes.set(channelId, proc);
+    } catch (err) {
+      launchFailed = true;
+      launchError = err;
     } finally {
-      this.swapping.delete(channelId);
-      // A close requested while the swap was in flight was deferred (see
-      // closeChannel()) rather than acted on immediately, since the process
-      // reference wasn't stable during that window. Act on it for real now,
-      // against whatever is CURRENTLY registered for this channel — the new
-      // process on success, or the still-registered old one if the launch
-      // above failed and this.processes.set() never ran.
-      if (this.closeRequested.has(channelId)) {
-        this.closeRequested.delete(channelId);
-        this.closeChannel(channelId);
+      if (this.swapping.get(channelId) === token) {
+        this.swapping.delete(channelId);
       }
+    }
+
+    if (launchFailed) {
+      // The swap never landed, so nothing else will ever kill or clean up
+      // the old process (or replay a close request against it) — do it here
+      // before rethrowing, the same way closeChannel() would.
+      if (oldProc !== undefined) {
+        oldProc.kill();
+        this._cleanupIfCurrent(channelId, oldProc);
+      }
+      this.closeRequested.delete(channelId);
+      throw launchError;
+    }
+
+    // A close requested while the swap was in flight was deferred (see
+    // closeChannel()) rather than acted on immediately, since the process
+    // reference wasn't stable during that window. Act on it for real now,
+    // against the newly-installed process.
+    if (this.closeRequested.has(channelId)) {
+      this.closeRequested.delete(channelId);
+      this.closeChannel(channelId);
     }
 
     if (oldProc !== undefined) {
@@ -202,8 +236,11 @@ export class ClaudeProcessManager {
    * leaving the map entry in place for `swapping`-guarded cleanup to skip —
    * and the swap would then go on to install a fresh process anyway,
    * resurrecting a channel the caller explicitly closed. Instead, record the
-   * request; swapChannel's `finally` block replays it for real once the swap
-   * settles, against whichever process is registered at that point.
+   * request; once the swap settles, swapChannel replays it for real against
+   * the newly-installed process on success, or (if the launch failed) the
+   * request is superseded by swapChannel's own failure-path cleanup of the
+   * old process, which it performs regardless of whether a close was
+   * requested.
    */
   closeChannel(channelId: string): void {
     if (this.swapping.has(channelId)) {
@@ -241,8 +278,10 @@ export class ClaudeProcessManager {
    * runs, so without this guard a close/error firing mid-swap (e.g. while
    * still awaiting binary resolution) would unregister the channel from the
    * router. Nothing ever re-registers it, so the incoming process's stdout
-   * would be silently dropped forever. swapChannel owns this channel's
-   * lifecycle for the duration of the flag.
+   * would be silently dropped forever. Whichever swapChannel() call's token
+   * is currently stored owns this channel's lifecycle for the duration of
+   * that entry — see swapChannel's doc comment for why a token, not a plain
+   * flag, is needed here.
    */
   private _cleanupIfCurrent(channelId: string, proc: ProcessHandle): void {
     if (this.processes.get(channelId) !== proc) return;
