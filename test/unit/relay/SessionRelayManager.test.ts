@@ -262,6 +262,59 @@ describe('SessionRelayManager', () => {
     });
   });
 
+  describe('captureNextResult() timeout', () => {
+    it('times out a relay turn that never emits a result event', async () => {
+      vi.useFakeTimers();
+      try {
+        const { relay, sendUserMessage, logger } = makeFakes();
+        relay.registerLaunch('ch-1', {}, '/work');
+        relay.onContextUsage('ch-1', usage(80));
+        expect(sendUserMessage).toHaveBeenCalledWith('ch-1', HANDOFF_SYSTEM_PROMPT);
+
+        // The handoff turn never emits a result event, so the capture promise
+        // will timeout after DEFAULT_TIMEOUT_MS (10 seconds).
+        // Advance timers to exceed that timeout.
+        await vi.advanceTimersByTimeAsync(11_000);
+
+        // The timeout should reject the capture, causing relay() to catch the
+        // error and log it.
+        await vi.waitFor(() => expect(logger.error).toHaveBeenCalled());
+
+        // After the relay fails due to timeout, the relaying flag should be
+        // released so future relay attempts are possible.
+        expect(relay.isRelaying('ch-1')).toBe(false);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('clears the timeout if a result arrives before expiry', async () => {
+      vi.useFakeTimers();
+      try {
+        const { relay, swapChannel } = makeFakes();
+        relay.registerLaunch('ch-1', {}, '/work');
+        relay.onContextUsage('ch-1', usage(80));
+
+        // Advance time partway, but not past the timeout.
+        await vi.advanceTimersByTimeAsync(5_000);
+
+        // Result arrives before timeout.
+        relay.handleStreamEvent('ch-1', {
+          type: 'result', subtype: 'success', result: 'HANDOFF', session_id: 'old-sess',
+        });
+
+        // The promise should resolve immediately and the relay should proceed to
+        // swapChannel. If the timeout wasn't cleared, it would fire later and
+        // interfere with the relay flow. By checking that swapChannel was called
+        // (which means the relay reached that point), we verify the timeout was
+        // properly cleared and didn't interfere.
+        await vi.waitFor(() => expect(swapChannel).toHaveBeenCalled());
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
   describe('relay() liveness checks between capture points (Bug 2)', () => {
     it('aborts cleanly, without calling swapChannel, if the channel is closed right after the handoff response resolves', async () => {
       const { relay, sendUserMessage, swapChannel } = makeFakes();

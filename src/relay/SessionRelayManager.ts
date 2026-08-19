@@ -5,6 +5,7 @@ import type { ClaudeStreamEvent } from '../types/process';
 import { HANDOFF_SYSTEM_PROMPT } from './handoffPrompt';
 
 const DEFAULT_THRESHOLD = 70;
+const DEFAULT_TIMEOUT_MS = 10_000;
 
 export interface IRelayProcessManager {
   sendUserMessage(channelId: string, text: string): void;
@@ -37,6 +38,7 @@ interface CapturedResult {
 interface PendingCapture {
   resolve: (result: CapturedResult) => void;
   reject: (err: Error) => void;
+  timer: ReturnType<typeof setTimeout>;
 }
 
 /**
@@ -86,6 +88,7 @@ export class SessionRelayManager {
     const pending = this.pendingCaptures.get(channelId);
     if (pending) {
       this.pendingCaptures.delete(channelId);
+      clearTimeout(pending.timer);
       pending.reject(new Error(`channel "${channelId}" closed`));
     }
   }
@@ -145,6 +148,7 @@ export class SessionRelayManager {
     const pending = this.pendingCaptures.get(channelId);
     if (!pending) return;
     this.pendingCaptures.delete(channelId);
+    clearTimeout(pending.timer);
 
     const sessionId = typeof event.session_id === 'string' ? event.session_id : undefined;
     if (event.subtype === 'success' && typeof event.result === 'string') {
@@ -156,7 +160,11 @@ export class SessionRelayManager {
 
   private captureNextResult(channelId: string): Promise<CapturedResult> {
     return new Promise((resolve, reject) => {
-      this.pendingCaptures.set(channelId, { resolve, reject });
+      const timer = setTimeout(() => {
+        this.pendingCaptures.delete(channelId);
+        reject(new Error(`relay turn on channel "${channelId}" timed out`));
+      }, DEFAULT_TIMEOUT_MS);
+      this.pendingCaptures.set(channelId, { resolve, reject, timer });
     });
   }
 
