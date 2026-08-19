@@ -174,11 +174,14 @@ export class SessionRelayManager {
       const timer = setTimeout(() => {
         // A swapChannel() between this timer being set and firing can have
         // registered a different (e.g. reseed) capture for the same
-        // channelId — only delete the entry if it's still the one this timer
-        // belongs to, so a stale timer can't clobber a live capture.
-        if (this.pendingCaptures.get(channelId)?.timer === timer) {
-          this.pendingCaptures.delete(channelId);
+        // channelId — only act if it's still the one this timer belongs to,
+        // so a stale timer can't clobber a live capture or reject a promise
+        // that's already been superseded.
+        const current = this.pendingCaptures.get(channelId);
+        if (current?.timer !== timer) {
+          return;
         }
+        this.pendingCaptures.delete(channelId);
         reject(new Error(`relay turn on channel "${channelId}" timed out`));
       }, this.timeoutMs);
       this.pendingCaptures.set(channelId, { resolve, reject, timer });

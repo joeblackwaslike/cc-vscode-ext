@@ -74,6 +74,10 @@ async function setup() {
 describe('SessionRelayManager defers while a control request is pending (real spawned process)', () => {
   it('does not send the handoff prompt while a real ControlRequestManager reports hasPending() for the channel', async () => {
     const { pm, control, relay, events, relayLogger } = await setup();
+    // Declared outside the try block so `finally` below (which asserts on
+    // the settled rejection reason) can still see them.
+    let controlSendRejection: unknown;
+    let controlSendPromise: Promise<void> | undefined;
     try {
       relay.registerLaunch('ch', {}, '/work');
 
@@ -99,7 +103,16 @@ describe('SessionRelayManager defers while a control request is pending (real sp
       // mock. A future maintainer should not assume resolving/answering the
       // fixture's own control_request above is what's needed to un-defer the
       // relay — it isn't; this call is.
-      void control.send('ch', 'get_context_usage').catch(() => {});
+      // Capture the rejection reason instead of swallowing it outright: an
+      // UNEXPECTED rejection (a real bug elsewhere) must still fail this
+      // test, not pass vacuously. The only EXPECTED rejection is the one
+      // `control.dispose()` produces in this test's own `finally` block
+      // below (ControlRequest.ts's `dispose()` rejects every still-pending
+      // request with `new Error('control channel disposed')`), which is
+      // asserted on explicitly there.
+      controlSendPromise = control.send('ch', 'get_context_usage').catch((err: unknown) => {
+        controlSendRejection = err;
+      });
       expect(control.hasPending('ch')).toBe(true);
 
       const sendSpy = vi.spyOn(pm, 'sendUserMessage');
@@ -119,6 +132,15 @@ describe('SessionRelayManager defers while a control request is pending (real sp
       expect(control.hasPending('ch')).toBe(true); // still unresolved — never fabricated a response
     } finally {
       control.dispose();
+      // `dispose()` above rejects the pending control_send synchronously;
+      // await its (already-swallowed-into-a-variable) settlement so the
+      // assertion below observes the final reason. Only skipped if the
+      // `try` block threw before `control.send()` even ran.
+      if (controlSendPromise) {
+        await controlSendPromise;
+        expect(controlSendRejection).toBeInstanceOf(Error);
+        expect((controlSendRejection as Error).message).toBe('control channel disposed');
+      }
       pm.closeChannel('ch');
     }
   }, 15000);

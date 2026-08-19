@@ -347,6 +347,55 @@ describe('SessionRelayManager', () => {
         vi.useRealTimers();
       }
     });
+
+    it('a stale timer for an already-replaced capture does not reject or delete the newer capture', async () => {
+      vi.useFakeTimers();
+      try {
+        const { relay } = makeFakes();
+
+        interface PendingCapture {
+          resolve: (result: { text: string; sessionId: string | undefined }) => void;
+          reject: (err: Error) => void;
+          timer: ReturnType<typeof setTimeout>;
+        }
+        const internals = relay as unknown as {
+          captureNextResult(channelId: string): Promise<{ text: string; sessionId: string | undefined }>;
+          pendingCaptures: Map<string, PendingCapture>;
+        };
+
+        // Register a real capture (and its real timer) directly, bypassing
+        // relay()'s own flow so this test targets only captureNextResult()'s
+        // timer callback in isolation.
+        const staleCapture = internals.captureNextResult('ch-1');
+        staleCapture.catch(() => {}); // this promise is intentionally left pending/unsettled by this test
+
+        // Simulate a newer capture (e.g. the reseed turn's) having replaced
+        // the map entry for the same channelId while the original timer is
+        // still outstanding — the exact race the identity check guards
+        // against.
+        const freshResolve = vi.fn();
+        const freshReject = vi.fn();
+        const freshTimer = setTimeout(() => {}, 999_999);
+        internals.pendingCaptures.set('ch-1', { resolve: freshResolve, reject: freshReject, timer: freshTimer });
+
+        // Advance past the ORIGINAL (now-stale) timer's deadline.
+        await vi.advanceTimersByTimeAsync(181_000);
+
+        // The stale timer must not touch the newer capture at all: no
+        // reject, and its map entry must survive untouched.
+        expect(freshReject).not.toHaveBeenCalled();
+        expect(freshResolve).not.toHaveBeenCalled();
+        expect(internals.pendingCaptures.get('ch-1')).toEqual({
+          resolve: freshResolve,
+          reject: freshReject,
+          timer: freshTimer,
+        });
+
+        clearTimeout(freshTimer);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   describe('relay() liveness checks between capture points (Bug 2)', () => {
