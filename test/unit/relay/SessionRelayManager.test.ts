@@ -348,7 +348,7 @@ describe('SessionRelayManager', () => {
       }
     });
 
-    it('a stale timer for an already-replaced capture does not reject or delete the newer capture', async () => {
+    it('a stale timer for an already-replaced capture never touches the newer capture, but still settles its OWN promise rather than hanging forever', async () => {
       vi.useFakeTimers();
       try {
         const { relay } = makeFakes();
@@ -367,7 +367,12 @@ describe('SessionRelayManager', () => {
         // relay()'s own flow so this test targets only captureNextResult()'s
         // timer callback in isolation.
         const staleCapture = internals.captureNextResult('ch-1');
-        staleCapture.catch(() => {}); // this promise is intentionally left pending/unsettled by this test
+        let staleSettled: 'pending' | 'rejected' = 'pending';
+        let staleRejection: unknown;
+        staleCapture.catch((err: unknown) => {
+          staleSettled = 'rejected';
+          staleRejection = err;
+        });
 
         // Simulate a newer capture (e.g. the reseed turn's) having replaced
         // the map entry for the same channelId while the original timer is
@@ -380,9 +385,10 @@ describe('SessionRelayManager', () => {
 
         // Advance past the ORIGINAL (now-stale) timer's deadline.
         await vi.advanceTimersByTimeAsync(181_000);
+        await Promise.resolve(); // flush the stale promise's catch() microtask
 
-        // The stale timer must not touch the newer capture at all: no
-        // reject, and its map entry must survive untouched.
+        // The stale timer must not touch the newer capture's map entry, or
+        // call either of its functions, at all.
         expect(freshReject).not.toHaveBeenCalled();
         expect(freshResolve).not.toHaveBeenCalled();
         expect(internals.pendingCaptures.get('ch-1')).toEqual({
@@ -390,6 +396,23 @@ describe('SessionRelayManager', () => {
           reject: freshReject,
           timer: freshTimer,
         });
+
+        // ...but it MUST still settle its OWN (stale) promise instead of
+        // leaving it permanently pending. Each captureNextResult() call
+        // owns its own resolve/reject pair via closure, so calling this
+        // timer's reject() can only ever settle the promise created by
+        // THIS call — never the fresh capture's — regardless of what's
+        // currently in the map. This is the assertion that actually
+        // distinguishes this test from the old code shape: a prior version
+        // of this fix guarded reject() itself behind the same identity
+        // check as the map delete, which left a superseded capture's
+        // promise permanently unsettled — a latent infinite hang for
+        // relay(), which awaits every captureNextResult() call. If reject()
+        // were ever guarded that way again, staleSettled would stay
+        // 'pending' here and this assertion would fail.
+        expect(staleSettled).toBe('rejected');
+        expect(staleRejection).toBeInstanceOf(Error);
+        expect((staleRejection as Error).message).toBe('relay turn on channel "ch-1" timed out');
 
         clearTimeout(freshTimer);
       } finally {

@@ -174,14 +174,31 @@ export class SessionRelayManager {
       const timer = setTimeout(() => {
         // A swapChannel() between this timer being set and firing can have
         // registered a different (e.g. reseed) capture for the same
-        // channelId — only act if it's still the one this timer belongs to,
-        // so a stale timer can't clobber a live capture or reject a promise
-        // that's already been superseded.
+        // channelId — only delete the map entry if it's still the one this
+        // timer belongs to, so a stale timer can't clobber a live capture.
+        //
+        // reject() below runs UNCONDITIONALLY, even when this timer is
+        // stale — that's deliberate, not an oversight. `reject` is this
+        // specific captureNextResult() call's own closure-captured
+        // function: calling it can only ever settle THIS call's promise,
+        // never a newer capture's, regardless of what the map currently
+        // holds. A prior round guarded reject() with the same identity
+        // check as the delete, on the theory that an unconditional reject
+        // could reach the live capture — it can't, so that guard bought
+        // nothing, and it introduced a real regression: a superseded
+        // promise that's left permanently unsettled is a latent infinite
+        // hang for whatever's awaiting it, since relay() awaits every
+        // captureNextResult() call. Every real code path that removes a
+        // pendingCaptures entry today (handleStreamEvent(),
+        // unregisterChannel(), and this timer itself) also calls
+        // clearTimeout(), so a stale timer for a since-superseded capture
+        // is unreachable in practice — but "always settle, never hang" is
+        // the safer invariant to hold regardless, in case a future edit
+        // changes that.
         const current = this.pendingCaptures.get(channelId);
-        if (current?.timer !== timer) {
-          return;
+        if (current?.timer === timer) {
+          this.pendingCaptures.delete(channelId);
         }
-        this.pendingCaptures.delete(channelId);
         reject(new Error(`relay turn on channel "${channelId}" timed out`));
       }, this.timeoutMs);
       this.pendingCaptures.set(channelId, { resolve, reject, timer });
