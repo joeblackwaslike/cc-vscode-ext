@@ -532,7 +532,7 @@ describe('ClaudeProcessManager', () => {
       expect(handler).not.toHaveBeenCalled();
     });
 
-    it('kills the old process and leaves no zombie registration when _launchProcess throws mid-swap, even with no close requested', async () => {
+    it('leaves a still-healthy old process running and routable when _launchProcess throws mid-swap', async () => {
       const router = new ChannelRouter();
       const handler = vi.fn();
       router.register('ch-1', handler);
@@ -554,20 +554,70 @@ describe('ClaudeProcessManager', () => {
       const swapPromise = manager.swapChannel('ch-1', {});
       rejectSwapBinary(new Error('binary resolution failed'));
 
+      // The error must still propagate to the caller.
+      await expect(swapPromise).rejects.toThrow('binary resolution failed');
+
+      // The old process never exited on its own — a failed swap attempt must
+      // not kill a perfectly healthy session process. Only the swap attempt
+      // failed; the session itself must remain usable.
+      expect(oldProcKill).not.toHaveBeenCalled();
+
+      // The channel must remain registered and routable to the healthy old
+      // process, exactly as it was before the failed swap attempt.
+      expect(manager.hasChannel('ch-1')).toBe(true);
+      router.route('ch-1', { type: 'still-routed-after-failed-swap' });
+      expect(handler).toHaveBeenCalledWith({ type: 'still-routed-after-failed-swap' });
+    });
+
+    it('cleans up the old process\'s stale registration when it already exited on its own before the subsequent launch also fails (compound failure)', async () => {
+      const router = new ChannelRouter();
+      const handler = vi.fn();
+      router.register('ch-1', handler);
+
+      let callCount = 0;
+      let rejectSwapBinary: (err: Error) => void = () => {};
+      const provider = vi.fn(() => {
+        callCount += 1;
+        if (callCount === 1) return Promise.resolve('/usr/local/bin/claude');
+        return new Promise<string>((_resolve, reject) => {
+          rejectSwapBinary = reject;
+        });
+      });
+
+      const manager = new ClaudeProcessManager(provider, router, mockLogger, mockSpawn as never);
+      await manager.spawnClaude('ch-1', {});
+      const oldHandlerCalls = mockProcess.on.mock.calls.slice();
+      const oldProcKill = mockProcess.kill;
+
+      const swapPromise = manager.swapChannel('ch-1', {});
+
+      // The old process exits on its own WHILE the swap is still in-flight
+      // (binary resolution hasn't settled yet). The `swapping` guard
+      // suppresses real cleanup at this point (see _cleanupIfCurrent's doc
+      // comment) — this is the "compound failure" scenario
+      // session-relay-design-gyf originally documented: nothing will ever
+      // re-trigger cleanup for this stale entry once the swap also fails,
+      // since close/error events don't refire.
+      for (const call of oldHandlerCalls as [string, (...a: unknown[]) => void][]) {
+        if (call[0] === 'close') call[1](0);
+      }
+      expect(manager.hasChannel('ch-1')).toBe(true); // cleanup was suppressed, not skipped
+
+      rejectSwapBinary(new Error('binary resolution failed'));
+
       // The error must propagate to the caller (SessionRelayManager relies on
       // this to know the relay attempt failed) rather than being swallowed.
       await expect(swapPromise).rejects.toThrow('binary resolution failed');
 
-      // The old process — never overwritten, since the launch failed before
-      // this.processes.set() ran — must be explicitly killed by swapChannel
-      // itself, not left running forever with nothing tracking it.
-      expect(oldProcKill).toHaveBeenCalled();
+      // The already-dead old process is not killed again — it already
+      // exited on its own.
+      expect(oldProcKill).not.toHaveBeenCalled();
 
-      // And the channel's own bookkeeping (map entry + router registration)
-      // must be torn down too, not left claiming the channel is still active
-      // for a process swapChannel itself just killed.
+      // But its now-stale bookkeeping (map entry + router registration) must
+      // be torn down here, since nothing else will ever re-trigger cleanup
+      // for it now that the launch has also failed.
       expect(manager.hasChannel('ch-1')).toBe(false);
-      router.route('ch-1', { type: 'after-failed-swap-no-close' });
+      router.route('ch-1', { type: 'after-compound-failure' });
       expect(handler).not.toHaveBeenCalled();
     });
 
