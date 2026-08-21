@@ -280,6 +280,7 @@ export function SessionList({
           if (confirmDeleteGroupId === group.id) {
             items.push({
               label: `Confirm delete "${group.name}"`,
+              danger: true,
               onSelect: () => {
                 onDeleteGroup(group.id);
                 setConfirmDeleteGroupId(null);

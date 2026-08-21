@@ -8,6 +8,10 @@ export interface ContextMenuItem {
   /** Don't close the menu after `onSelect` runs — used for an in-menu, click-again
    * confirmation step (e.g. "Delete Group" swapping to "Confirm delete…"). */
   keepOpen?: boolean;
+  /** Renders with destructive styling (e.g. an armed "Confirm delete…" row) so a
+   * label swap at the same screen position reads as a distinct, higher-stakes
+   * state rather than a same-looking row a stray double-click can land on. */
+  danger?: boolean;
 }
 
 interface Props {
@@ -36,10 +40,18 @@ export function SessionContextMenu({ x, y, items, onClose }: Props) {
   const [openSubmenu, setOpenSubmenu] = useState<number | null>(null);
   const [pos, setPos] = useState({ left: x, top: y });
 
-  // Re-measures on every expand/collapse (not just on x/y change) — the
-  // accordion changes the menu's own height, and the clamp has to react to
-  // that or a menu opened near the bottom edge would push its expanded
-  // rows off-screen even though the collapsed state fit.
+  // Derived key over the rendered labels (including submenu labels), not the
+  // `items` array reference — `items` is rebuilt fresh on every parent render
+  // regardless of content, so keying off it directly would re-clamp on every
+  // unrelated re-render. This only changes when a label actually changes width
+  // (e.g. "Delete Group" swapping to `Confirm delete "<name>"`), which is
+  // exactly when the clamp below needs to re-measure.
+  const itemsKey = items.map((item) => `${item.label}:${item.submenu?.map((s) => s.label).join(',') ?? ''}`).join('|');
+
+  // Re-measures on every expand/collapse, and whenever the rendered labels
+  // change width (not just on x/y change) — the accordion changes the menu's
+  // own height, and a label swap like the delete-confirm row can widen it, so
+  // the clamp has to react to either or a menu near an edge could overflow.
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) {
@@ -50,7 +62,7 @@ export function SessionContextMenu({ x, y, items, onClose }: Props) {
     const clampedLeft = Math.max(0, Math.min(x, window.innerWidth - rect.width));
     const clampedTop = Math.max(0, Math.min(y, window.innerHeight - rect.height));
     setPos({ left: clampedLeft, top: clampedTop });
-  }, [x, y, openSubmenu]);
+  }, [x, y, openSubmenu, itemsKey]);
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
@@ -82,7 +94,7 @@ export function SessionContextMenu({ x, y, items, onClose }: Props) {
             role="menuitem"
             aria-expanded={item.submenu ? openSubmenu === i : undefined}
             disabled={item.disabled}
-            className="cc-ctxmenu__item"
+            className={item.danger ? 'cc-ctxmenu__item cc-ctxmenu__item--danger' : 'cc-ctxmenu__item'}
             onClick={() => {
               if (item.disabled) return;
               if (item.submenu) {
@@ -104,11 +116,15 @@ export function SessionContextMenu({ x, y, items, onClose }: Props) {
                   key={`${sub.label}-${j}`}
                   role="menuitem"
                   disabled={sub.disabled}
-                  className="cc-ctxmenu__item cc-ctxmenu__item--indented"
+                  className={
+                    sub.danger
+                      ? 'cc-ctxmenu__item cc-ctxmenu__item--indented cc-ctxmenu__item--danger'
+                      : 'cc-ctxmenu__item cc-ctxmenu__item--indented'
+                  }
                   onClick={() => {
                     if (sub.disabled) return;
                     sub.onSelect?.();
-                    onClose();
+                    if (!sub.keepOpen) onClose();
                   }}
                 >
                   <span className="cc-ctxmenu__label">{sub.label}</span>

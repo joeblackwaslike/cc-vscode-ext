@@ -326,6 +326,12 @@ a { color: var(--vscode-textLink-foreground); }
    inside the ~300px sidebar viewport this renders in. */
 .cc-ctxmenu__submenu-inline { display: flex; flex-direction: column; }
 .cc-ctxmenu__item--indented { padding-left: 22px; }
+/* Destructive confirm step (e.g. "Delete Group" swapping to `Confirm delete
+   "<name>"`) — matches this file's existing error-color pattern (see
+   .cc-error, .cc-tool__status--error) so the row reads as visually distinct
+   from the non-destructive item it replaced, not just a same-looking label
+   swap a stray double-click can land on. */
+.cc-ctxmenu__item--danger { color: var(--vscode-testing-iconFailed, #e06c5e); font-weight: 600; }
 
 .cc-send, .cc-stop {
   flex-shrink: 0; width: 30px; height: 30px; border-radius: 9px; border: 0; cursor: pointer;

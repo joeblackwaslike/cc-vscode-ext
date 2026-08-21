@@ -258,6 +258,55 @@ describe('SessionList: context menu', () => {
     expect(screen.queryByRole('menuitem', { name: 'Confirm delete "Work"' })).not.toBeInTheDocument();
   });
 
+  test('arming delete-confirm on one group does not leak into a different group\'s context menu', () => {
+    const onDeleteGroup = vi.fn();
+    const groups: SessionGroup[] = [
+      { id: 'g1', name: 'Work' },
+      { id: 'g2', name: 'Personal' },
+    ];
+    const sessions = [session('s1', 'g1'), session('s2', 'g2')];
+    render(
+      <SessionList {...baseProps()} onDeleteGroup={onDeleteGroup} sessions={sessions} groups={groups} />,
+    );
+
+    const groupSections = screen.getAllByTestId('session-group-section');
+    const workHeader = within(groupSections[0]!).getByTestId('session-group-header');
+    const personalHeader = within(groupSections[1]!).getByTestId('session-group-header');
+
+    // Arm delete-confirm on "Work" but never confirm it.
+    fireEvent.contextMenu(workHeader);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete Group' }));
+    expect(screen.getByRole('menuitem', { name: 'Confirm delete "Work"' })).toBeInTheDocument();
+
+    // Open a different group's context menu directly (not via close-then-reopen).
+    fireEvent.contextMenu(personalHeader);
+
+    // The armed state from "Work" must not leak into "Personal"'s menu — this
+    // is guarded by `confirmDeleteGroupId === group.id` in buildContextMenuItems,
+    // and handleGroupContextMenu resetting confirmDeleteGroupId on every open.
+    expect(screen.queryByRole('menuitem', { name: 'Confirm delete "Work"' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Confirm delete "Personal"' })).not.toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'Delete Group' })).toBeInTheDocument();
+    expect(onDeleteGroup).not.toHaveBeenCalled();
+  });
+
+  test('the armed "Confirm delete" row renders with destructive styling distinct from "Delete Group"', () => {
+    const groups: SessionGroup[] = [{ id: 'g1', name: 'Work' }];
+    const sessions = [session('s1', 'g1')];
+    render(<SessionList {...baseProps()} sessions={sessions} groups={groups} />);
+
+    const header = within(screen.getByTestId('session-group-section')).getByTestId('session-group-header');
+    fireEvent.contextMenu(header);
+
+    const deleteItem = screen.getByRole('menuitem', { name: 'Delete Group' });
+    expect(deleteItem.className).not.toMatch(/cc-ctxmenu__item--danger/);
+
+    fireEvent.click(deleteItem);
+
+    const confirmItem = screen.getByRole('menuitem', { name: 'Confirm delete "Work"' });
+    expect(confirmItem.className).toMatch(/cc-ctxmenu__item--danger/);
+  });
+
   test('"Rename Group" via the context menu puts that group\'s header into the same rename-edit mode as its double-click rename', () => {
     const onRenameGroup = vi.fn();
     const groups: SessionGroup[] = [{ id: 'g1', name: 'Work' }];

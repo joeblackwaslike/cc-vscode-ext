@@ -120,4 +120,86 @@ describe('SessionContextMenu: viewport clamping', () => {
     const workRow = screen.getByRole('menuitem', { name: 'Work' });
     expect(menu.contains(workRow)).toBe(true);
   });
+
+  test('re-clamps when the rendered item labels change width without an x/y or submenu change', () => {
+    // Simulate a label swap (e.g. "Delete Group" -> `Confirm delete "<name>"`)
+    // widening the menu at a fixed click position near the right edge — the
+    // clamp must react to the new measured width, not just to x/y/openSubmenu.
+    let width = 120;
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(() =>
+      mockRect({ width, height: 40, right: width, bottom: 40 }),
+    );
+
+    const { rerender } = render(
+      <SessionContextMenu x={280} y={10} items={[{ label: 'Delete Group' }]} onClose={() => {}} />,
+    );
+
+    const menu = screen.getByTestId('session-context-menu');
+    expect(parseFloat(menu.style.left)).toBeLessThanOrEqual(NARROW_WIDTH - 120);
+
+    // Widen the menu via a longer label at the same x/y, same (collapsed) submenu state.
+    width = 260;
+    rerender(
+      <SessionContextMenu
+        x={280}
+        y={10}
+        items={[{ label: 'Confirm delete "A Rather Long Group Name"', danger: true }]}
+        onClose={() => {}}
+      />,
+    );
+
+    expect(parseFloat(menu.style.left)).toBeLessThanOrEqual(NARROW_WIDTH - 260);
+  });
+});
+
+describe('SessionContextMenu: submenu items', () => {
+  test('a submenu item with keepOpen does not close the menu after onSelect runs', () => {
+    const onClose = vi.fn();
+    const onSelect = vi.fn();
+    const items: ContextMenuItem[] = [
+      {
+        label: 'Parent',
+        submenu: [{ label: 'Stay Open', onSelect, keepOpen: true }],
+      },
+    ];
+    render(<SessionContextMenu x={10} y={10} items={items} onClose={onClose} />);
+
+    fireEvent.click(screen.getByRole('menuitem', { name: /Parent/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Stay Open' }));
+
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  test('a submenu item without keepOpen closes the menu after onSelect runs (default behavior)', () => {
+    const onClose = vi.fn();
+    const onSelect = vi.fn();
+    const items: ContextMenuItem[] = [
+      {
+        label: 'Parent',
+        submenu: [{ label: 'Close Me', onSelect }],
+      },
+    ];
+    render(<SessionContextMenu x={10} y={10} items={items} onClose={onClose} />);
+
+    fireEvent.click(screen.getByRole('menuitem', { name: /Parent/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Close Me' }));
+
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  test('a danger submenu item renders with the destructive styling class', () => {
+    const items: ContextMenuItem[] = [
+      {
+        label: 'Parent',
+        submenu: [{ label: 'Confirm delete "x"', danger: true }],
+      },
+    ];
+    render(<SessionContextMenu x={10} y={10} items={items} onClose={() => {}} />);
+
+    fireEvent.click(screen.getByRole('menuitem', { name: /Parent/ }));
+    const row = screen.getByRole('menuitem', { name: 'Confirm delete "x"' });
+    expect(row.className).toMatch(/cc-ctxmenu__item--danger/);
+  });
 });
