@@ -207,11 +207,10 @@ describe('SessionList: context menu', () => {
     expect(screen.queryByRole('menuitem', { name: 'Remove from Group' })).not.toBeInTheDocument();
   });
 
-  test('right-clicking a group header offers Rename Group and Delete Group', () => {
+  test('right-clicking a group header offers Rename Group and Delete Group; Delete Group requires a second click to confirm', () => {
     const onDeleteGroup = vi.fn();
     const groups: SessionGroup[] = [{ id: 'g1', name: 'Work' }];
     const sessions = [session('s1', 'g1')];
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
     render(
       <SessionList {...baseProps()} onDeleteGroup={onDeleteGroup} sessions={sessions} groups={groups} />,
     );
@@ -221,30 +220,121 @@ describe('SessionList: context menu', () => {
     fireEvent.contextMenu(header);
 
     expect(screen.getByRole('menuitem', { name: 'Rename Group' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete Group' }));
+    expect(screen.getByRole('menuitem', { name: 'Delete Group' })).toBeInTheDocument();
 
-    expect(confirmSpy).toHaveBeenCalled();
+    // First click arms the confirmation instead of deleting — the menu stays open.
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete Group' }));
+    expect(onDeleteGroup).not.toHaveBeenCalled();
+    expect(screen.getByTestId('session-context-menu')).toBeInTheDocument();
+    const confirmItem = screen.getByRole('menuitem', { name: 'Confirm delete "Work"' });
+    expect(confirmItem).toBeInTheDocument();
+
+    // Second click actually deletes and closes the menu.
+    fireEvent.click(confirmItem);
     expect(onDeleteGroup).toHaveBeenCalledWith('g1');
-    confirmSpy.mockRestore();
+    expect(screen.queryByTestId('session-context-menu')).not.toBeInTheDocument();
   });
 
-  test('"Delete Group" asks for confirmation first and does not delete when cancelled', () => {
+  test('Delete Group confirmation resets when the menu is closed without confirming', () => {
     const onDeleteGroup = vi.fn();
     const groups: SessionGroup[] = [{ id: 'g1', name: 'Work' }];
     const sessions = [session('s1', 'g1')];
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
     render(
       <SessionList {...baseProps()} onDeleteGroup={onDeleteGroup} sessions={sessions} groups={groups} />,
     );
 
-    const workSection = screen.getByTestId('session-group-section');
-    const header = within(workSection).getByTestId('session-group-header');
+    const header = within(screen.getByTestId('session-group-section')).getByTestId('session-group-header');
     fireEvent.contextMenu(header);
     fireEvent.click(screen.getByRole('menuitem', { name: 'Delete Group' }));
+    expect(screen.getByRole('menuitem', { name: 'Confirm delete "Work"' })).toBeInTheDocument();
 
-    expect(confirmSpy).toHaveBeenCalled();
+    // Closing without confirming (Escape) must not delete.
+    fireEvent.keyDown(document, { key: 'Escape' });
     expect(onDeleteGroup).not.toHaveBeenCalled();
-    confirmSpy.mockRestore();
+
+    // Re-opening starts from "Delete Group" again, not the armed confirm state.
+    fireEvent.contextMenu(header);
+    expect(screen.getByRole('menuitem', { name: 'Delete Group' })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Confirm delete "Work"' })).not.toBeInTheDocument();
+  });
+
+  test('"Rename Group" via the context menu puts that group\'s header into the same rename-edit mode as its double-click rename', () => {
+    const onRenameGroup = vi.fn();
+    const groups: SessionGroup[] = [{ id: 'g1', name: 'Work' }];
+    const sessions = [session('s1', 'g1')];
+    render(
+      <SessionList {...baseProps()} onRenameGroup={onRenameGroup} sessions={sessions} groups={groups} />,
+    );
+
+    const header = within(screen.getByTestId('session-group-section')).getByTestId('session-group-header');
+    fireEvent.contextMenu(header);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename Group' }));
+
+    // The context menu closes and the header's own rename input takes over.
+    expect(screen.queryByTestId('session-context-menu')).not.toBeInTheDocument();
+    const input = within(header).getByRole('textbox') as HTMLInputElement;
+    expect(input.value).toBe('Work');
+
+    fireEvent.change(input, { target: { value: 'Research' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    expect(onRenameGroup).toHaveBeenCalledWith('g1', 'Research');
+  });
+
+  test('right-clicking the Ungrouped section header offers "New Group" instead of silently doing nothing', () => {
+    const onCreateGroup = vi.fn();
+    const groups: SessionGroup[] = [{ id: 'g1', name: 'Work' }];
+    const sessions = [session('s1', 'g1'), session('s2')];
+    render(
+      <SessionList {...baseProps()} onCreateGroup={onCreateGroup} sessions={sessions} groups={groups} />,
+    );
+
+    const ungroupedSection = screen.getByTestId('session-ungrouped-section');
+    const header = within(ungroupedSection).getByTestId('session-group-header');
+    fireEvent.contextMenu(header);
+
+    const menuItem = screen.getByRole('menuitem', { name: 'New Group' });
+    expect(menuItem).toBeInTheDocument();
+
+    fireEvent.click(menuItem);
+    const input = screen.getByTestId('create-group-input');
+    fireEvent.change(input, { target: { value: 'Personal' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    expect(onCreateGroup).toHaveBeenCalledWith('Personal');
+  });
+});
+
+describe('SessionList: creating a group without window.prompt()', () => {
+  test('"New Group" from empty-space right-click shows an inline input; Enter commits, Escape cancels', () => {
+    const onCreateGroup = vi.fn();
+    const sessions = [session('s1')];
+    render(<SessionList {...baseProps()} onCreateGroup={onCreateGroup} sessions={sessions} groups={[]} />);
+
+    fireEvent.contextMenu(screen.getByTestId('session-list-scroll'));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'New Group' }));
+
+    const input = screen.getByTestId('create-group-input');
+    fireEvent.change(input, { target: { value: 'Research' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    expect(onCreateGroup).toHaveBeenCalledWith('Research');
+    expect(screen.queryByTestId('create-group-input')).not.toBeInTheDocument();
+  });
+
+  test('Escape cancels the inline create-group input without calling onCreateGroup', () => {
+    const onCreateGroup = vi.fn();
+    const sessions = [session('s1')];
+    render(<SessionList {...baseProps()} onCreateGroup={onCreateGroup} sessions={sessions} groups={[]} />);
+
+    fireEvent.contextMenu(screen.getByTestId('session-list-scroll'));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'New Group' }));
+
+    const input = screen.getByTestId('create-group-input');
+    fireEvent.change(input, { target: { value: 'Research' } });
+    fireEvent.keyDown(input, { key: 'Escape' });
+
+    expect(onCreateGroup).not.toHaveBeenCalled();
   });
 });
 
@@ -257,7 +347,6 @@ describe('SessionList: "+ New Group…" create-then-move reconciliation', () => 
   test('moves the target session(s) into the new group once it appears in a later broadcast', () => {
     const onCreateGroup = vi.fn();
     const onMoveToGroup = vi.fn();
-    vi.spyOn(window, 'prompt').mockReturnValue('Research');
     const sessions = [session('s1')];
 
     const { rerender } = render(
@@ -274,6 +363,10 @@ describe('SessionList: "+ New Group…" create-then-move reconciliation', () => 
     fireEvent.contextMenu(item);
     fireEvent.click(screen.getByRole('menuitem', { name: /Move to Group/ }));
     fireEvent.click(screen.getByRole('menuitem', { name: '+ New Group…' }));
+
+    const input = screen.getByTestId('create-group-input');
+    fireEvent.change(input, { target: { value: 'Research' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
 
     expect(onCreateGroup).toHaveBeenCalledWith('Research');
     expect(onMoveToGroup).not.toHaveBeenCalled();
@@ -298,7 +391,6 @@ describe('SessionList: "+ New Group…" create-then-move reconciliation', () => 
     try {
       const onCreateGroup = vi.fn();
       const onMoveToGroup = vi.fn();
-      vi.spyOn(window, 'prompt').mockReturnValue('Research');
       const sessions = [session('s1')];
 
       const { rerender } = render(
@@ -315,6 +407,10 @@ describe('SessionList: "+ New Group…" create-then-move reconciliation', () => 
       fireEvent.contextMenu(item);
       fireEvent.click(screen.getByRole('menuitem', { name: /Move to Group/ }));
       fireEvent.click(screen.getByRole('menuitem', { name: '+ New Group…' }));
+
+      const input = screen.getByTestId('create-group-input');
+      fireEvent.change(input, { target: { value: 'Research' } });
+      fireEvent.keyDown(input, { key: 'Enter' });
 
       expect(onCreateGroup).toHaveBeenCalledWith('Research');
 

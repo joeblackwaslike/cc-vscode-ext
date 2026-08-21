@@ -121,7 +121,7 @@ function pushAssistantTurn(
     if (raw.type === 'text') {
       blocks.push({ type: 'text', text: String(raw.text ?? '') });
     } else if (raw.type === 'thinking') {
-      // Empirically verified against the bundled `claude` CLI (2.1.238,
+      // Empirically verified against the bundled `claude` CLI (2.1.237,
       // --output-format stream-json): the anthropic Messages API's `thinking`
       // content block carries its text under a `thinking` field, not `text`.
       // The `raw.text` fallback is defensive only, for a future/alternate

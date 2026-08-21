@@ -29,11 +29,11 @@ export class SessionManager {
   ): Promise<void> {
     const existing = this.sessionStates.get(id);
     const updated: SessionState = {
+      ...existing,
       id,
       title: title ?? existing?.title,
       state,
       updatedAt: new Date().toISOString(),
-      ...(existing?.groupId !== undefined ? { groupId: existing.groupId } : {}),
     };
     this.sessionStates.set(id, updated);
     await this.storage.saveSessions(this.sessionStates);

@@ -191,7 +191,7 @@
       },
       {
         "command": "claw-vscode.toggleFocusView",
-        "title": "Claude Code: Toggle Focus View"
+        "title": "Claw Code: Toggle Focus View"
       }
     ],
     "keybindings": [
@@ -261,7 +261,7 @@
         "command": "claw-vscode.toggleFocusView",
         "key": "ctrl+alt+f",
         "mac": "cmd+alt+f",
-        "when": "config.claudeCode.enableNewConversationShortcut && (activeWebviewPanelId == 'clawVSCodePanel' || (claw-vscode.sideBarActive && !editorFocus && !panelFocus))"
+        "when": "activeWebviewPanelId == 'clawVSCodePanel' || (claw-vscode.sideBarActive && !editorFocus && !panelFocus)"
       }
     ],
     "viewsContainers": {

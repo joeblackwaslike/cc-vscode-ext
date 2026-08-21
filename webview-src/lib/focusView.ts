@@ -10,11 +10,11 @@ import type { AssistantBlock, ToolUseBlock } from './conversationModel';
  * Tool names that must never fold, even inside an otherwise-foldable run —
  * their content is worth seeing inline every time. `AskUserQuestion` is the
  * CLI's actual clarifying-question tool name, empirically confirmed via
- * `strings` on the bundled @anthropic-ai/claude-code binary (2.1.238); it was
+ * `strings` on the bundled @anthropic-ai/claude-code binary (2.1.237); it was
  * not otherwise referenced anywhere in this codebase before this task.
  * Extend this set as more "always show" tools are identified.
  */
-export const ALWAYS_VISIBLE_TOOL_NAMES: Set<string> = new Set(['TodoWrite', 'AskUserQuestion']);
+export const ALWAYS_VISIBLE_TOOL_NAMES: ReadonlySet<string> = new Set(['TodoWrite', 'AskUserQuestion']);
 
 export type FocusGroup =
   | { type: 'visible'; block: AssistantBlock }

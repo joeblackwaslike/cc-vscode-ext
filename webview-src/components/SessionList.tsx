@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import type { SessionInfo, SessionGroup } from '../lib/ipc';
-import { SessionGroupHeader } from './SessionGroupHeader';
+import { SessionGroupHeader, type SessionGroupHeaderHandle } from './SessionGroupHeader';
 import { SessionContextMenu, type ContextMenuItem } from './SessionContextMenu';
 
 interface Props {
@@ -27,10 +27,22 @@ const UNGROUPED_ID = '__ungrouped__';
  */
 const PENDING_GROUP_MOVE_TIMEOUT_MS = 10_000;
 
+/**
+ * What the currently-open context menu was opened on. Menu items are computed
+ * fresh from this on every render (see `buildContextMenuItems`) rather than
+ * frozen at open-time, so state changes made by an item's own `onSelect`
+ * (e.g. arming the delete-group confirmation) are reflected immediately
+ * without closing the menu.
+ */
+type ContextMenuDescriptor =
+  | { kind: 'item'; targetIds: string[]; hasGroup: boolean }
+  | { kind: 'group'; group: SessionGroup }
+  | { kind: 'empty' };
+
 interface ContextMenuState {
   x: number;
   y: number;
-  items: ContextMenuItem[];
+  descriptor: ContextMenuDescriptor;
 }
 
 interface Section {
@@ -59,6 +71,16 @@ export function SessionList({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [lastClickedId, setLastClickedId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  // Armed by a first "Delete Group" click (which stays open via `keepOpen`);
+  // a second click on the resulting "Confirm delete…" row actually deletes.
+  // Reset on menu close or re-open — see handleGroupContextMenu / onClose below.
+  const [confirmDeleteGroupId, setConfirmDeleteGroupId] = useState<string | null>(null);
+  // Inline "create group" row shown instead of window.prompt() — VS Code's real
+  // webview host sandboxes the iframe without `allow-modals`, so prompt()/confirm()
+  // silently no-op there. `pendingMoveIds` carries the sessions to move into the
+  // group once it's created, for the "+ New Group…" flow from the Move-to-Group menu.
+  const [creatingGroup, setCreatingGroup] = useState<{ pendingMoveIds: string[] | null } | null>(null);
+  const [newGroupName, setNewGroupName] = useState('');
 
   // "+ New Group…" creates the group fire-and-forget (no ack message); once
   // the resulting broadcast adds a matching group we haven't seen before,
@@ -69,6 +91,10 @@ export function SessionList({
   const pendingGroupMoveRef = useRef<{ name: string; sessionIds: string[] } | null>(null);
   const pendingGroupMoveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevGroupsRef = useRef<SessionGroup[]>(groups);
+  // One imperative handle per rendered section header, keyed by section id, so
+  // "Rename Group" in the context menu can drive the SAME rename-edit mode the
+  // header already exposes for its own double-click, instead of duplicating it.
+  const headerRefs = useRef(new Map<string, SessionGroupHeaderHandle>());
 
   const clearPendingGroupMove = useCallback(() => {
     pendingGroupMoveRef.current = null;
@@ -165,6 +191,28 @@ export function SessionList({
     [lastClickedId, flatVisibleOrder, onSelect],
   );
 
+  const startCreateGroup = useCallback((pendingMoveIds: string[] | null) => {
+    setNewGroupName('');
+    setCreatingGroup({ pendingMoveIds });
+  }, []);
+
+  const commitCreateGroup = useCallback(() => {
+    const trimmed = newGroupName.trim();
+    if (trimmed) {
+      if (creatingGroup?.pendingMoveIds) {
+        schedulePendingGroupMove({ name: trimmed, sessionIds: creatingGroup.pendingMoveIds });
+      }
+      onCreateGroup(trimmed);
+    }
+    setCreatingGroup(null);
+    setNewGroupName('');
+  }, [newGroupName, creatingGroup, onCreateGroup, schedulePendingGroupMove]);
+
+  const cancelCreateGroup = useCallback(() => {
+    setCreatingGroup(null);
+    setNewGroupName('');
+  }, []);
+
   const buildMoveToGroupSubmenu = useCallback(
     (targetIds: string[]): ContextMenuItem[] => [
       ...groups.map((g) => ({
@@ -173,17 +221,10 @@ export function SessionList({
       })),
       {
         label: '+ New Group…',
-        onSelect: () => {
-          const name = window.prompt('New group name');
-          const trimmed = name?.trim();
-          if (trimmed) {
-            schedulePendingGroupMove({ name: trimmed, sessionIds: targetIds });
-            onCreateGroup(trimmed);
-          }
-        },
+        onSelect: () => startCreateGroup(targetIds),
       },
     ],
-    [groups, onMoveToGroup, onCreateGroup, schedulePendingGroupMove],
+    [groups, onMoveToGroup, startCreateGroup],
   );
 
   const handleItemContextMenu = useCallback(
@@ -191,61 +232,73 @@ export function SessionList({
       e.preventDefault();
       e.stopPropagation();
       const targetIds = selectedIds.has(session.id) && selectedIds.size > 0 ? [...selectedIds] : [session.id];
-      const items: ContextMenuItem[] = [
-        { label: 'Move to Group', submenu: buildMoveToGroupSubmenu(targetIds) },
-        ...(session.groupId
-          ? [{ label: 'Remove from Group', onSelect: () => onMoveToGroup(targetIds, null) }]
-          : []),
-      ];
-      setContextMenu({ x: e.clientX, y: e.clientY, items });
-    },
-    [selectedIds, buildMoveToGroupSubmenu, onMoveToGroup],
-  );
-
-  const handleGroupContextMenu = useCallback(
-    (e: React.MouseEvent, group: SessionGroup) => {
-      const items: ContextMenuItem[] = [
-        {
-          label: 'Rename Group',
-          onSelect: () => {
-            const name = window.prompt('Rename group', group.name);
-            const trimmed = name?.trim();
-            if (trimmed && trimmed !== group.name) onRenameGroup(group.id, trimmed);
-          },
-        },
-        {
-          label: 'Delete Group',
-          onSelect: () => {
-            if (window.confirm(`Delete group "${group.name}"? Sessions inside it will become ungrouped.`)) {
-              onDeleteGroup(group.id);
-            }
-          },
-        },
-      ];
-      setContextMenu({ x: e.clientX, y: e.clientY, items });
-    },
-    [onRenameGroup, onDeleteGroup],
-  );
-
-  const handleEmptyContextMenu = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
       setContextMenu({
         x: e.clientX,
         y: e.clientY,
-        items: [
-          {
-            label: 'New Group',
-            onSelect: () => {
-              const name = window.prompt('New group name');
-              const trimmed = name?.trim();
-              if (trimmed) onCreateGroup(trimmed);
-            },
-          },
-        ],
+        descriptor: { kind: 'item', targetIds, hasGroup: Boolean(session.groupId) },
       });
     },
-    [onCreateGroup],
+    [selectedIds],
+  );
+
+  const handleGroupContextMenu = useCallback((e: React.MouseEvent, group: SessionGroup) => {
+    // Re-opening the menu (on this group or any other) resets any armed
+    // delete-confirmation from a previous open.
+    setConfirmDeleteGroupId(null);
+    setContextMenu({ x: e.clientX, y: e.clientY, descriptor: { kind: 'group', group } });
+  }, []);
+
+  const handleEmptyContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setConfirmDeleteGroupId(null);
+    setContextMenu({ x: e.clientX, y: e.clientY, descriptor: { kind: 'empty' } });
+  }, []);
+
+  const closeContextMenu = useCallback(() => {
+    setContextMenu(null);
+    setConfirmDeleteGroupId(null);
+  }, []);
+
+  const buildContextMenuItems = useCallback(
+    (descriptor: ContextMenuDescriptor): ContextMenuItem[] => {
+      switch (descriptor.kind) {
+        case 'item':
+          return [
+            { label: 'Move to Group', submenu: buildMoveToGroupSubmenu(descriptor.targetIds) },
+            ...(descriptor.hasGroup
+              ? [{ label: 'Remove from Group', onSelect: () => onMoveToGroup(descriptor.targetIds, null) }]
+              : []),
+          ];
+        case 'group': {
+          const { group } = descriptor;
+          const items: ContextMenuItem[] = [
+            {
+              label: 'Rename Group',
+              onSelect: () => headerRefs.current.get(group.id)?.startRename(),
+            },
+          ];
+          if (confirmDeleteGroupId === group.id) {
+            items.push({
+              label: `Confirm delete "${group.name}"`,
+              onSelect: () => {
+                onDeleteGroup(group.id);
+                setConfirmDeleteGroupId(null);
+              },
+            });
+          } else {
+            items.push({
+              label: 'Delete Group',
+              keepOpen: true,
+              onSelect: () => setConfirmDeleteGroupId(group.id),
+            });
+          }
+          return items;
+        }
+        case 'empty':
+          return [{ label: 'New Group', onSelect: () => startCreateGroup(null) }];
+      }
+    },
+    [buildMoveToGroupSubmenu, onMoveToGroup, onDeleteGroup, confirmDeleteGroupId, startCreateGroup],
   );
 
   const renderItem = (session: SessionInfo) => (
@@ -282,7 +335,26 @@ export function SessionList({
       </div>
 
       <div style={styles.scrollArea} data-testid="session-list-scroll" onContextMenu={handleEmptyContextMenu}>
-        {visible.length === 0 && <div style={styles.empty}>No past conversations</div>}
+        {creatingGroup && (
+          <div style={styles.createGroupRow}>
+            <input
+              autoFocus
+              value={newGroupName}
+              onChange={(e) => setNewGroupName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') commitCreateGroup();
+                if (e.key === 'Escape') cancelCreateGroup();
+              }}
+              onBlur={commitCreateGroup}
+              onClick={(e) => e.stopPropagation()}
+              placeholder="New group name"
+              data-testid="create-group-input"
+              style={styles.renameInput}
+            />
+          </div>
+        )}
+
+        {visible.length === 0 && !creatingGroup && <div style={styles.empty}>No past conversations</div>}
 
         {visible.length > 0 &&
           sections.map((section) => {
@@ -297,6 +369,10 @@ export function SessionList({
                 data-testid={section.isGroup ? 'session-group-section' : 'session-ungrouped-section'}
               >
                 <SessionGroupHeader
+                  ref={(instance) => {
+                    if (instance) headerRefs.current.set(section.id, instance);
+                    else headerRefs.current.delete(section.id);
+                  }}
                   name={section.name}
                   count={section.sessions.length}
                   collapsed={collapsedGroups.has(section.id)}
@@ -306,7 +382,9 @@ export function SessionList({
                         onRenameCommit: (newName: string) => onRenameGroup(group.id, newName),
                         onContextMenu: (e: React.MouseEvent) => handleGroupContextMenu(e, group),
                       }
-                    : {})}
+                    : {
+                        onContextMenu: handleEmptyContextMenu,
+                      })}
                 />
                 {!collapsedGroups.has(section.id) && section.sessions.map(renderItem)}
               </div>
@@ -318,8 +396,8 @@ export function SessionList({
         <SessionContextMenu
           x={contextMenu.x}
           y={contextMenu.y}
-          items={contextMenu.items}
-          onClose={() => setContextMenu(null)}
+          items={buildContextMenuItems(contextMenu.descriptor)}
+          onClose={closeContextMenu}
         />
       )}
     </div>
@@ -443,6 +521,9 @@ const styles: Record<string, React.CSSProperties> = {
     flex: 1,
     overflowY: 'auto',
     minHeight: 0,
+  },
+  createGroupRow: {
+    padding: '6px 12px',
   },
   empty: {
     padding: '24px 16px',

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { forwardRef, useImperativeHandle, useState } from 'react';
 
 interface Props {
   name: string;
@@ -10,10 +10,32 @@ interface Props {
   onContextMenu?: (e: React.MouseEvent) => void;
 }
 
+/** Imperative handle so a parent-driven trigger (e.g. a "Rename Group" context-menu
+ * item) can enter the same rename-edit mode as the header's own double-click,
+ * without duplicating the input UI or lifting its state up. */
+export interface SessionGroupHeaderHandle {
+  startRename: () => void;
+}
+
 /** Collapsible sidebar section header — chevron, name (double-click to rename), member count. */
-export function SessionGroupHeader({ name, count, collapsed, onToggle, onRenameCommit, onContextMenu }: Props) {
+export const SessionGroupHeader = forwardRef<SessionGroupHeaderHandle, Props>(function SessionGroupHeader(
+  { name, count, collapsed, onToggle, onRenameCommit, onContextMenu },
+  ref,
+) {
   const [renaming, setRenaming] = useState(false);
   const [value, setValue] = useState(name);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      startRename: () => {
+        if (!onRenameCommit) return;
+        setValue(name);
+        setRenaming(true);
+      },
+    }),
+    [onRenameCommit, name],
+  );
 
   const commit = () => {
     const trimmed = value.trim();
@@ -62,7 +84,7 @@ export function SessionGroupHeader({ name, count, collapsed, onToggle, onRenameC
       <span style={styles.count}>{count}</span>
     </div>
   );
-}
+});
 
 const styles: Record<string, React.CSSProperties> = {
   header: {

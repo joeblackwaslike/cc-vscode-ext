@@ -5,6 +5,9 @@ export interface ContextMenuItem {
   onSelect?: () => void;
   disabled?: boolean;
   submenu?: ContextMenuItem[];
+  /** Don't close the menu after `onSelect` runs — used for an in-menu, click-again
+   * confirmation step (e.g. "Delete Group" swapping to "Confirm delete…"). */
+  keepOpen?: boolean;
 }
 
 interface Props {
@@ -87,7 +90,7 @@ export function SessionContextMenu({ x, y, items, onClose }: Props) {
                 return;
               }
               item.onSelect?.();
-              onClose();
+              if (!item.keepOpen) onClose();
             }}
           >
             <span className="cc-ctxmenu__label">{item.label}</span>

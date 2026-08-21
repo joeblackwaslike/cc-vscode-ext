@@ -43,4 +43,19 @@ describe('ChatInput selectors — live + optimistic', () => {
     expect(screen.getByTestId('effort-selector')).toHaveTextContent('High');
     expect(postMessage).toHaveBeenCalledWith({ type: 'set_thinking_level', level: 'high', channelId: 'ch1' });
   });
+
+  test('clicking the Focus View toolbar toggle posts toggle_focus_view and optimistically flips the active state', () => {
+    postMessage.mockClear();
+    render(<Harness />);
+
+    const toggle = screen.getByTestId('focus-view-toggle');
+    expect(toggle.className).not.toContain('cc-tbtn--active');
+
+    fireEvent.click(toggle);
+
+    // Optimistic: the toolbar button reflects the new state before any host echo.
+    expect(toggle.className).toContain('cc-tbtn--active');
+    // And the live control message is posted so the host's ViewManager converges every webview.
+    expect(postMessage).toHaveBeenCalledWith({ type: 'toggle_focus_view' });
+  });
 });
