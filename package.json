@@ -77,6 +77,23 @@
     "vitest": "^2.0.0"
   },
   "contributes": {
+    "configuration": [
+      {
+        "title": "Claw Code",
+        "properties": {
+          "clawCode.enableNewConversationShortcut": {
+            "type": "boolean",
+            "default": true,
+            "description": "Enable the Cmd+N (Ctrl+N) shortcut to create a new conversation"
+          },
+          "clawCode.enableReopenClosedSessionShortcut": {
+            "type": "boolean",
+            "default": true,
+            "description": "Enable the Cmd+Shift+T (Ctrl+Shift+T) shortcut to reopen closed sessions"
+          }
+        }
+      }
+    ],
     "jsonValidation": [
       {
         "fileMatch": [
@@ -247,7 +264,7 @@
         "mac": "cmd+n",
         "win": "ctrl+n",
         "linux": "ctrl+n",
-        "when": "config.claudeCode.enableNewConversationShortcut && (activeWebviewPanelId == 'clawVSCodePanel' || (claw-vscode.sideBarActive && !editorFocus && !panelFocus))"
+        "when": "config.clawCode.enableNewConversationShortcut && (activeWebviewPanelId == 'clawVSCodePanel' || (claw-vscode.sideBarActive && !editorFocus && !panelFocus))"
       },
       {
         "command": "claw-vscode.reopenClosedSession",
@@ -255,7 +272,7 @@
         "mac": "cmd+shift+t",
         "win": "ctrl+shift+t",
         "linux": "ctrl+shift+t",
-        "when": "config.claudeCode.enableReopenClosedSessionShortcut && claw-vscode.lastClosedWasSession"
+        "when": "config.clawCode.enableReopenClosedSessionShortcut && claw-vscode.lastClosedWasSession"
       },
       {
         "command": "claw-vscode.toggleFocusView",
