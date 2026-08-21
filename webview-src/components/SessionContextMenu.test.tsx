@@ -3,8 +3,9 @@ import { describe, expect, test, vi, beforeEach, afterEach } from 'vitest';
 import { SessionContextMenu, type ContextMenuItem } from './SessionContextMenu';
 
 // The sidebar view this renders in is only ~300px wide by default — these
-// tests simulate that narrow container and assert the menu clamps/flips
-// itself to stay fully on-screen instead of trusting the click position.
+// tests simulate that narrow container and assert the menu stays fully
+// on-screen (including once "Move to Group" expands) instead of trusting
+// the click position to leave enough room.
 const NARROW_WIDTH = 300;
 const NARROW_HEIGHT = 400;
 
@@ -71,38 +72,52 @@ describe('SessionContextMenu: viewport clamping', () => {
     expect(menu.style.top).toBe('10px');
   });
 
-  test('flips the submenu to open on the left when it would overflow the right edge', () => {
-    // Root menu fits; the submenu, opening at left:100% of a 180px-wide
-    // parent inside a 300px-wide sidebar, would spill past the right edge.
+  test('expanding "Move to Group" inline (not a flyout) keeps the whole menu within the viewport', () => {
+    // A true side-opening flyout can never fit here: both a root menu and a
+    // submenu share min-width: 180px, and 180+180=360 doesn't fit inside a
+    // 300px-wide sidebar at any root position. "Move to Group" expands
+    // inline instead — same 180px-wide column, taller once expanded. Opened
+    // near the bottom-right corner (needs clamping collapsed AND expanded).
     vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
-      if (this.getAttribute('data-testid') === 'session-context-submenu') {
-        return mockRect({ width: 180, right: 320 });
-      }
-      return mockRect({ width: 180, height: 40, right: 180, bottom: 40 });
+      const expanded = this.querySelector('[data-testid="session-context-submenu"]') !== null;
+      const width = 180;
+      const height = expanded ? 160 : 40;
+      return mockRect({ width, height, right: width, bottom: height });
     });
 
     const items: ContextMenuItem[] = [
-      { label: 'Move to Group', submenu: [{ label: 'Work', onSelect: () => {} }] },
+      {
+        label: 'Move to Group',
+        submenu: [
+          { label: 'Work', onSelect: () => {} },
+          { label: 'Personal', onSelect: () => {} },
+          { label: 'Archive', onSelect: () => {} },
+        ],
+      },
     ];
-    render(<SessionContextMenu x={10} y={10} items={items} onClose={() => {}} />);
+    render(<SessionContextMenu x={280} y={390} items={items} onClose={() => {}} />);
+
+    const menu = screen.getByTestId('session-context-menu');
+    // Collapsed (40px tall): already needs vertical clamping at this click position.
+    expect(parseFloat(menu.style.top)).toBeLessThanOrEqual(NARROW_HEIGHT - 40);
 
     fireEvent.click(screen.getByRole('menuitem', { name: /Move to Group/ }));
 
-    expect(screen.getByTestId('session-context-submenu')).toHaveClass('cc-ctxmenu--submenu-left');
-  });
+    // Expanded: the SAME element is now measured at 160px tall. Assert the
+    // actual resulting on-screen rectangle — position plus measured size —
+    // stays fully inside the 300x400 viewport in both dimensions. A class
+    // name assertion wouldn't catch a still-off-screen flyout; this does.
+    const left = parseFloat(menu.style.left);
+    const top = parseFloat(menu.style.top);
+    const mockedWidth = 180;
+    expect(left).toBeGreaterThanOrEqual(0);
+    expect(top).toBeGreaterThanOrEqual(0);
+    expect(left + mockedWidth).toBeLessThanOrEqual(NARROW_WIDTH);
+    expect(top + 160).toBeLessThanOrEqual(NARROW_HEIGHT);
 
-  test('keeps the submenu on the right when it fits', () => {
-    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue(
-      mockRect({ width: 180, height: 40, right: 180, bottom: 40 }),
-    );
-
-    const items: ContextMenuItem[] = [
-      { label: 'Move to Group', submenu: [{ label: 'Work', onSelect: () => {} }] },
-    ];
-    render(<SessionContextMenu x={10} y={10} items={items} onClose={() => {}} />);
-
-    fireEvent.click(screen.getByRole('menuitem', { name: /Move to Group/ }));
-
-    expect(screen.getByTestId('session-context-submenu')).not.toHaveClass('cc-ctxmenu--submenu-left');
+    // The group rows live inside this very element — there is no second,
+    // independently-positioned panel that could overflow on its own.
+    const workRow = screen.getByRole('menuitem', { name: 'Work' });
+    expect(menu.contains(workRow)).toBe(true);
   });
 });
