@@ -289,6 +289,7 @@ a { color: var(--vscode-textLink-foreground); }
   border-radius: 8px; padding: 4px; box-shadow: 0 6px 22px rgba(0, 0, 0, 0.4);
 }
 .cc-ctxmenu--submenu { position: absolute; top: 0; left: 100%; margin-left: 2px; }
+.cc-ctxmenu--submenu-left { left: auto; right: 100%; margin-left: 0; margin-right: 2px; }
 .cc-ctxmenu__item-wrap { position: relative; }
 .cc-ctxmenu__item {
   display: flex; align-items: center; gap: 6px; width: 100%; text-align: left;

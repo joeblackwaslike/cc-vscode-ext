@@ -84,11 +84,44 @@ describe('SessionManager', () => {
       expect(a.id).not.toBe(b.id);
     });
 
+    it('createGroup() trims the name', async () => {
+      const { manager } = makeManager();
+      const group = await manager.createGroup('  Work  ');
+      expect(group.name).toBe('Work');
+    });
+
+    it('createGroup() rejects a blank name', async () => {
+      const { manager } = makeManager();
+      await expect(manager.createGroup('')).rejects.toThrow();
+      expect(manager.listGroups()).toEqual([]);
+    });
+
+    it('createGroup() rejects a whitespace-only name', async () => {
+      const { manager } = makeManager();
+      await expect(manager.createGroup('   ')).rejects.toThrow();
+      expect(manager.listGroups()).toEqual([]);
+    });
+
     it('renameGroup() updates the name', async () => {
       const { manager } = makeManager();
       const group = await manager.createGroup('Old Name');
       await manager.renameGroup(group.id, 'New Name');
       expect(manager.listGroups()).toEqual([{ id: group.id, name: 'New Name' }]);
+    });
+
+    it('renameGroup() trims the name', async () => {
+      const { manager } = makeManager();
+      const group = await manager.createGroup('Old Name');
+      await manager.renameGroup(group.id, '  New Name  ');
+      expect(manager.listGroups()).toEqual([{ id: group.id, name: 'New Name' }]);
+    });
+
+    it('renameGroup() is a no-op for a blank or whitespace-only name', async () => {
+      const { manager } = makeManager();
+      const group = await manager.createGroup('Old Name');
+      await manager.renameGroup(group.id, '');
+      await manager.renameGroup(group.id, '   ');
+      expect(manager.listGroups()).toEqual([{ id: group.id, name: 'Old Name' }]);
     });
 
     it('renameGroup() is a no-op for an unknown group id', async () => {

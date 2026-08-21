@@ -20,6 +20,13 @@ interface Props {
 /** Synthetic bucket id for sessions with no group, or a groupId that no longer resolves. */
 const UNGROUPED_ID = '__ungrouped__';
 
+/**
+ * How long to wait for a "+ New Group…" create to land before giving up on
+ * the pending move. Matches `ControlRequestManager`'s 10s control-request
+ * timeout elsewhere in this codebase.
+ */
+const PENDING_GROUP_MOVE_TIMEOUT_MS = 10_000;
+
 interface ContextMenuState {
   x: number;
   y: number;
@@ -55,9 +62,35 @@ export function SessionList({
 
   // "+ New Group…" creates the group fire-and-forget (no ack message); once
   // the resulting broadcast adds a matching group we haven't seen before,
-  // finish the move that was requested alongside it.
+  // finish the move that was requested alongside it. Guarded by a timeout
+  // (and cleared on unmount) so a create that never lands — host error, view
+  // disposed mid-flight — can't leak into a later, unrelated group that
+  // happens to share the same name.
   const pendingGroupMoveRef = useRef<{ name: string; sessionIds: string[] } | null>(null);
+  const pendingGroupMoveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevGroupsRef = useRef<SessionGroup[]>(groups);
+
+  const clearPendingGroupMove = useCallback(() => {
+    pendingGroupMoveRef.current = null;
+    if (pendingGroupMoveTimeoutRef.current !== null) {
+      clearTimeout(pendingGroupMoveTimeoutRef.current);
+      pendingGroupMoveTimeoutRef.current = null;
+    }
+  }, []);
+
+  const schedulePendingGroupMove = useCallback(
+    (pending: { name: string; sessionIds: string[] }) => {
+      clearPendingGroupMove();
+      pendingGroupMoveRef.current = pending;
+      pendingGroupMoveTimeoutRef.current = setTimeout(() => {
+        pendingGroupMoveRef.current = null;
+        pendingGroupMoveTimeoutRef.current = null;
+      }, PENDING_GROUP_MOVE_TIMEOUT_MS);
+    },
+    [clearPendingGroupMove],
+  );
+
+  useEffect(() => clearPendingGroupMove, [clearPendingGroupMove]);
 
   useEffect(() => {
     const pending = pendingGroupMoveRef.current;
@@ -66,11 +99,11 @@ export function SessionList({
       const newGroup = groups.find((g) => !prevIds.has(g.id) && g.name === pending.name);
       if (newGroup) {
         onMoveToGroup(pending.sessionIds, newGroup.id);
-        pendingGroupMoveRef.current = null;
+        clearPendingGroupMove();
       }
     }
     prevGroupsRef.current = groups;
-  }, [groups, onMoveToGroup]);
+  }, [groups, onMoveToGroup, clearPendingGroupMove]);
 
   const visible = sessions.filter((s) => !s.hidden);
   const groupIds = new Set(groups.map((g) => g.id));
@@ -144,13 +177,13 @@ export function SessionList({
           const name = window.prompt('New group name');
           const trimmed = name?.trim();
           if (trimmed) {
-            pendingGroupMoveRef.current = { name: trimmed, sessionIds: targetIds };
+            schedulePendingGroupMove({ name: trimmed, sessionIds: targetIds });
             onCreateGroup(trimmed);
           }
         },
       },
     ],
-    [groups, onMoveToGroup, onCreateGroup],
+    [groups, onMoveToGroup, onCreateGroup, schedulePendingGroupMove],
   );
 
   const handleItemContextMenu = useCallback(
@@ -180,7 +213,14 @@ export function SessionList({
             if (trimmed && trimmed !== group.name) onRenameGroup(group.id, trimmed);
           },
         },
-        { label: 'Delete Group', onSelect: () => onDeleteGroup(group.id) },
+        {
+          label: 'Delete Group',
+          onSelect: () => {
+            if (window.confirm(`Delete group "${group.name}"? Sessions inside it will become ungrouped.`)) {
+              onDeleteGroup(group.id);
+            }
+          },
+        },
       ];
       setContextMenu({ x: e.clientX, y: e.clientY, items });
     },

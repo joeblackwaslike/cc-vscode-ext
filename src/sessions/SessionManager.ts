@@ -78,18 +78,31 @@ export class SessionManager {
     return [...this.groups];
   }
 
-  /** Create a new session group, then persist. */
+  /**
+   * Create a new session group, then persist. Rejects a blank/whitespace-only
+   * name at this boundary — the webview's own trim/guard isn't the only thing
+   * standing between the untyped IPC surface and a stored group.
+   */
   async createGroup(name: string): Promise<SessionGroup> {
-    const group: SessionGroup = { id: randomUUID(), name };
+    const trimmed = name.trim();
+    if (!trimmed) {
+      throw new Error('Group name must not be empty');
+    }
+    const group: SessionGroup = { id: randomUUID(), name: trimmed };
     this.groups = [...this.groups, group];
     await this.storage.saveGroups(this.groups);
     return group;
   }
 
-  /** Rename an existing session group (no-op if the id is unknown). */
+  /**
+   * Rename an existing session group. No-op (matching `renameSession`'s
+   * unknown-id convention) if the id is unknown or the name is blank.
+   */
   async renameGroup(id: string, name: string): Promise<void> {
+    const trimmed = name.trim();
+    if (!trimmed) return;
     if (!this.groups.some((g) => g.id === id)) return;
-    this.groups = this.groups.map((g) => (g.id === id ? { ...g, name } : g));
+    this.groups = this.groups.map((g) => (g.id === id ? { ...g, name: trimmed } : g));
     await this.storage.saveGroups(this.groups);
   }
 

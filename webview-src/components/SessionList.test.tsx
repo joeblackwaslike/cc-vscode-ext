@@ -1,5 +1,5 @@
-import { render, screen, within, fireEvent } from '@testing-library/react';
-import { describe, expect, test, vi } from 'vitest';
+import { render, screen, within, fireEvent, act } from '@testing-library/react';
+import { describe, expect, test, vi, afterEach } from 'vitest';
 import { SessionList } from './SessionList';
 import type { SessionInfo, SessionGroup } from '../lib/ipc';
 
@@ -211,6 +211,7 @@ describe('SessionList: context menu', () => {
     const onDeleteGroup = vi.fn();
     const groups: SessionGroup[] = [{ id: 'g1', name: 'Work' }];
     const sessions = [session('s1', 'g1')];
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
     render(
       <SessionList {...baseProps()} onDeleteGroup={onDeleteGroup} sessions={sessions} groups={groups} />,
     );
@@ -221,6 +222,121 @@ describe('SessionList: context menu', () => {
 
     expect(screen.getByRole('menuitem', { name: 'Rename Group' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('menuitem', { name: 'Delete Group' }));
+
+    expect(confirmSpy).toHaveBeenCalled();
     expect(onDeleteGroup).toHaveBeenCalledWith('g1');
+    confirmSpy.mockRestore();
+  });
+
+  test('"Delete Group" asks for confirmation first and does not delete when cancelled', () => {
+    const onDeleteGroup = vi.fn();
+    const groups: SessionGroup[] = [{ id: 'g1', name: 'Work' }];
+    const sessions = [session('s1', 'g1')];
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    render(
+      <SessionList {...baseProps()} onDeleteGroup={onDeleteGroup} sessions={sessions} groups={groups} />,
+    );
+
+    const workSection = screen.getByTestId('session-group-section');
+    const header = within(workSection).getByTestId('session-group-header');
+    fireEvent.contextMenu(header);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete Group' }));
+
+    expect(confirmSpy).toHaveBeenCalled();
+    expect(onDeleteGroup).not.toHaveBeenCalled();
+    confirmSpy.mockRestore();
+  });
+});
+
+describe('SessionList: "+ New Group…" create-then-move reconciliation', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  test('moves the target session(s) into the new group once it appears in a later broadcast', () => {
+    const onCreateGroup = vi.fn();
+    const onMoveToGroup = vi.fn();
+    vi.spyOn(window, 'prompt').mockReturnValue('Research');
+    const sessions = [session('s1')];
+
+    const { rerender } = render(
+      <SessionList
+        {...baseProps()}
+        onCreateGroup={onCreateGroup}
+        onMoveToGroup={onMoveToGroup}
+        sessions={sessions}
+        groups={[]}
+      />,
+    );
+
+    const item = screen.getByText('Session s1').closest('[data-testid="session-item"]')!;
+    fireEvent.contextMenu(item);
+    fireEvent.click(screen.getByRole('menuitem', { name: /Move to Group/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '+ New Group…' }));
+
+    expect(onCreateGroup).toHaveBeenCalledWith('Research');
+    expect(onMoveToGroup).not.toHaveBeenCalled();
+
+    // Simulate the broadcast landing with the newly-created group.
+    rerender(
+      <SessionList
+        {...baseProps()}
+        onCreateGroup={onCreateGroup}
+        onMoveToGroup={onMoveToGroup}
+        sessions={sessions}
+        groups={[{ id: 'g-new', name: 'Research' }]}
+      />,
+    );
+
+    expect(onMoveToGroup).toHaveBeenCalledTimes(1);
+    expect(onMoveToGroup).toHaveBeenCalledWith(['s1'], 'g-new');
+  });
+
+  test('drops the pending move after a timeout, so a later unrelated group with the same name does not inherit it', () => {
+    vi.useFakeTimers();
+    try {
+      const onCreateGroup = vi.fn();
+      const onMoveToGroup = vi.fn();
+      vi.spyOn(window, 'prompt').mockReturnValue('Research');
+      const sessions = [session('s1')];
+
+      const { rerender } = render(
+        <SessionList
+          {...baseProps()}
+          onCreateGroup={onCreateGroup}
+          onMoveToGroup={onMoveToGroup}
+          sessions={sessions}
+          groups={[]}
+        />,
+      );
+
+      const item = screen.getByText('Session s1').closest('[data-testid="session-item"]')!;
+      fireEvent.contextMenu(item);
+      fireEvent.click(screen.getByRole('menuitem', { name: /Move to Group/ }));
+      fireEvent.click(screen.getByRole('menuitem', { name: '+ New Group…' }));
+
+      expect(onCreateGroup).toHaveBeenCalledWith('Research');
+
+      // The create never lands — advance past the pending-move timeout.
+      act(() => {
+        vi.advanceTimersByTime(10_000);
+      });
+
+      // A later, unrelated group happens to be created with the same name.
+      rerender(
+        <SessionList
+          {...baseProps()}
+          onCreateGroup={onCreateGroup}
+          onMoveToGroup={onMoveToGroup}
+          sessions={sessions}
+          groups={[{ id: 'g-unrelated', name: 'Research' }]}
+        />,
+      );
+
+      expect(onMoveToGroup).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
