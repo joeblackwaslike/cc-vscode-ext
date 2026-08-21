@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Minimal stand-in for the `claude` CLI in `--input-format stream-json` mode.
 // It encodes the ONE rule the real CLI enforces (verified empirically against
-// claude 2.1.168): a user turn's `message` must be an object with role 'user'
+// claude 2.1.237): a user turn's `message` must be an object with role 'user'
 // and string content. A bare-string message is rejected exactly like the real
 // CLI ("Expected message role 'user', got 'undefined'") and yields no response.
 //

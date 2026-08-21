@@ -8,7 +8,7 @@ import { TerminalLauncher, shellQuote } from '../../../src/terminal/TerminalLaun
 // Mirror the real macOS global-storage path: it contains a space, which is why
 // the launcher must shell-quote before sendText.
 const BINARY =
-  '/Users/me/Library/Application Support/Code/User/globalStorage/claw-code/claude-cli/2.1.168/claude-darwin-arm64';
+  '/Users/me/Library/Application Support/Code/User/globalStorage/claw-code/claude-cli/2.1.237/claude-darwin-arm64';
 
 describe('TerminalLauncher', () => {
   let launcher: TerminalLauncher;

@@ -5,7 +5,7 @@
   "version": "0.1.0",
   "publisher": "reference",
   "license": "MIT",
-  "claudeCliVersion": "2.1.168",
+  "claudeCliVersion": "2.1.237",
   "engines": {
     "vscode": "^1.94.0"
   },

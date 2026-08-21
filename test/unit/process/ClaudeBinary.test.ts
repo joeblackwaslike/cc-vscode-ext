@@ -24,8 +24,8 @@ describe('assetName', () => {
 
 describe('releaseAssetUrl', () => {
   it('builds the version-tagged release download URL', () => {
-    expect(releaseAssetUrl('2.1.168', 'claude-linux-x64')).toBe(
-      'https://github.com/joeblackwaslike/cc-vscode-ext/releases/download/claude-cli-v2.1.168/claude-linux-x64',
+    expect(releaseAssetUrl('2.1.237', 'claude-linux-x64')).toBe(
+      'https://github.com/joeblackwaslike/cc-vscode-ext/releases/download/claude-cli-v2.1.237/claude-linux-x64',
     );
   });
 });

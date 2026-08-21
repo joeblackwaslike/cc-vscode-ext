@@ -12,9 +12,9 @@ import { claudeCliVersion } from '../../package.json';
  *
  * Its per-platform binaries are published as assets on the `claude-cli-v<ver>`
  * GitHub release; the extension downloads the right one on first run (the
- * 211 MB binary is no longer committed to the repo). Verified: the npm artifact
- * `@anthropic-ai/claude-code-darwin-arm64@2.1.168` is byte-identical (same
- * SHA-256) to the binary the live control-protocol probes ran against.
+ * 211 MB binary is no longer committed to the repo). The pinned npm artifact
+ * for each platform/arch is verified to be byte-identical (same SHA-256) to the
+ * binary the live control-protocol probes ran against.
  */
 export const CLAUDE_PINNED_VERSION: string = claudeCliVersion;
 

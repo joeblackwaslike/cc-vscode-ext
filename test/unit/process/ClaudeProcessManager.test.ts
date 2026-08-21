@@ -154,7 +154,7 @@ describe('ClaudeProcessManager', () => {
   // Contract guard: the CLI's stream-json input rejects a bare-string message
   // ("Expected message role 'user', got 'undefined'") and produces no response.
   // The user turn MUST be wrapped as { role, content }. Verified empirically
-  // against claude 2.1.168.
+  // against claude 2.1.237.
   it('sendUserMessage() writes the SDK user envelope (role + content)', async () => {
     const { manager } = makeManager();
     await manager.spawnClaude('ch-1', {});
