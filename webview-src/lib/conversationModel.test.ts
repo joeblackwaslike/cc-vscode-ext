@@ -108,4 +108,37 @@ describe('buildConversation', () => {
     if (turn.kind !== 'assistant') throw new Error('expected assistant turn');
     expect(turn.blocks).toEqual([{ type: 'thinking', text: 'let me consider the options' }]);
   });
+
+  it('drops a thinking block with empty/redacted text instead of producing a dead row', () => {
+    // Observed live: the CLI can return {"type":"thinking","thinking":"","signature":"..."}
+    // for redacted/summarized thinking. Pushing that as a block would mount a
+    // ThinkingSummary that can never show anything, even with Focus View off.
+    const turns = buildConversation([
+      ev({
+        type: 'assistant',
+        message: {
+          content: [{ type: 'thinking', thinking: '', signature: 'abc123' }],
+        },
+      }),
+    ]);
+    expect(turns).toEqual([]);
+  });
+
+  it('still renders sibling blocks in the same turn when a thinking block is empty', () => {
+    const turns = buildConversation([
+      ev({
+        type: 'assistant',
+        message: {
+          content: [
+            { type: 'thinking', thinking: '' },
+            { type: 'text', text: 'here is the answer' },
+          ],
+        },
+      }),
+    ]);
+    expect(turns).toHaveLength(1);
+    const turn = turns[0];
+    if (turn.kind !== 'assistant') throw new Error('expected assistant turn');
+    expect(turn.blocks).toEqual([{ type: 'text', text: 'here is the answer' }]);
+  });
 });

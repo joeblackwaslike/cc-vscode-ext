@@ -24,17 +24,26 @@ export function ThinkingSummary({ text, running }: Props) {
   const [durationSec, setDurationSec] = useState<number | undefined>(undefined);
 
   useEffect(() => {
-    if (wasRunningRef.current && !running && durationSec === undefined) {
+    const justFinished = wasRunningRef.current && !running;
+
+    if (justFinished && durationSec === undefined) {
       setDurationSec(Math.max(1, Math.round((Date.now() - startRef.current) / 1000)));
     }
-    wasRunningRef.current = running;
 
     // Re-collapse once the turn completes, but only if the user had manually
     // expanded it — mirrors the upstream "re-collapse on turn completion" behavior.
-    if (!running && manuallyExpanded) {
+    // Gated on the running->false *transition* (justFinished), not the steady
+    // `!running` state: a completed turn has `running === false` on every
+    // render, including the one right after a click sets manuallyExpanded —
+    // gating on steady state re-collapsed the block in the same commit as the
+    // click, making it permanently unexpandable on any already-finished turn
+    // (i.e. every turn in scrollback).
+    if (justFinished && manuallyExpanded) {
       setExpanded(false);
       setManuallyExpanded(false);
     }
+
+    wasRunningRef.current = running;
   }, [running, durationSec, manuallyExpanded]);
 
   const toggle = (): void => {

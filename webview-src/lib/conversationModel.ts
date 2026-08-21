@@ -126,7 +126,12 @@ function pushAssistantTurn(
       // content block carries its text under a `thinking` field, not `text`.
       // The `raw.text` fallback is defensive only, for a future/alternate
       // shape — it should never be the live path today.
-      blocks.push({ type: 'thinking', text: String(raw.thinking ?? raw.text ?? '') });
+      const thinkingText = String(raw.thinking ?? raw.text ?? '');
+      // Redacted/summarized thinking (observed live: a populated `signature`
+      // with empty `thinking` text) carries nothing worth rendering — skip it
+      // rather than push a block that mounts a dead, permanently-empty
+      // ThinkingSummary row even with Focus View off.
+      if (thinkingText) blocks.push({ type: 'thinking', text: thinkingText });
     } else if (raw.type === 'tool_use') {
       const id = String(raw.id ?? '');
       const block: ToolUseBlock = {
