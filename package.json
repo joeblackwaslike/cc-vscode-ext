@@ -188,6 +188,10 @@
       {
         "command": "claw-vscode.openWalkthrough",
         "title": "Claw Code: Open Walkthrough"
+      },
+      {
+        "command": "claw-vscode.toggleFocusView",
+        "title": "Claude Code: Toggle Focus View"
       }
     ],
     "keybindings": [
@@ -252,6 +256,12 @@
         "win": "ctrl+shift+t",
         "linux": "ctrl+shift+t",
         "when": "config.claudeCode.enableReopenClosedSessionShortcut && claw-vscode.lastClosedWasSession"
+      },
+      {
+        "command": "claw-vscode.toggleFocusView",
+        "key": "ctrl+alt+f",
+        "mac": "cmd+alt+f",
+        "when": "config.claudeCode.enableNewConversationShortcut && (activeWebviewPanelId == 'clawVSCodePanel' || (claw-vscode.sideBarActive && !editorFocus && !panelFocus))"
       }
     ],
     "viewsContainers": {

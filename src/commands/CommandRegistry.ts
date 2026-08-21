@@ -66,6 +66,11 @@ export interface IViewFocuser {
   focusInput(): void;
 }
 
+export interface IFocusViewToggler {
+  toggleFocusView(): boolean;
+  broadcastSessionStates(): void;
+}
+
 /**
  * Registers all VS Code commands contributed by the extension.
  *
@@ -82,6 +87,7 @@ export class CommandRegistry {
     private readonly sessionHistory: SessionHistory,
     private readonly terminalLauncher: TerminalLauncher,
     private readonly logger: ILogger,
+    private readonly viewManager: IFocusViewToggler,
   ) {}
 
   register(): vscode.Disposable[] {
@@ -135,6 +141,12 @@ export class CommandRegistry {
         ),
       ),
       r('claw-vscode.createWorktree', () => undefined),
+
+      // ─── Focus View ─────────────────────────────────────────────────
+      r('claw-vscode.toggleFocusView', () => {
+        this.viewManager.toggleFocusView();
+        this.viewManager.broadcastSessionStates();
+      }),
     ];
 
     // Drop-in compatibility: when the official Anthropic.claude-code extension

@@ -236,6 +236,29 @@ a { color: var(--vscode-textLink-foreground); }
 .cc-tool__collapse { display: block; width: 100%; text-align: left; padding: 6px 12px; font-size: 11px; color: var(--cc-muted); background: none; border: 0; border-top: 1px solid var(--cc-border); cursor: pointer; }
 .cc-tool__collapse:hover { color: var(--cc-fg); }
 
+/* ── Focus View: folded tool-run summary ────────────────────────────────── */
+.cc-focus-group { border: 1px solid var(--cc-border); border-radius: 8px; margin: 0 0 10px; overflow: hidden; background: #ffffff06; }
+.cc-focus-group__toggle {
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+  padding: 7px 11px; font-size: 12.5px; color: var(--cc-muted); background: none; border: 0; cursor: pointer;
+}
+.cc-focus-group__toggle:hover { color: var(--cc-fg); }
+.cc-focus-group__chev { font-size: 9px; opacity: 0.7; }
+.cc-focus-group__body { border-top: 1px solid var(--cc-border); padding: 8px; }
+
+/* ── Focus View: thinking block summary ─────────────────────────────────── */
+.cc-thinking { margin: 0 0 10px; }
+.cc-thinking__toggle {
+  display: flex; align-items: center; gap: 8px; padding: 4px 2px; font-size: 12.5px;
+  font-style: italic; color: var(--cc-muted); background: none; border: 0; cursor: pointer;
+}
+.cc-thinking__toggle:hover { color: var(--cc-fg); }
+.cc-thinking__chev { font-size: 9px; opacity: 0.7; }
+.cc-thinking__body {
+  margin-top: 4px; padding: 8px 10px; border-left: 2px solid var(--cc-border);
+  font-size: 12.5px; color: var(--cc-muted); white-space: pre-wrap; overflow-wrap: anywhere;
+}
+
 /* ── Composer (Claude-Desktop "Code" style) ─────────────────────────────── */
 .cc-composer-wrap { position: relative; padding: 8px 12px 12px; flex-shrink: 0; }
 .cc-composer {
@@ -261,6 +284,7 @@ a { color: var(--vscode-textLink-foreground); }
 .cc-tbtn__chev { font-size: 9px; opacity: 0.7; }
 .cc-tbtn--mode { color: var(--cc-warning); }
 .cc-tbtn--plus { font-size: 15px; padding: 2px 7px; }
+.cc-tbtn--active { color: var(--cc-accent); }
 
 .cc-menu-wrap { position: relative; display: inline-flex; }
 .cc-menu {

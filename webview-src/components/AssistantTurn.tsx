@@ -3,7 +3,10 @@ import { createPortal } from 'react-dom';
 import { renderMarkdown } from '../lib/markdown';
 import { ToolCall } from './ToolCall';
 import { CommandOutput } from './CommandOutput';
+import { FocusSummaryRow } from './FocusSummaryRow';
+import { ThinkingSummary } from './ThinkingSummary';
 import { useRunCommand } from './RunOutputContext';
+import { groupBlocksForFocusView } from '../lib/focusView';
 import type { AssistantBlock } from '../lib/conversationModel';
 
 /** Decode a base64 `data-cc-cmd` attribute back into the raw command string. */
@@ -111,27 +114,63 @@ function MarkdownText({
   );
 }
 
+/** Dispatches a single block to its renderer, shared by both the flat and Focus View layouts. */
+function renderBlock(block: AssistantBlock, key: number, channelId: string, running: boolean) {
+  if (block.type === 'text') {
+    return <MarkdownText key={key} block={block} blockKey={key} channelId={channelId} />;
+  }
+  if (block.type === 'thinking') {
+    return <ThinkingSummary key={key} text={block.text} running={running} />;
+  }
+  return <ToolCall key={key} tool={block} />;
+}
+
 /** An assistant turn — green dot gutter, then markdown text + tool calls. */
 export function AssistantTurn({
   blocks,
   channelId,
+  focusView = false,
+  running = false,
 }: {
   blocks: AssistantBlock[];
   channelId: string;
+  /** Render tool_use runs collapsed behind FocusSummaryRow. */
+  focusView?: boolean;
+  /** True only while this turn is the actively-streaming one. */
+  running?: boolean;
 }) {
+  const [expandedGroups, setExpandedGroups] = useState<Set<number>>(new Set());
+
+  const toggleGroup = useCallback((index: number) => {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  }, []);
+
   return (
     <div className="cc-assistant" data-testid="chat-message-assistant">
       <div className="cc-assistant__gutter">
         <span className="cc-assistant__dot" />
       </div>
       <div className="cc-assistant__body">
-        {blocks.map((block, i) =>
-          block.type === 'text' ? (
-            <MarkdownText key={i} block={block} blockKey={i} channelId={channelId} />
-          ) : (
-            <ToolCall key={i} tool={block} />
-          ),
-        )}
+        {focusView
+          ? groupBlocksForFocusView(blocks).map((group, i) =>
+              group.type === 'visible' ? (
+                renderBlock(group.block, i, channelId, running)
+              ) : (
+                <FocusSummaryRow
+                  key={i}
+                  tools={group.tools}
+                  running={running}
+                  expanded={expandedGroups.has(i)}
+                  onToggle={() => toggleGroup(i)}
+                />
+              ),
+            )
+          : blocks.map((block, i) => renderBlock(block, i, channelId, running))}
       </div>
     </div>
   );

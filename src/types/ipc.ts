@@ -134,6 +134,10 @@ export interface MoveSessionsToGroupMessage {
   groupId: string | null;
 }
 
+// ─── Focus View ────────────────────────────────────────────────────────────
+
+export interface ToggleFocusViewMessage { type: 'toggle_focus_view' }
+
 // ─── File & editor operations ────────────────────────────────────────────────
 
 export interface ListFilesRequestMessage {
@@ -330,6 +334,7 @@ export type FromWebviewMessage =
   | RenameSessionGroupMessage
   | DeleteSessionGroupMessage
   | MoveSessionsToGroupMessage
+  | ToggleFocusViewMessage
   | ListFilesRequestMessage
   | GetCurrentSelectionMessage
   | OpenDiffMessage
@@ -417,6 +422,7 @@ export interface UpdateStateMessage {
   defaultPermissionMode: PermissionMode;
   thinkingLevel: ThinkingLevel;
   model?: string;
+  focusViewEnabled: boolean;
 }
 
 /** One row of the context-window breakdown (from the CLI's get_context_usage). */

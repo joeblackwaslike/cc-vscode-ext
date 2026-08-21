@@ -153,5 +153,51 @@ describe('ViewManager', () => {
       const msg = wv.postMessage.mock.calls[0]?.[0];
       expect(msg).toMatchObject({ groups: fakeGroups });
     });
+
+    it('defaults focusViewEnabled to false', () => {
+      const wv = makeWebview();
+      manager.register(wv);
+      manager.broadcastSessionStates();
+
+      const msg = wv.postMessage.mock.calls[0]?.[0];
+      expect(msg).toMatchObject({ focusViewEnabled: false });
+    });
+
+    it('reflects setFocusViewEnabled()', () => {
+      const wv = makeWebview();
+      manager.register(wv);
+      manager.setFocusViewEnabled(true);
+      manager.broadcastSessionStates();
+
+      const msg = wv.postMessage.mock.calls[0]?.[0];
+      expect(msg).toMatchObject({ focusViewEnabled: true });
+    });
+  });
+
+  describe('setFocusViewEnabled() / toggleFocusView()', () => {
+    it('toggleFocusView() flips false -> true and returns the new value', () => {
+      expect(manager.toggleFocusView()).toBe(true);
+    });
+
+    it('toggleFocusView() flips true -> false on a second call', () => {
+      manager.toggleFocusView();
+      expect(manager.toggleFocusView()).toBe(false);
+    });
+
+    it('setFocusViewEnabled() sets the flag directly', () => {
+      manager.setFocusViewEnabled(true);
+      const wv = makeWebview();
+      manager.register(wv);
+      manager.broadcastSessionStates();
+      expect(wv.postMessage.mock.calls[0]?.[0]).toMatchObject({ focusViewEnabled: true });
+    });
+
+    it('toggleFocusView() is reflected in broadcastSessionStates()', () => {
+      manager.toggleFocusView();
+      const wv = makeWebview();
+      manager.register(wv);
+      manager.broadcastSessionStates();
+      expect(wv.postMessage.mock.calls[0]?.[0]).toMatchObject({ focusViewEnabled: true });
+    });
   });
 });

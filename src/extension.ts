@@ -197,6 +197,7 @@ export function activate(context: vscode.ExtensionContext): void {
     sessionHistory,
     terminalLauncher,
     logger,
+    viewManager,
   );
 
   context.subscriptions.push(...commandRegistry.register());

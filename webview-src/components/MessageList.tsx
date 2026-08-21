@@ -1,20 +1,33 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useContext, useEffect, useMemo, useRef } from 'react';
 import { buildConversation, type ResultMeta } from '../lib/conversationModel';
 import { AssistantTurn } from './AssistantTurn';
 import { UserTurn } from './UserTurn';
 import { RunOutputProvider } from './RunOutputContext';
+import { ExtensionContext } from '../store/extensionStore';
 import type { ClaudeStreamEvent } from '../lib/ipc';
 
 /** Renders the derived conversation and keeps the view pinned to the bottom. */
 export function MessageList({
   events,
   channelId,
+  running = false,
 }: {
   events: ClaudeStreamEvent[];
   channelId: string;
+  /** True while the channel's process is actively streaming a turn. */
+  running?: boolean;
 }) {
   const turns = useMemo(() => buildConversation(events), [events]);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const ext = useContext(ExtensionContext);
+  const focusViewEnabled = ext?.state.focusViewEnabled ?? false;
+
+  const lastAssistantIndex = useMemo(() => {
+    for (let i = turns.length - 1; i >= 0; i--) {
+      if (turns[i]?.kind === 'assistant') return i;
+    }
+    return -1;
+  }, [turns]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -23,12 +36,20 @@ export function MessageList({
   return (
     <RunOutputProvider>
       <div data-testid="messages-list" className="cc-messages">
-        {turns.map((turn) => {
+        {turns.map((turn, i) => {
         switch (turn.kind) {
           case 'user':
             return <UserTurn key={turn.key} text={turn.text} />;
           case 'assistant':
-            return <AssistantTurn key={turn.key} blocks={turn.blocks} channelId={channelId} />;
+            return (
+              <AssistantTurn
+                key={turn.key}
+                blocks={turn.blocks}
+                channelId={channelId}
+                focusView={focusViewEnabled}
+                running={running && i === lastAssistantIndex}
+              />
+            );
           case 'result':
             return <ResultLine key={turn.key} isError={turn.isError} meta={turn.meta} />;
           case 'error':

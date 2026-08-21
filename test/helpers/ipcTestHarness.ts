@@ -63,6 +63,7 @@ export interface MockViewManager {
   setPermissionMode: ReturnType<typeof vi.fn>;
   setThinkingLevel: ReturnType<typeof vi.fn>;
   setModel: ReturnType<typeof vi.fn>;
+  toggleFocusView: ReturnType<typeof vi.fn>;
 }
 
 export interface MockWebview {
@@ -240,6 +241,7 @@ export function createIpcTestHarness(): IpcTestHarness {
     setPermissionMode: vi.fn(),
     setThinkingLevel: vi.fn(),
     setModel: vi.fn(),
+    toggleFocusView: vi.fn(() => true),
   };
 
   const channelRouter: MockChannelRouter = {

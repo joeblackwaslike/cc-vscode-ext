@@ -28,7 +28,12 @@ export interface TextBlock {
   text: string;
 }
 
-export type AssistantBlock = TextBlock | ToolUseBlock;
+export interface ThinkingBlock {
+  type: 'thinking';
+  text: string;
+}
+
+export type AssistantBlock = TextBlock | ThinkingBlock | ToolUseBlock;
 
 export interface ResultMeta {
   costUsd?: number;
@@ -115,6 +120,13 @@ function pushAssistantTurn(
     if (!isRecord(raw)) continue;
     if (raw.type === 'text') {
       blocks.push({ type: 'text', text: String(raw.text ?? '') });
+    } else if (raw.type === 'thinking') {
+      // Empirically verified against the bundled `claude` CLI (2.1.238,
+      // --output-format stream-json): the anthropic Messages API's `thinking`
+      // content block carries its text under a `thinking` field, not `text`.
+      // The `raw.text` fallback is defensive only, for a future/alternate
+      // shape — it should never be the live path today.
+      blocks.push({ type: 'thinking', text: String(raw.thinking ?? raw.text ?? '') });
     } else if (raw.type === 'tool_use') {
       const id = String(raw.id ?? '');
       const block: ToolUseBlock = {

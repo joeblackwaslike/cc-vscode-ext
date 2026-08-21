@@ -127,6 +127,7 @@ export function ChatInput({ channelId, onSend, onInterrupt, onCompact, onRefresh
   const mode = (state?.defaultPermissionMode ?? 'default') as PermissionMode;
   const effort = (state?.thinkingLevel ?? 'medium') as ThinkingLevel;
   const model = state?.model ?? '';
+  const focusViewEnabled = state?.focusViewEnabled ?? false;
 
   const dispatch = ext?.dispatch;
 
@@ -151,6 +152,13 @@ export function ChatInput({ channelId, onSend, onInterrupt, onCompact, onRefresh
     },
     [channelId, dispatch],
   );
+  // Optimistic flip so the toolbar toggle feels instant; the host's
+  // `update_state` echo (driven by ViewManager.toggleFocusView(), the same
+  // path the command/keybinding trigger uses) converges every webview.
+  const toggleFocusView = useCallback(() => {
+    dispatch?.({ type: 'SET_DEFAULTS', defaults: { focusViewEnabled: !focusViewEnabled } });
+    postMessage({ type: 'toggle_focus_view' });
+  }, [dispatch, focusViewEnabled]);
 
   return (
     <div className="cc-composer-wrap">
@@ -191,6 +199,15 @@ export function ChatInput({ channelId, onSend, onInterrupt, onCompact, onRefresh
             triggerTestId="mode-selector"
             triggerTitle="Permission mode"
           />
+          <button
+            type="button"
+            className={`cc-tbtn${focusViewEnabled ? ' cc-tbtn--active' : ''}`}
+            onClick={toggleFocusView}
+            data-testid="focus-view-toggle"
+            title="Toggle Focus View"
+          >
+            Focus
+          </button>
           <span className="cc-toolbar__sp" />
           <ComposerMenu
             options={MODEL_OPTIONS}

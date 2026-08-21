@@ -93,4 +93,19 @@ describe('buildConversation', () => {
     const turns = buildConversation([ev({ type: 'system', subtype: 'init' })]);
     expect(turns).toEqual([]);
   });
+
+  it('parses a thinking-type content block into a ThinkingBlock', () => {
+    const turns = buildConversation([
+      ev({
+        type: 'assistant',
+        message: {
+          content: [{ type: 'thinking', thinking: 'let me consider the options' }],
+        },
+      }),
+    ]);
+    expect(turns).toHaveLength(1);
+    const turn = turns[0];
+    if (turn.kind !== 'assistant') throw new Error('expected assistant turn');
+    expect(turn.blocks).toEqual([{ type: 'thinking', text: 'let me consider the options' }]);
+  });
 });

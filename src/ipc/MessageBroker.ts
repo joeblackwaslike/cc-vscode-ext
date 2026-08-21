@@ -58,6 +58,7 @@ export interface IViewManager {
   setPermissionMode(mode: PermissionMode): void;
   setThinkingLevel(level: ThinkingLevel): void;
   setModel(model: string): void;
+  toggleFocusView(): boolean;
 }
 
 export interface IWebview {
@@ -308,6 +309,12 @@ export class MessageBroker {
           return;
         case 'move_sessions_to_group':
           await this.sessionManager.moveSessionsToGroup(msg.sessionIds, msg.groupId);
+          this.viewManager.broadcastSessionStates();
+          return;
+
+        // ─── Focus View ─────────────────────────────────────────────────
+        case 'toggle_focus_view':
+          this.viewManager.toggleFocusView();
           this.viewManager.broadcastSessionStates();
           return;
 

@@ -10,6 +10,7 @@ export interface ExtensionState {
   defaultPermissionMode: PermissionMode;
   thinkingLevel: ThinkingLevel;
   model: string | undefined;
+  focusViewEnabled: boolean;
   authenticated: boolean;
   loginUrl: string | undefined;
 }
@@ -21,13 +22,16 @@ const initialState: ExtensionState = {
   defaultPermissionMode: 'default',
   thinkingLevel: 'medium',
   model: undefined,
+  focusViewEnabled: false,
   authenticated: true, // assume authenticated until told otherwise
   loginUrl: undefined,
 };
 
 // ─── Actions ──────────────────────────────────────────────────────────────────
 
-type SessionDefaults = Partial<Pick<ExtensionState, 'defaultPermissionMode' | 'thinkingLevel' | 'model'>>;
+type SessionDefaults = Partial<
+  Pick<ExtensionState, 'defaultPermissionMode' | 'thinkingLevel' | 'model' | 'focusViewEnabled'>
+>;
 
 type Action =
   | { type: 'UPDATE_STATE'; payload: Omit<ExtensionState, 'authenticated' | 'loginUrl'> }
@@ -87,6 +91,7 @@ export function useExtensionReducer() {
               defaultPermissionMode: msg.defaultPermissionMode,
               thinkingLevel: msg.thinkingLevel,
               model: msg.model,
+              focusViewEnabled: msg.focusViewEnabled,
             },
           });
           break;

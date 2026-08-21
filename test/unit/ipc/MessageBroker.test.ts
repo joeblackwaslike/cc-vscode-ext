@@ -708,6 +708,13 @@ describe('SessionRelayManager wiring', () => {
     expect(sessionRelayManager.updateLaunchOptions).not.toHaveBeenCalled();
   });
 
+  it('toggle_focus_view calls viewManager.toggleFocusView() then broadcastSessionStates()', () => {
+    const { h } = makebroker();
+    h.dispatch({ type: 'toggle_focus_view' });
+    expect(h.viewManager.toggleFocusView).toHaveBeenCalledOnce();
+    expect(h.viewManager.broadcastSessionStates).toHaveBeenCalledOnce();
+  });
+
   it('falls back to a real SessionRelayManager when none is injected', () => {
     const { h } = makebroker();
     expect(() => h.dispatch({ type: 'get_relay_threshold' })).not.toThrow();

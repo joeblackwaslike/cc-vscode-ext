@@ -25,6 +25,10 @@ describe('CommandRegistry', () => {
     openTerminal: vi.fn(),
   };
   const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+  const viewManager = {
+    toggleFocusView: vi.fn(() => true),
+    broadcastSessionStates: vi.fn(),
+  };
 
   function makeRegistry() {
     return new CommandRegistry(
@@ -35,6 +39,7 @@ describe('CommandRegistry', () => {
       sessionHistory as never,
       terminalLauncher as never,
       logger,
+      viewManager,
     );
   }
 
@@ -181,5 +186,24 @@ describe('CommandRegistry', () => {
     const handler = call?.[1] as () => void;
     handler();
     expect(logger.info).toHaveBeenCalled();
+  });
+
+  it('registers claw-vscode.toggleFocusView', () => {
+    const registry = makeRegistry();
+    registry.register();
+    expect(registeredIds()).toContain('claw-vscode.toggleFocusView');
+  });
+
+  it('toggleFocusView calls viewManager.toggleFocusView() then broadcastSessionStates()', () => {
+    const registry = makeRegistry();
+    registry.register();
+
+    const call = mockVscode.commands.registerCommand.mock.calls.find(
+      (c: [string, ...unknown[]]) => c[0] === 'claw-vscode.toggleFocusView',
+    );
+    const handler = call?.[1] as () => void;
+    handler();
+    expect(viewManager.toggleFocusView).toHaveBeenCalledOnce();
+    expect(viewManager.broadcastSessionStates).toHaveBeenCalledOnce();
   });
 });

@@ -23,6 +23,7 @@ export class ViewManager {
   private defaultPermissionMode: PermissionMode = 'default';
   private thinkingLevel: ThinkingLevel = 'medium';
   private model: string | undefined;
+  private focusViewEnabled = false;
 
   constructor(private readonly sessionManager: ISessionManagerForBroadcast) {}
 
@@ -68,6 +69,7 @@ export class ViewManager {
       defaultPermissionMode: this.defaultPermissionMode,
       thinkingLevel: this.thinkingLevel,
       ...(this.model !== undefined ? { model: this.model } : {}),
+      focusViewEnabled: this.focusViewEnabled,
     });
   }
 
@@ -85,5 +87,15 @@ export class ViewManager {
 
   setModel(model: string): void {
     this.model = model;
+  }
+
+  setFocusViewEnabled(enabled: boolean): void {
+    this.focusViewEnabled = enabled;
+  }
+
+  /** Flips the in-memory flag and returns the new value. */
+  toggleFocusView(): boolean {
+    this.focusViewEnabled = !this.focusViewEnabled;
+    return this.focusViewEnabled;
   }
 }

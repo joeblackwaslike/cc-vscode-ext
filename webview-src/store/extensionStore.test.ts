@@ -25,11 +25,45 @@ describe('extensionStore', () => {
         activeSessionId: undefined,
         defaultPermissionMode: 'default',
         thinkingLevel: 'medium',
+        focusViewEnabled: false,
       });
     });
 
     expect(result.current.state.sessions).toEqual(fakeSessions);
     expect(result.current.state.groups).toEqual(fakeGroups);
+  });
+
+  test('focusViewEnabled defaults to false', () => {
+    const { result } = renderHook(() => useExtensionReducer());
+    expect(result.current.state.focusViewEnabled).toBe(false);
+  });
+
+  test('UPDATE_STATE populates focusViewEnabled from an update_state message', () => {
+    const { result } = renderHook(() => useExtensionReducer());
+
+    act(() => {
+      result.current.handleMessage({
+        type: 'update_state',
+        sessions: fakeSessions,
+        groups: fakeGroups,
+        activeSessionId: undefined,
+        defaultPermissionMode: 'default',
+        thinkingLevel: 'medium',
+        focusViewEnabled: true,
+      });
+    });
+
+    expect(result.current.state.focusViewEnabled).toBe(true);
+  });
+
+  test('SET_DEFAULTS optimistically flips focusViewEnabled', () => {
+    const { result } = renderHook(() => useExtensionReducer());
+
+    act(() => {
+      result.current.dispatch({ type: 'SET_DEFAULTS', defaults: { focusViewEnabled: true } });
+    });
+
+    expect(result.current.state.focusViewEnabled).toBe(true);
   });
 
   test('LIST_SESSIONS populates groups from a list_sessions_response message', () => {

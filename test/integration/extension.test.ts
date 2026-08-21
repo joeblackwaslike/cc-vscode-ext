@@ -17,6 +17,7 @@ const EXPECTED_COMMANDS = [
   'claw-vscode.insertAtMention',
   'claw-vscode.showLogs',
   'claw-vscode.openWalkthrough',
+  'claw-vscode.toggleFocusView',
 ];
 
 // The original Anthropic.claude-code command IDs. Claw Code is a drop-in
