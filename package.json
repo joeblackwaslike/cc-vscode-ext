@@ -83,7 +83,7 @@
         "properties": {
           "clawCode.enableNewConversationShortcut": {
             "type": "boolean",
-            "default": true,
+            "default": false,
             "description": "Enable the Cmd+N (Ctrl+N) shortcut to create a new conversation"
           },
           "clawCode.enableReopenClosedSessionShortcut": {

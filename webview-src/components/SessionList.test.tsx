@@ -469,6 +469,26 @@ describe('SessionList: Move-to-Group accordion create-group input (in-place, no 
     expect(screen.getByRole('menuitem', { name: '+ New Group…' })).toBeInTheDocument();
     expect(screen.queryByTestId('create-group-input')).not.toBeInTheDocument();
   });
+
+  test('blurring the accordion-triggered input commits the create, same as the top-of-list input', () => {
+    const onCreateGroup = vi.fn();
+    const groups: SessionGroup[] = [{ id: 'g1', name: 'Work' }];
+    const sessions = [session('s1')];
+    render(
+      <SessionList {...baseProps()} onCreateGroup={onCreateGroup} sessions={sessions} groups={groups} />,
+    );
+
+    const item = screen.getByText('Session s1').closest('[data-testid="session-item"]')!;
+    fireEvent.contextMenu(item);
+    fireEvent.click(screen.getByRole('menuitem', { name: /Move to Group/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '+ New Group…' }));
+
+    const input = screen.getByTestId('create-group-input');
+    fireEvent.change(input, { target: { value: 'Research' } });
+    fireEvent.blur(input);
+
+    expect(onCreateGroup).toHaveBeenCalledWith('Research');
+  });
 });
 
 describe('SessionList: "+ New Group…" create-then-move reconciliation', () => {

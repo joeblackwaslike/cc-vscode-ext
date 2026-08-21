@@ -231,6 +231,29 @@ export function SessionList({
     setNewGroupName('');
   }, []);
 
+  // Shared by both create-group render sites (the fixed top-of-list row and
+  // the in-accordion row inside "Move to Group") — same state, same handlers,
+  // kept as one JSX source so the two can't silently drift apart.
+  const renderCreateGroupInput = useCallback(
+    () => (
+      <input
+        autoFocus
+        value={newGroupName}
+        onChange={(e) => setNewGroupName(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') commitCreateGroup();
+          if (e.key === 'Escape') cancelCreateGroup();
+        }}
+        onBlur={commitCreateGroup}
+        onClick={(e) => e.stopPropagation()}
+        placeholder="New group name"
+        data-testid="create-group-input"
+        style={styles.renameInput}
+      />
+    ),
+    [newGroupName, commitCreateGroup, cancelCreateGroup],
+  );
+
   const buildMoveToGroupSubmenu = useCallback(
     (targetIds: string[]): ContextMenuItem[] => {
       const groupItems: ContextMenuItem[] = groups.map((g) => ({
@@ -246,22 +269,7 @@ export function SessionList({
           ...groupItems,
           {
             label: 'New group name',
-            custom: (
-              <input
-                autoFocus
-                value={newGroupName}
-                onChange={(e) => setNewGroupName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') commitCreateGroup();
-                  if (e.key === 'Escape') cancelCreateGroup();
-                }}
-                onBlur={commitCreateGroup}
-                onClick={(e) => e.stopPropagation()}
-                placeholder="New group name"
-                data-testid="create-group-input"
-                style={styles.renameInput}
-              />
-            ),
+            custom: renderCreateGroupInput(),
           },
         ];
       }
@@ -274,7 +282,7 @@ export function SessionList({
         },
       ];
     },
-    [groups, onMoveToGroup, startCreateGroup, creatingGroup, newGroupName, commitCreateGroup, cancelCreateGroup],
+    [groups, onMoveToGroup, startCreateGroup, creatingGroup, renderCreateGroupInput],
   );
 
   const handleItemContextMenu = useCallback(
@@ -386,22 +394,7 @@ export function SessionList({
             renders its own input inline via buildMoveToGroupSubmenu instead,
             so it doesn't jump the viewport away from a scrolled session. */}
         {creatingGroup && creatingGroup.pendingMoveIds === null && (
-          <div style={styles.createGroupRow}>
-            <input
-              autoFocus
-              value={newGroupName}
-              onChange={(e) => setNewGroupName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') commitCreateGroup();
-                if (e.key === 'Escape') cancelCreateGroup();
-              }}
-              onBlur={commitCreateGroup}
-              onClick={(e) => e.stopPropagation()}
-              placeholder="New group name"
-              data-testid="create-group-input"
-              style={styles.renameInput}
-            />
-          </div>
+          <div style={styles.createGroupRow}>{renderCreateGroupInput()}</div>
         )}
 
         {visible.length === 0 && !creatingGroup && <div style={styles.empty}>No past conversations</div>}
