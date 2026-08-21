@@ -41,6 +41,11 @@ export interface ISessionManager {
   deleteSession(id: string): Promise<void>;
   renameSession(id: string, title: string): Promise<void>;
   getAllStates(): Map<string, unknown>;
+  listGroups(): unknown[];
+  createGroup(name: string): Promise<unknown>;
+  renameGroup(groupId: string, name: string): Promise<void>;
+  deleteGroup(groupId: string): Promise<void>;
+  moveSessionsToGroup(sessionIds: string[], groupId: string | null): Promise<void>;
 }
 
 export interface IDiffManager {
@@ -261,7 +266,12 @@ export class MessageBroker {
         // ─── Session management ─────────────────────────────────────────
         case 'list_sessions_request': {
           const sessions = this.sessionManager.listSessions(msg.includeHidden);
-          void this.webview.postMessage({ type: 'list_sessions_response', sessions: sessions as never });
+          const groups = this.sessionManager.listGroups();
+          void this.webview.postMessage({
+            type: 'list_sessions_response',
+            sessions: sessions as never,
+            groups: groups as never,
+          });
           return;
         }
         case 'get_session_request': {
@@ -283,6 +293,22 @@ export class MessageBroker {
           await this.sessionManager.updateSession(msg.sessionId, msg.state, msg.title);
           this.viewManager.broadcastSessionStates();
           void this.webview.postMessage({ type: 'update_session_state_response' });
+          return;
+        case 'create_session_group':
+          await this.sessionManager.createGroup(msg.name);
+          this.viewManager.broadcastSessionStates();
+          return;
+        case 'rename_session_group':
+          await this.sessionManager.renameGroup(msg.groupId, msg.name);
+          this.viewManager.broadcastSessionStates();
+          return;
+        case 'delete_session_group':
+          await this.sessionManager.deleteGroup(msg.groupId);
+          this.viewManager.broadcastSessionStates();
+          return;
+        case 'move_sessions_to_group':
+          await this.sessionManager.moveSessionsToGroup(msg.sessionIds, msg.groupId);
+          this.viewManager.broadcastSessionStates();
           return;
 
         // ─── Diff ───────────────────────────────────────────────────────

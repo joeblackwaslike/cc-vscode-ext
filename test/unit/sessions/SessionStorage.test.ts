@@ -51,4 +51,20 @@ describe('SessionStorage', () => {
   it('constructor calls setKeysForSync', () => {
     expect(memento.setKeysForSync).toHaveBeenCalledOnce();
   });
+
+  it('constructor registers the session groups key for sync', () => {
+    expect(memento.setKeysForSync).toHaveBeenCalledWith(
+      expect.arrayContaining(['claudeCode.sessionGroups']),
+    );
+  });
+
+  it('getGroups() returns an empty array on first run', () => {
+    expect(storage.getGroups()).toEqual([]);
+  });
+
+  it('saveGroups() persists and getGroups() retrieves', async () => {
+    const groups = [{ id: 'g1', name: 'Work' }, { id: 'g2', name: 'Personal' }];
+    await storage.saveGroups(groups);
+    expect(storage.getGroups()).toEqual(groups);
+  });
 });

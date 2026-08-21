@@ -1,7 +1,9 @@
 import type { PermissionMode } from '../process/ProcessArgs';
 import type { ClaudeStreamEvent } from './process';
 import type { DiffFile } from './diff';
-import type { ConversationState, SessionInfo } from './session';
+import type { ConversationState, SessionInfo, SessionGroup } from './session';
+
+export type { SessionGroup };
 
 // ─── Effort levels ───────────────────────────────────────────────────────────
 // Mirrors the claude CLI `--effort <level>` choices (verified via `claude --help`).
@@ -109,6 +111,28 @@ export interface TeleportSessionMessage {
 }
 
 export interface ListRemoteSessionsMessage { type: 'list_remote_sessions' }
+
+export interface CreateSessionGroupMessage {
+  type: 'create_session_group';
+  name: string;
+}
+
+export interface RenameSessionGroupMessage {
+  type: 'rename_session_group';
+  groupId: string;
+  name: string;
+}
+
+export interface DeleteSessionGroupMessage {
+  type: 'delete_session_group';
+  groupId: string;
+}
+
+export interface MoveSessionsToGroupMessage {
+  type: 'move_sessions_to_group';
+  sessionIds: string[];
+  groupId: string | null;
+}
 
 // ─── File & editor operations ────────────────────────────────────────────────
 
@@ -302,6 +326,10 @@ export type FromWebviewMessage =
   | RenameTabMessage
   | TeleportSessionMessage
   | ListRemoteSessionsMessage
+  | CreateSessionGroupMessage
+  | RenameSessionGroupMessage
+  | DeleteSessionGroupMessage
+  | MoveSessionsToGroupMessage
   | ListFilesRequestMessage
   | GetCurrentSelectionMessage
   | OpenDiffMessage
@@ -384,6 +412,7 @@ export interface StreamRequestMessage {
 export interface UpdateStateMessage {
   type: 'update_state';
   sessions: SessionInfo[];
+  groups: SessionGroup[];
   activeSessionId: string | undefined;
   defaultPermissionMode: PermissionMode;
   thinkingLevel: ThinkingLevel;
@@ -463,6 +492,7 @@ export interface GetCurrentSelectionResponseMessage {
 export interface ListSessionsResponseMessage {
   type: 'list_sessions_response';
   sessions: SessionInfo[];
+  groups: SessionGroup[];
 }
 
 export interface GetSessionResponseMessage {

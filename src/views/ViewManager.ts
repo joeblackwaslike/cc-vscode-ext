@@ -1,5 +1,5 @@
 import type { ToWebviewMessage, ThinkingLevel } from '../types/ipc';
-import type { SessionInfo } from '../types/session';
+import type { SessionInfo, SessionGroup } from '../types/session';
 import type { PermissionMode } from '../process/ProcessArgs';
 
 export interface IPostable {
@@ -8,6 +8,7 @@ export interface IPostable {
 
 interface ISessionManagerForBroadcast {
   listSessions(): SessionInfo[];
+  listGroups(): SessionGroup[];
 }
 
 /**
@@ -58,9 +59,11 @@ export class ViewManager {
    */
   broadcastSessionStates(): void {
     const sessions = this.sessionManager.listSessions();
+    const groups = this.sessionManager.listGroups();
     this.broadcastMessage({
       type: 'update_state',
       sessions,
+      groups,
       activeSessionId: this.activeSessionId,
       defaultPermissionMode: this.defaultPermissionMode,
       thinkingLevel: this.thinkingLevel,

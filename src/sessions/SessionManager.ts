@@ -1,4 +1,5 @@
-import type { SessionState, SessionInfo } from '../types/session';
+import { randomUUID } from 'crypto';
+import type { SessionState, SessionInfo, SessionGroup } from '../types/session';
 import type { SessionStorage } from './SessionStorage';
 import type { SessionHistory } from './SessionHistory';
 
@@ -10,12 +11,14 @@ import type { SessionHistory } from './SessionHistory';
  */
 export class SessionManager {
   private sessionStates: Map<string, SessionState>;
+  private groups: SessionGroup[];
 
   constructor(
     private readonly storage: SessionStorage,
     private readonly history: SessionHistory
   ) {
     this.sessionStates = storage.getSessions();
+    this.groups = storage.getGroups();
   }
 
   /** Update (or create) a session's state and title, then persist. */
@@ -30,6 +33,7 @@ export class SessionManager {
       title: title ?? existing?.title,
       state,
       updatedAt: new Date().toISOString(),
+      ...(existing?.groupId !== undefined ? { groupId: existing.groupId } : {}),
     };
     this.sessionStates.set(id, updated);
     await this.storage.saveSessions(this.sessionStates);
@@ -67,5 +71,70 @@ export class SessionManager {
   /** Returns the raw in-memory map (used for state broadcasts). */
   getAllStates(): Map<string, SessionState> {
     return this.sessionStates;
+  }
+
+  /** List all sidebar session groups. */
+  listGroups(): SessionGroup[] {
+    return [...this.groups];
+  }
+
+  /** Create a new session group, then persist. */
+  async createGroup(name: string): Promise<SessionGroup> {
+    const group: SessionGroup = { id: randomUUID(), name };
+    this.groups = [...this.groups, group];
+    await this.storage.saveGroups(this.groups);
+    return group;
+  }
+
+  /** Rename an existing session group (no-op if the id is unknown). */
+  async renameGroup(id: string, name: string): Promise<void> {
+    if (!this.groups.some((g) => g.id === id)) return;
+    this.groups = this.groups.map((g) => (g.id === id ? { ...g, name } : g));
+    await this.storage.saveGroups(this.groups);
+  }
+
+  /**
+   * Delete a session group and cascade: clear `groupId` on every session that
+   * referenced it, so no session is left pointing at an unreachable group.
+   */
+  async deleteGroup(id: string): Promise<void> {
+    this.groups = this.groups.filter((g) => g.id !== id);
+    await this.storage.saveGroups(this.groups);
+
+    let changed = false;
+    for (const [sessionId, session] of this.sessionStates) {
+      if (session.groupId === id) {
+        const updated: SessionState = { ...session };
+        delete updated.groupId;
+        this.sessionStates.set(sessionId, updated);
+        changed = true;
+      }
+    }
+    if (changed) {
+      await this.storage.saveSessions(this.sessionStates);
+    }
+  }
+
+  /**
+   * Move one or more sessions into a group, or clear their group membership
+   * when `groupId` is null. Unknown session ids are silently skipped.
+   */
+  async moveSessionsToGroup(sessionIds: string[], groupId: string | null): Promise<void> {
+    let changed = false;
+    for (const sessionId of sessionIds) {
+      const existing = this.sessionStates.get(sessionId);
+      if (!existing) continue;
+      const updated: SessionState = { ...existing };
+      if (groupId === null) {
+        delete updated.groupId;
+      } else {
+        updated.groupId = groupId;
+      }
+      this.sessionStates.set(sessionId, updated);
+      changed = true;
+    }
+    if (changed) {
+      await this.storage.saveSessions(this.sessionStates);
+    }
   }
 }

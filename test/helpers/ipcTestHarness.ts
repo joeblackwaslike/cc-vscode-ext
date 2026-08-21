@@ -42,6 +42,11 @@ export interface MockSessionManager {
   deleteSession: ReturnType<typeof vi.fn>;
   renameSession: ReturnType<typeof vi.fn>;
   getAllStates: ReturnType<typeof vi.fn>;
+  listGroups: ReturnType<typeof vi.fn>;
+  createGroup: ReturnType<typeof vi.fn>;
+  renameGroup: ReturnType<typeof vi.fn>;
+  deleteGroup: ReturnType<typeof vi.fn>;
+  moveSessionsToGroup: ReturnType<typeof vi.fn>;
 }
 
 export interface MockDiffManager {
@@ -214,6 +219,11 @@ export function createIpcTestHarness(): IpcTestHarness {
     deleteSession: vi.fn(() => Promise.resolve()),
     renameSession: vi.fn(() => Promise.resolve()),
     getAllStates: vi.fn(() => new Map()),
+    listGroups: vi.fn(() => []),
+    createGroup: vi.fn(() => Promise.resolve({ id: 'g1', name: 'New Group' })),
+    renameGroup: vi.fn(() => Promise.resolve()),
+    deleteGroup: vi.fn(() => Promise.resolve()),
+    moveSessionsToGroup: vi.fn(() => Promise.resolve()),
   };
 
   const diffManager: MockDiffManager = {

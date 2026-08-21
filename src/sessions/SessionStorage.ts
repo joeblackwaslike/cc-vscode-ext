@@ -1,11 +1,12 @@
 import type * as vscode from 'vscode';
-import type { SessionState } from '../types/session';
+import type { SessionState, SessionGroup } from '../types/session';
 
 /** Keys used in VS Code's globalState Memento for session persistence. */
 const KEYS = {
   sessions: 'claudeCode.sessions',
   hiddenIds: 'claudeCode.hiddenSessionIds',
   lastLocation: 'claudeCode.lastClaudeLocation',
+  sessionGroups: 'claudeCode.sessionGroups',
 } as const;
 
 /**
@@ -14,7 +15,7 @@ const KEYS = {
  */
 export class SessionStorage {
   constructor(private readonly globalState: vscode.Memento) {
-    (globalState as vscode.Memento & { setKeysForSync?(keys: readonly string[]): void }).setKeysForSync?.([KEYS.sessions, KEYS.hiddenIds]);
+    (globalState as vscode.Memento & { setKeysForSync?(keys: readonly string[]): void }).setKeysForSync?.([KEYS.sessions, KEYS.hiddenIds, KEYS.sessionGroups]);
   }
 
   /** Retrieve all persisted sessions (returns empty map on first run). */
@@ -42,5 +43,13 @@ export class SessionStorage {
 
   async setLastLocation(location: string): Promise<void> {
     await this.globalState.update(KEYS.lastLocation, location);
+  }
+
+  getGroups(): SessionGroup[] {
+    return this.globalState.get<SessionGroup[]>(KEYS.sessionGroups, []);
+  }
+
+  async saveGroups(groups: SessionGroup[]): Promise<void> {
+    await this.globalState.update(KEYS.sessionGroups, groups);
   }
 }

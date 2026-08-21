@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ViewManager } from '../../../src/views/ViewManager';
-import type { SessionInfo } from '../../../src/types/session';
+import type { SessionInfo, SessionGroup } from '../../../src/types/session';
 
 function makeWebview() {
   return { postMessage: vi.fn(() => Promise.resolve(true)) };
@@ -10,12 +10,17 @@ const fakeSessions: SessionInfo[] = [
   { id: 's1', title: 'Chat', state: 'idle', updatedAt: '2024-01-01T00:00:00Z', hidden: false },
 ];
 
+const fakeGroups: SessionGroup[] = [{ id: 'g1', name: 'Work' }];
+
 describe('ViewManager', () => {
-  let sessionManager: { listSessions: ReturnType<typeof vi.fn> };
+  let sessionManager: { listSessions: ReturnType<typeof vi.fn>; listGroups: ReturnType<typeof vi.fn> };
   let manager: ViewManager;
 
   beforeEach(() => {
-    sessionManager = { listSessions: vi.fn(() => fakeSessions) };
+    sessionManager = {
+      listSessions: vi.fn(() => fakeSessions),
+      listGroups: vi.fn(() => fakeGroups),
+    };
     manager = new ViewManager(sessionManager as never);
   });
 
@@ -137,6 +142,16 @@ describe('ViewManager', () => {
 
       const msg = wv.postMessage.mock.calls[0]?.[0];
       expect(msg).toMatchObject({ thinkingLevel: 'max' });
+    });
+
+    it('includes groups from sessionManager.listGroups()', () => {
+      const wv = makeWebview();
+      manager.register(wv);
+      manager.broadcastSessionStates();
+
+      expect(sessionManager.listGroups).toHaveBeenCalled();
+      const msg = wv.postMessage.mock.calls[0]?.[0];
+      expect(msg).toMatchObject({ groups: fakeGroups });
     });
   });
 });

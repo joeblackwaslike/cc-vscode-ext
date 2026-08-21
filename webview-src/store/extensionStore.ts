@@ -1,10 +1,11 @@
 import { createContext, useContext, useReducer, useCallback } from 'react';
-import type { SessionInfo, PermissionMode, ThinkingLevel, ToWebviewMessage } from '../lib/ipc';
+import type { SessionInfo, SessionGroup, PermissionMode, ThinkingLevel, ToWebviewMessage } from '../lib/ipc';
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
 export interface ExtensionState {
   sessions: SessionInfo[];
+  groups: SessionGroup[];
   activeSessionId: string | undefined;
   defaultPermissionMode: PermissionMode;
   thinkingLevel: ThinkingLevel;
@@ -15,6 +16,7 @@ export interface ExtensionState {
 
 const initialState: ExtensionState = {
   sessions: [],
+  groups: [],
   activeSessionId: undefined,
   defaultPermissionMode: 'default',
   thinkingLevel: 'medium',
@@ -30,7 +32,7 @@ type SessionDefaults = Partial<Pick<ExtensionState, 'defaultPermissionMode' | 't
 type Action =
   | { type: 'UPDATE_STATE'; payload: Omit<ExtensionState, 'authenticated' | 'loginUrl'> }
   | { type: 'AUTH_STATUS'; authenticated: boolean; loginUrl?: string }
-  | { type: 'LIST_SESSIONS'; sessions: SessionInfo[] }
+  | { type: 'LIST_SESSIONS'; sessions: SessionInfo[]; groups: SessionGroup[] }
   | { type: 'SET_DEFAULTS'; defaults: SessionDefaults };
 
 function reducer(state: ExtensionState, action: Action): ExtensionState {
@@ -47,7 +49,7 @@ function reducer(state: ExtensionState, action: Action): ExtensionState {
         loginUrl: action.loginUrl,
       };
     case 'LIST_SESSIONS':
-      return { ...state, sessions: action.sessions };
+      return { ...state, sessions: action.sessions, groups: action.groups };
     default:
       return state;
   }
@@ -80,6 +82,7 @@ export function useExtensionReducer() {
             type: 'UPDATE_STATE',
             payload: {
               sessions: msg.sessions,
+              groups: msg.groups,
               activeSessionId: msg.activeSessionId,
               defaultPermissionMode: msg.defaultPermissionMode,
               thinkingLevel: msg.thinkingLevel,
@@ -95,7 +98,7 @@ export function useExtensionReducer() {
           });
           break;
         case 'list_sessions_response':
-          dispatch({ type: 'LIST_SESSIONS', sessions: msg.sessions });
+          dispatch({ type: 'LIST_SESSIONS', sessions: msg.sessions, groups: msg.groups });
           break;
         default:
           break;

@@ -58,5 +58,35 @@ export function useSession() {
     postMessage({ type: 'rename_session', sessionId, title });
   }, []);
 
-  return { launch, sendText, interrupt, compact, requestContextUsage, close, listSessions, deleteSession, renameSession };
+  const createGroup = useCallback((name: string): void => {
+    postMessage({ type: 'create_session_group', name });
+  }, []);
+
+  const renameGroup = useCallback((groupId: string, name: string): void => {
+    postMessage({ type: 'rename_session_group', groupId, name });
+  }, []);
+
+  const deleteGroup = useCallback((groupId: string): void => {
+    postMessage({ type: 'delete_session_group', groupId });
+  }, []);
+
+  const moveSessionsToGroup = useCallback((sessionIds: string[], groupId: string | null): void => {
+    postMessage({ type: 'move_sessions_to_group', sessionIds, groupId });
+  }, []);
+
+  return {
+    launch,
+    sendText,
+    interrupt,
+    compact,
+    requestContextUsage,
+    close,
+    listSessions,
+    deleteSession,
+    renameSession,
+    createGroup,
+    renameGroup,
+    deleteGroup,
+    moveSessionsToGroup,
+  };
 }

@@ -181,7 +181,7 @@ function MainView() {
 
 function SessionListView() {
   const { state } = React.useContext(ExtensionContext)!;
-  const { deleteSession, renameSession } = useSession();
+  const { deleteSession, renameSession, createGroup, renameGroup, deleteGroup, moveSessionsToGroup } = useSession();
 
   const handleSelect = useCallback((sessionId: string) => {
     postMessage({ type: 'get_session_request', sessionId });
@@ -194,11 +194,16 @@ function SessionListView() {
   return (
     <SessionList
       sessions={state.sessions}
+      groups={state.groups}
       activeSessionId={state.activeSessionId}
       onSelect={handleSelect}
       onDelete={deleteSession}
       onRename={renameSession}
       onNew={handleNew}
+      onCreateGroup={createGroup}
+      onRenameGroup={renameGroup}
+      onDeleteGroup={deleteGroup}
+      onMoveToGroup={moveSessionsToGroup}
     />
   );
 }

@@ -6,7 +6,7 @@ import type {
   ContextCategory,
 } from '../../src/types/ipc';
 import type { ClaudeStreamEvent } from '../../src/types/process';
-import type { SessionInfo, ConversationState } from '../../src/types/session';
+import type { SessionInfo, ConversationState, SessionGroup } from '../../src/types/session';
 import type { PermissionMode } from '../../src/process/ProcessArgs';
 
 export type {
@@ -14,6 +14,7 @@ export type {
   ToWebviewMessage,
   ClaudeStreamEvent,
   SessionInfo,
+  SessionGroup,
   ConversationState,
   PermissionMode,
   ThinkingLevel,

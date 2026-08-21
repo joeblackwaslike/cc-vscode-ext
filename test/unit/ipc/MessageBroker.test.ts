@@ -167,6 +167,7 @@ describe('MessageBroker', () => {
       expect(h.postedMessages).toContainEqual({
         type: 'list_sessions_response',
         sessions: fakeSessions,
+        groups: [],
       });
     });
 
@@ -174,6 +175,60 @@ describe('MessageBroker', () => {
       const { h } = makebroker();
       h.dispatch({ type: 'list_sessions_request', includeHidden: true });
       expect(h.sessionManager.listSessions).toHaveBeenCalledWith(true);
+    });
+
+    it('includes groups from sessionManager.listGroups()', () => {
+      const { h } = makebroker();
+      const fakeGroups = [{ id: 'g1', name: 'Work' }];
+      h.sessionManager.listGroups.mockReturnValue(fakeGroups);
+
+      h.dispatch({ type: 'list_sessions_request' });
+
+      expect(h.postedMessages).toContainEqual(
+        expect.objectContaining({ type: 'list_sessions_response', groups: fakeGroups }),
+      );
+    });
+  });
+
+  describe('session group messages', () => {
+    it('create_session_group calls createGroup and broadcasts', async () => {
+      const { h } = makebroker();
+      h.dispatch({ type: 'create_session_group', name: 'Work' });
+      await vi.waitFor(() => expect(h.sessionManager.createGroup).toHaveBeenCalledWith('Work'));
+      expect(h.viewManager.broadcastSessionStates).toHaveBeenCalled();
+    });
+
+    it('rename_session_group calls renameGroup and broadcasts', async () => {
+      const { h } = makebroker();
+      h.dispatch({ type: 'rename_session_group', groupId: 'g1', name: 'New Name' });
+      await vi.waitFor(() =>
+        expect(h.sessionManager.renameGroup).toHaveBeenCalledWith('g1', 'New Name'),
+      );
+      expect(h.viewManager.broadcastSessionStates).toHaveBeenCalled();
+    });
+
+    it('delete_session_group calls deleteGroup and broadcasts', async () => {
+      const { h } = makebroker();
+      h.dispatch({ type: 'delete_session_group', groupId: 'g1' });
+      await vi.waitFor(() => expect(h.sessionManager.deleteGroup).toHaveBeenCalledWith('g1'));
+      expect(h.viewManager.broadcastSessionStates).toHaveBeenCalled();
+    });
+
+    it('move_sessions_to_group calls moveSessionsToGroup and broadcasts', async () => {
+      const { h } = makebroker();
+      h.dispatch({ type: 'move_sessions_to_group', sessionIds: ['s1', 's2'], groupId: 'g1' });
+      await vi.waitFor(() =>
+        expect(h.sessionManager.moveSessionsToGroup).toHaveBeenCalledWith(['s1', 's2'], 'g1'),
+      );
+      expect(h.viewManager.broadcastSessionStates).toHaveBeenCalled();
+    });
+
+    it('move_sessions_to_group with groupId: null clears membership', async () => {
+      const { h } = makebroker();
+      h.dispatch({ type: 'move_sessions_to_group', sessionIds: ['s1'], groupId: null });
+      await vi.waitFor(() =>
+        expect(h.sessionManager.moveSessionsToGroup).toHaveBeenCalledWith(['s1'], null),
+      );
     });
   });
 
