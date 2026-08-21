@@ -191,6 +191,19 @@ export function SessionList({
     [lastClickedId, flatVisibleOrder, onSelect],
   );
 
+  const closeContextMenu = useCallback(() => {
+    setContextMenu(null);
+    setConfirmDeleteGroupId(null);
+    // Closing the whole menu — for any reason: outside-click, Escape, or a
+    // successful commit closing it explicitly (see commitCreateGroup) — also
+    // exits an accordion-anchored create-group flow. Unlike the empty-space/
+    // header trigger, the accordion has no top-of-list fallback to keep
+    // showing it in once the menu is gone, so leaving `creatingGroup` set
+    // here would silently resurrect a stale, already-abandoned input the
+    // next time "Move to Group" is opened.
+    setCreatingGroup((prev) => (prev?.pendingMoveIds ? null : prev));
+  }, []);
+
   const startCreateGroup = useCallback((pendingMoveIds: string[] | null) => {
     setNewGroupName('');
     setCreatingGroup({ pendingMoveIds });
@@ -201,12 +214,17 @@ export function SessionList({
     if (trimmed) {
       if (creatingGroup?.pendingMoveIds) {
         schedulePendingGroupMove({ name: trimmed, sessionIds: creatingGroup.pendingMoveIds });
+        // The accordion-triggered create-then-move flow is now fully handed
+        // off to the pending-move reconciliation effect — close the menu
+        // rather than leaving the "Move to Group" accordion open on a row
+        // that's just reverted back to "+ New Group…".
+        closeContextMenu();
       }
       onCreateGroup(trimmed);
     }
     setCreatingGroup(null);
     setNewGroupName('');
-  }, [newGroupName, creatingGroup, onCreateGroup, schedulePendingGroupMove]);
+  }, [newGroupName, creatingGroup, onCreateGroup, schedulePendingGroupMove, closeContextMenu]);
 
   const cancelCreateGroup = useCallback(() => {
     setCreatingGroup(null);
@@ -214,17 +232,49 @@ export function SessionList({
   }, []);
 
   const buildMoveToGroupSubmenu = useCallback(
-    (targetIds: string[]): ContextMenuItem[] => [
-      ...groups.map((g) => ({
+    (targetIds: string[]): ContextMenuItem[] => {
+      const groupItems: ContextMenuItem[] = groups.map((g) => ({
         label: g.name,
         onSelect: () => onMoveToGroup(targetIds, g.id),
-      })),
-      {
-        label: '+ New Group…',
-        onSelect: () => startCreateGroup(targetIds),
-      },
-    ],
-    [groups, onMoveToGroup, startCreateGroup],
+      }));
+      // Triggered from this very accordion (not the empty-space/header "New
+      // Group" flow, which has no in-place anchor) — swap the "+ New Group…"
+      // row for the input in place instead of closing the menu and jumping
+      // focus to a top-of-list row that may be scrolled far out of view.
+      if (creatingGroup?.pendingMoveIds) {
+        return [
+          ...groupItems,
+          {
+            label: 'New group name',
+            custom: (
+              <input
+                autoFocus
+                value={newGroupName}
+                onChange={(e) => setNewGroupName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') commitCreateGroup();
+                  if (e.key === 'Escape') cancelCreateGroup();
+                }}
+                onBlur={commitCreateGroup}
+                onClick={(e) => e.stopPropagation()}
+                placeholder="New group name"
+                data-testid="create-group-input"
+                style={styles.renameInput}
+              />
+            ),
+          },
+        ];
+      }
+      return [
+        ...groupItems,
+        {
+          label: '+ New Group…',
+          keepOpen: true,
+          onSelect: () => startCreateGroup(targetIds),
+        },
+      ];
+    },
+    [groups, onMoveToGroup, startCreateGroup, creatingGroup, newGroupName, commitCreateGroup, cancelCreateGroup],
   );
 
   const handleItemContextMenu = useCallback(
@@ -252,11 +302,6 @@ export function SessionList({
     e.preventDefault();
     setConfirmDeleteGroupId(null);
     setContextMenu({ x: e.clientX, y: e.clientY, descriptor: { kind: 'empty' } });
-  }, []);
-
-  const closeContextMenu = useCallback(() => {
-    setContextMenu(null);
-    setConfirmDeleteGroupId(null);
   }, []);
 
   const buildContextMenuItems = useCallback(
@@ -336,7 +381,11 @@ export function SessionList({
       </div>
 
       <div style={styles.scrollArea} data-testid="session-list-scroll" onContextMenu={handleEmptyContextMenu}>
-        {creatingGroup && (
+        {/* Only the empty-space/Ungrouped-header trigger (no in-place anchor)
+            uses this fixed top row — the Move-to-Group accordion trigger
+            renders its own input inline via buildMoveToGroupSubmenu instead,
+            so it doesn't jump the viewport away from a scrolled session. */}
+        {creatingGroup && creatingGroup.pendingMoveIds === null && (
           <div style={styles.createGroupRow}>
             <input
               autoFocus

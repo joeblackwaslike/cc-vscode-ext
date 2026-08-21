@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 
 export interface ContextMenuItem {
   label: string;
@@ -12,6 +12,13 @@ export interface ContextMenuItem {
    * label swap at the same screen position reads as a distinct, higher-stakes
    * state rather than a same-looking row a stray double-click can land on. */
   danger?: boolean;
+  /** Replaces the row's button entirely with arbitrary content (e.g. the inline
+   * "create group" text input) so a caller can swap a row in place — same
+   * position in the menu/submenu — instead of it closing the menu and jumping
+   * focus elsewhere. `label` is still required for the row's React key and for
+   * `itemsKey` (below), which re-measures the clamp when this swap changes the
+   * menu's rendered size, even though `label` itself isn't displayed. */
+  custom?: ReactNode;
 }
 
 interface Props {
@@ -89,47 +96,57 @@ export function SessionContextMenu({ x, y, items, onClose }: Props) {
     >
       {items.map((item, i) => (
         <div key={`${item.label}-${i}`} className="cc-ctxmenu__item-wrap">
-          <button
-            type="button"
-            role="menuitem"
-            aria-expanded={item.submenu ? openSubmenu === i : undefined}
-            disabled={item.disabled}
-            className={item.danger ? 'cc-ctxmenu__item cc-ctxmenu__item--danger' : 'cc-ctxmenu__item'}
-            onClick={() => {
-              if (item.disabled) return;
-              if (item.submenu) {
-                setOpenSubmenu((cur) => (cur === i ? null : i));
-                return;
-              }
-              item.onSelect?.();
-              if (!item.keepOpen) onClose();
-            }}
-          >
-            <span className="cc-ctxmenu__label">{item.label}</span>
-            {item.submenu && <span className="cc-ctxmenu__chev">{openSubmenu === i ? '▾' : '▸'}</span>}
-          </button>
+          {item.custom ? (
+            <div className="cc-ctxmenu__custom-row">{item.custom}</div>
+          ) : (
+            <button
+              type="button"
+              role="menuitem"
+              aria-expanded={item.submenu ? openSubmenu === i : undefined}
+              disabled={item.disabled}
+              className={item.danger ? 'cc-ctxmenu__item cc-ctxmenu__item--danger' : 'cc-ctxmenu__item'}
+              onClick={() => {
+                if (item.disabled) return;
+                if (item.submenu) {
+                  setOpenSubmenu((cur) => (cur === i ? null : i));
+                  return;
+                }
+                item.onSelect?.();
+                if (!item.keepOpen) onClose();
+              }}
+            >
+              <span className="cc-ctxmenu__label">{item.label}</span>
+              {item.submenu && <span className="cc-ctxmenu__chev">{openSubmenu === i ? '▾' : '▸'}</span>}
+            </button>
+          )}
           {item.submenu && openSubmenu === i && (
             <div className="cc-ctxmenu__submenu-inline" role="group" data-testid="session-context-submenu">
-              {item.submenu.map((sub, j) => (
-                <button
-                  type="button"
-                  key={`${sub.label}-${j}`}
-                  role="menuitem"
-                  disabled={sub.disabled}
-                  className={
-                    sub.danger
-                      ? 'cc-ctxmenu__item cc-ctxmenu__item--indented cc-ctxmenu__item--danger'
-                      : 'cc-ctxmenu__item cc-ctxmenu__item--indented'
-                  }
-                  onClick={() => {
-                    if (sub.disabled) return;
-                    sub.onSelect?.();
-                    if (!sub.keepOpen) onClose();
-                  }}
-                >
-                  <span className="cc-ctxmenu__label">{sub.label}</span>
-                </button>
-              ))}
+              {item.submenu.map((sub, j) =>
+                sub.custom ? (
+                  <div key={`${sub.label}-${j}`} className="cc-ctxmenu__custom-row">
+                    {sub.custom}
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    key={`${sub.label}-${j}`}
+                    role="menuitem"
+                    disabled={sub.disabled}
+                    className={
+                      sub.danger
+                        ? 'cc-ctxmenu__item cc-ctxmenu__item--indented cc-ctxmenu__item--danger'
+                        : 'cc-ctxmenu__item cc-ctxmenu__item--indented'
+                    }
+                    onClick={() => {
+                      if (sub.disabled) return;
+                      sub.onSelect?.();
+                      if (!sub.keepOpen) onClose();
+                    }}
+                  >
+                    <span className="cc-ctxmenu__label">{sub.label}</span>
+                  </button>
+                ),
+              )}
             </div>
           )}
         </div>

@@ -363,6 +363,10 @@ describe('SessionList: creating a group without window.prompt()', () => {
     fireEvent.contextMenu(screen.getByTestId('session-list-scroll'));
     fireEvent.click(screen.getByRole('menuitem', { name: 'New Group' }));
 
+    // No natural in-place anchor for this trigger — the context menu is
+    // already gone and the input is the fixed top-of-list row, not something
+    // rendered inside an (absent) accordion.
+    expect(screen.queryByTestId('session-context-menu')).not.toBeInTheDocument();
     const input = screen.getByTestId('create-group-input');
     fireEvent.change(input, { target: { value: 'Research' } });
     fireEvent.keyDown(input, { key: 'Enter' });
@@ -384,6 +388,86 @@ describe('SessionList: creating a group without window.prompt()', () => {
     fireEvent.keyDown(input, { key: 'Escape' });
 
     expect(onCreateGroup).not.toHaveBeenCalled();
+  });
+});
+
+describe('SessionList: Move-to-Group accordion create-group input (in-place, no scroll-jump)', () => {
+  test('"+ New Group…" from the accordion renders the input inside the submenu and keeps the menu open, instead of jumping to a top-of-list row', () => {
+    const onCreateGroup = vi.fn();
+    const groups: SessionGroup[] = [{ id: 'g1', name: 'Work' }];
+    const sessions = [session('s1'), session('s2')];
+    render(
+      <SessionList {...baseProps()} onCreateGroup={onCreateGroup} sessions={sessions} groups={groups} />,
+    );
+
+    const item = screen.getByText('Session s2').closest('[data-testid="session-item"]')!;
+    fireEvent.contextMenu(item);
+    fireEvent.click(screen.getByRole('menuitem', { name: /Move to Group/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '+ New Group…' }));
+
+    // The menu stays open, and the input lives inside the expanded
+    // Move-to-Group submenu (the accordion), not as a separate top-of-list row.
+    expect(screen.getByTestId('session-context-menu')).toBeInTheDocument();
+    expect(screen.getAllByTestId('create-group-input')).toHaveLength(1);
+    const input = screen.getByTestId('create-group-input');
+    const submenu = screen.getByTestId('session-context-submenu');
+    expect(submenu.contains(input)).toBe(true);
+
+    fireEvent.change(input, { target: { value: 'Research' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    expect(onCreateGroup).toHaveBeenCalledWith('Research');
+    // Committing closes the whole menu — the interaction is complete.
+    expect(screen.queryByTestId('session-context-menu')).not.toBeInTheDocument();
+  });
+
+  test('Escape on the accordion-triggered input cancels the create and closes the whole context menu', () => {
+    const onCreateGroup = vi.fn();
+    const groups: SessionGroup[] = [{ id: 'g1', name: 'Work' }];
+    const sessions = [session('s1')];
+    render(
+      <SessionList {...baseProps()} onCreateGroup={onCreateGroup} sessions={sessions} groups={groups} />,
+    );
+
+    const item = screen.getByText('Session s1').closest('[data-testid="session-item"]')!;
+    fireEvent.contextMenu(item);
+    fireEvent.click(screen.getByRole('menuitem', { name: /Move to Group/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '+ New Group…' }));
+
+    const input = screen.getByTestId('create-group-input');
+    fireEvent.change(input, { target: { value: 'Research' } });
+    fireEvent.keyDown(input, { key: 'Escape' });
+
+    expect(onCreateGroup).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('session-context-menu')).not.toBeInTheDocument();
+  });
+
+  test('an outside-click that closes the menu abandons the accordion-triggered create, not just hides it', () => {
+    const onCreateGroup = vi.fn();
+    const groups: SessionGroup[] = [{ id: 'g1', name: 'Work' }];
+    const sessions = [session('s1')];
+    render(
+      <SessionList {...baseProps()} onCreateGroup={onCreateGroup} sessions={sessions} groups={groups} />,
+    );
+
+    const item = screen.getByText('Session s1').closest('[data-testid="session-item"]')!;
+    fireEvent.contextMenu(item);
+    fireEvent.click(screen.getByRole('menuitem', { name: /Move to Group/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: '+ New Group…' }));
+
+    fireEvent.change(screen.getByTestId('create-group-input'), { target: { value: 'Research' } });
+
+    // Click away without pressing Enter or Escape.
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByTestId('session-context-menu')).not.toBeInTheDocument();
+    expect(onCreateGroup).not.toHaveBeenCalled();
+
+    // Re-opening "Move to Group" must show a fresh "+ New Group…" button,
+    // not resurrect the abandoned input with its stale typed text.
+    fireEvent.contextMenu(item);
+    fireEvent.click(screen.getByRole('menuitem', { name: /Move to Group/ }));
+    expect(screen.getByRole('menuitem', { name: '+ New Group…' })).toBeInTheDocument();
+    expect(screen.queryByTestId('create-group-input')).not.toBeInTheDocument();
   });
 });
 
@@ -413,12 +497,18 @@ describe('SessionList: "+ New Group…" create-then-move reconciliation', () => 
     fireEvent.click(screen.getByRole('menuitem', { name: /Move to Group/ }));
     fireEvent.click(screen.getByRole('menuitem', { name: '+ New Group…' }));
 
+    // Triggered from the accordion — the menu stays open and the input
+    // renders in place of the "+ New Group…" row, not at the top of the list.
+    expect(screen.getByTestId('session-context-menu')).toBeInTheDocument();
     const input = screen.getByTestId('create-group-input');
     fireEvent.change(input, { target: { value: 'Research' } });
     fireEvent.keyDown(input, { key: 'Enter' });
 
     expect(onCreateGroup).toHaveBeenCalledWith('Research');
     expect(onMoveToGroup).not.toHaveBeenCalled();
+    // Committing closes the menu — the create-then-move flow is complete
+    // pending the group-creation broadcast.
+    expect(screen.queryByTestId('session-context-menu')).not.toBeInTheDocument();
 
     // Simulate the broadcast landing with the newly-created group.
     rerender(
@@ -462,6 +552,7 @@ describe('SessionList: "+ New Group…" create-then-move reconciliation', () => 
       fireEvent.keyDown(input, { key: 'Enter' });
 
       expect(onCreateGroup).toHaveBeenCalledWith('Research');
+      expect(screen.queryByTestId('session-context-menu')).not.toBeInTheDocument();
 
       // The create never lands — advance past the pending-move timeout.
       act(() => {

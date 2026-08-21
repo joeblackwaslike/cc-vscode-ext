@@ -326,6 +326,12 @@ a { color: var(--vscode-textLink-foreground); }
    inside the ~300px sidebar viewport this renders in. */
 .cc-ctxmenu__submenu-inline { display: flex; flex-direction: column; }
 .cc-ctxmenu__item--indented { padding-left: 22px; }
+/* A row that swaps its button for arbitrary content in place (e.g. the inline
+   "create group" input replacing "+ New Group…") — same padding rhythm as
+   .cc-ctxmenu__item, indented to match .cc-ctxmenu__item--indented when it's
+   nested inside the expanded accordion. */
+.cc-ctxmenu__custom-row { display: flex; align-items: center; padding: 6px 8px; }
+.cc-ctxmenu__submenu-inline .cc-ctxmenu__custom-row { padding-left: 22px; }
 /* Destructive confirm step (e.g. "Delete Group" swapping to `Confirm delete
    "<name>"`) — matches this file's existing error-color pattern (see
    .cc-error, .cc-tool__status--error) so the row reads as visually distinct
