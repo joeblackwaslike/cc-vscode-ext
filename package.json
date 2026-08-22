@@ -32,7 +32,7 @@
     "onStartupFinished",
     "onWebviewPanel:clawVSCodePanel"
   ],
-  "icon": "resources/claude-logo.png",
+  "icon": "resources/clawd-icon.png",
   "main": "./dist/extension.js",
   "scripts": {
     "build:ext": "node esbuild.config.js",
