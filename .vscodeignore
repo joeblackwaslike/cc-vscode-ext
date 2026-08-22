@@ -27,21 +27,29 @@ vitest.config.ts
 vendor/**
 scripts/**
 .vscode/**
+.vscode-test.mjs
 .github/**
 .clawhip/**
 .git/**
 node_modules/**
+.worktrees/**
+
+# Personal task-tracking data and internal planning docs — never ship these.
+.beads/**
+docs/**
 
 # Build configs / linting
 esbuild.config.js
 vite.config.ts
 tsconfig*.json
+eslint.config.js
 .eslintrc*
 .eslint*
 .prettier*
 .editorconfig
 .gitignore
 .gitattributes
+cc-vscode-ext.code-workspace
 
 # Kept (NOT ignored): dist/, webview/, resources/ (icons, walkthrough — but NOT
 # native-binary/, which is downloaded on first run), package.json,

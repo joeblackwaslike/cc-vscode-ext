@@ -2,9 +2,17 @@
   "name": "claw-code",
   "displayName": "Claw Code",
   "description": "A clean, documented reimplementation of the Claude Code VS Code extension",
-  "version": "0.1.0",
-  "publisher": "reference",
+  "version": "0.2.0",
+  "publisher": "joeblackwaslike",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/joeblackwaslike/cc-vscode-ext.git"
+  },
+  "homepage": "https://github.com/joeblackwaslike/cc-vscode-ext#readme",
+  "bugs": {
+    "url": "https://github.com/joeblackwaslike/cc-vscode-ext/issues"
+  },
   "claudeCliVersion": "2.1.237",
   "engines": {
     "vscode": "^1.94.0"

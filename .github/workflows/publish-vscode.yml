@@ -1,0 +1,66 @@
+name: Publish Claw Code
+
+# Builds a single, platform-independent .vsix (the extension has no bundled
+# native binaries — the `claude` CLI is downloaded into global storage on
+# first run, see src/process/ClaudeBinary.ts), attaches it to a GitHub
+# Release, and publishes it to the VS Code Marketplace under the
+# `joeblackwaslike` publisher. Triggered by pushing a `v*` tag matching
+# package.json's `version` (distinct from this repo's `claude-cli-v*` tags,
+# which publish the bundled CLI binary separately).
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: package + publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Verify tag matches package.json version
+        run: |
+          set -euo pipefail
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "::error::Tag v$TAG_VERSION does not match package.json version $PKG_VERSION"
+            exit 1
+          fi
+
+      - run: npm run typecheck
+      - run: npm run typecheck:webview
+      - run: npm run lint
+      - run: npm run build
+      - run: npm run test:unit
+      - run: npm run test:webview
+
+      - name: Package .vsix
+        run: npx --yes @vscode/vsce package
+
+      - name: Create GitHub Release with the .vsix attached
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "Claw Code ${GITHUB_REF_NAME}" \
+            --generate-notes \
+            ./*.vsix
+
+      - name: Publish to VS Code Marketplace
+        run: npx --yes @vscode/vsce publish --packagePath ./*.vsix --pat "${{ secrets.VSCE_PAT }}"
