@@ -25,11 +25,17 @@ const MODE_OPTIONS: MenuOption[] = [
   { value: 'plan', label: 'Plan mode' },
   { value: 'bypassPermissions', label: 'Bypass permissions' },
 ];
-const MODEL_OPTIONS: MenuOption[] = [
-  { value: '', label: 'Default' },
-  { value: 'opus', label: 'Opus' },
-  { value: 'sonnet', label: 'Sonnet' },
-  { value: 'haiku', label: 'Haiku' },
+const BASE_MODEL_OPTIONS: MenuOption[] = [
+  { value: '',                  label: 'Default' },
+  { value: 'opus',              label: 'Opus',     hint: 'claude-opus-5' },
+  { value: 'sonnet',            label: 'Sonnet',   hint: 'claude-sonnet-5' },
+  { value: 'haiku',             label: 'Haiku',    hint: 'claude-haiku-4-5' },
+  { value: 'claude-fable-5',    label: 'Fable 5' },
+  { value: 'claude-opus-5',     label: 'Opus 5' },
+  { value: 'claude-sonnet-5',   label: 'Sonnet 5' },
+  { value: 'claude-opus-4-8',   label: 'Opus 4.8' },
+  { value: 'claude-sonnet-4-6', label: 'Sonnet 4.6' },
+  { value: 'claude-haiku-4-5',  label: 'Haiku 4.5' },
 ];
 const EFFORT_OPTIONS: MenuOption[] = [
   { value: 'low', label: 'Low', hint: 'faster' },
@@ -128,6 +134,11 @@ export function ChatInput({ channelId, onSend, onInterrupt, onCompact, onRefresh
   const effort = (state?.thinkingLevel ?? 'medium') as ThinkingLevel;
   const model = state?.model ?? '';
   const focusViewEnabled = state?.focusViewEnabled ?? false;
+  const customModels = state?.customModels ?? [];
+  const MODEL_OPTIONS: MenuOption[] = [
+    ...BASE_MODEL_OPTIONS,
+    ...customModels.map((id) => ({ value: id, label: id })),
+  ];
 
   const dispatch = ext?.dispatch;
 

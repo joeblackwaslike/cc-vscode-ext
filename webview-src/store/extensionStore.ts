@@ -13,6 +13,7 @@ export interface ExtensionState {
   focusViewEnabled: boolean;
   authenticated: boolean;
   loginUrl: string | undefined;
+  customModels: string[];
 }
 
 const initialState: ExtensionState = {
@@ -25,6 +26,7 @@ const initialState: ExtensionState = {
   focusViewEnabled: false,
   authenticated: true, // assume authenticated until told otherwise
   loginUrl: undefined,
+  customModels: [],
 };
 
 // ─── Actions ──────────────────────────────────────────────────────────────────
@@ -92,6 +94,7 @@ export function useExtensionReducer() {
               thinkingLevel: msg.thinkingLevel,
               model: msg.model,
               focusViewEnabled: msg.focusViewEnabled,
+              customModels: msg.customModels ?? [],
             },
           });
           break;

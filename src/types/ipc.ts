@@ -423,6 +423,7 @@ export interface UpdateStateMessage {
   thinkingLevel: ThinkingLevel;
   model?: string;
   focusViewEnabled: boolean;
+  customModels?: string[];
 }
 
 /** One row of the context-window breakdown (from the CLI's get_context_usage). */

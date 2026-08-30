@@ -98,6 +98,14 @@
             "type": "boolean",
             "default": true,
             "description": "Enable the Cmd+Shift+T (Ctrl+Shift+T) shortcut to reopen closed sessions"
+          },
+          "clawdCode.customModels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [],
+            "description": "Additional model IDs to show in the model picker (e.g. \"claude-opus-4-7\")."
           }
         }
       }

@@ -24,6 +24,7 @@ export class ViewManager {
   private thinkingLevel: ThinkingLevel = 'medium';
   private model: string | undefined;
   private focusViewEnabled = false;
+  private customModels: string[] = [];
 
   constructor(private readonly sessionManager: ISessionManagerForBroadcast) {}
 
@@ -70,6 +71,7 @@ export class ViewManager {
       thinkingLevel: this.thinkingLevel,
       ...(this.model !== undefined ? { model: this.model } : {}),
       focusViewEnabled: this.focusViewEnabled,
+      customModels: this.customModels,
     });
   }
 
@@ -87,6 +89,10 @@ export class ViewManager {
 
   setModel(model: string): void {
     this.model = model;
+  }
+
+  setCustomModels(models: string[]): void {
+    this.customModels = models;
   }
 
   setFocusViewEnabled(enabled: boolean): void {

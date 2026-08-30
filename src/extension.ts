@@ -83,6 +83,22 @@ export function activate(context: vscode.ExtensionContext): void {
   // ─── View layer ─────────────────────────────────────────────────────────────
 
   const viewManager = new ViewManager(sessionManager);
+
+  const applyCustomModels = (): void => {
+    const cfg = vscode.workspace.getConfiguration('clawdCode');
+    viewManager.setCustomModels(cfg.get<string[]>('customModels', []));
+    viewManager.broadcastSessionStates();
+  };
+  applyCustomModels();
+
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration('clawdCode.customModels')) {
+        applyCustomModels();
+      }
+    }),
+  );
+
   const htmlBuilder = new HtmlBuilder(context.extensionUri);
 
   // ─── IPC broker factory ──────────────────────────────────────────────────────
