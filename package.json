@@ -1,6 +1,6 @@
 {
-  "name": "claw-code",
-  "displayName": "Claw Code",
+  "name": "clawd-code",
+  "displayName": "Clawd Code",
   "description": "A clean, documented reimplementation of the Claude Code VS Code extension",
   "version": "0.2.0",
   "publisher": "joeblackwaslike",
@@ -30,7 +30,7 @@
   ],
   "activationEvents": [
     "onStartupFinished",
-    "onWebviewPanel:clawVSCodePanel"
+    "onWebviewPanel:clawdVSCodePanel"
   ],
   "icon": "resources/clawd-icon.png",
   "main": "./dist/extension.js",
@@ -87,14 +87,14 @@
   "contributes": {
     "configuration": [
       {
-        "title": "Claw Code",
+        "title": "Clawd Code",
         "properties": {
-          "clawCode.enableNewConversationShortcut": {
+          "clawdCode.enableNewConversationShortcut": {
             "type": "boolean",
             "default": false,
             "description": "Enable the Cmd+N (Ctrl+N) shortcut to create a new conversation"
           },
-          "clawCode.enableReopenClosedSessionShortcut": {
+          "clawdCode.enableReopenClosedSessionShortcut": {
             "type": "boolean",
             "default": true,
             "description": "Enable the Cmd+Shift+T (Ctrl+Shift+T) shortcut to reopen closed sessions"
@@ -115,119 +115,119 @@
     ],
     "commands": [
       {
-        "command": "claw-vscode.editor.open",
-        "title": "Claw Code: Open in New Tab",
+        "command": "clawd-vscode.editor.open",
+        "title": "Clawd Code: Open in New Tab",
         "icon": {
           "light": "resources/clawd.svg",
           "dark": "resources/clawd.svg"
         }
       },
       {
-        "command": "claw-vscode.editor.openLast",
-        "title": "Claw Code: Open",
+        "command": "clawd-vscode.editor.openLast",
+        "title": "Clawd Code: Open",
         "icon": {
           "light": "resources/clawd.svg",
           "dark": "resources/clawd.svg"
         }
       },
       {
-        "command": "claw-vscode.primaryEditor.open",
-        "title": "Claw Code: Open in Primary Editor",
+        "command": "clawd-vscode.primaryEditor.open",
+        "title": "Clawd Code: Open in Primary Editor",
         "icon": {
           "light": "resources/clawd.svg",
           "dark": "resources/clawd.svg"
         }
       },
       {
-        "command": "claw-vscode.window.open",
-        "title": "Claw Code: Open in New Window"
+        "command": "clawd-vscode.window.open",
+        "title": "Clawd Code: Open in New Window"
       },
       {
-        "command": "claw-vscode.createWorktree",
-        "title": "Claw Code: Create Worktree"
+        "command": "clawd-vscode.createWorktree",
+        "title": "Clawd Code: Create Worktree"
       },
       {
-        "command": "claw-vscode.sidebar.open",
-        "title": "Claw Code: Open in Side Bar",
+        "command": "clawd-vscode.sidebar.open",
+        "title": "Clawd Code: Open in Side Bar",
         "icon": {
           "light": "resources/clawd.svg",
           "dark": "resources/clawd.svg"
         }
       },
       {
-        "command": "claw-vscode.newConversation",
-        "title": "Claw Code: New Conversation"
+        "command": "clawd-vscode.newConversation",
+        "title": "Clawd Code: New Conversation"
       },
       {
-        "command": "claw-vscode.reopenClosedSession",
-        "title": "Claw Code: Reopen Closed Session"
+        "command": "clawd-vscode.reopenClosedSession",
+        "title": "Clawd Code: Reopen Closed Session"
       },
       {
-        "command": "claw-vscode.update",
-        "title": "Claw Code: Update extension"
+        "command": "clawd-vscode.update",
+        "title": "Clawd Code: Update extension"
       },
       {
-        "command": "claw-vscode.focus",
-        "title": "Claw Code: Focus input"
+        "command": "clawd-vscode.focus",
+        "title": "Clawd Code: Focus input"
       },
       {
-        "command": "claw-vscode.blur",
-        "title": "Claw Code: Blur input"
+        "command": "clawd-vscode.blur",
+        "title": "Clawd Code: Blur input"
       },
       {
-        "command": "claw-vscode.logout",
-        "title": "Claw Code: Logout"
+        "command": "clawd-vscode.logout",
+        "title": "Clawd Code: Logout"
       },
       {
-        "command": "claw-vscode.terminal.open",
-        "title": "Claw Code: Open in Terminal",
+        "command": "clawd-vscode.terminal.open",
+        "title": "Clawd Code: Open in Terminal",
         "icon": {
           "light": "resources/clawd.svg",
           "dark": "resources/clawd.svg"
         }
       },
       {
-        "command": "claw-vscode.acceptProposedDiff",
-        "title": "Claw Code: Accept Proposed Changes",
-        "enablement": "claw-vscode.viewingProposedDiff",
+        "command": "clawd-vscode.acceptProposedDiff",
+        "title": "Clawd Code: Accept Proposed Changes",
+        "enablement": "clawd-vscode.viewingProposedDiff",
         "icon": "$(check)"
       },
       {
-        "command": "claw-vscode.rejectProposedDiff",
-        "title": "Claw Code: Reject Proposed Changes",
-        "enablement": "claw-vscode.viewingProposedDiff",
+        "command": "clawd-vscode.rejectProposedDiff",
+        "title": "Clawd Code: Reject Proposed Changes",
+        "enablement": "clawd-vscode.viewingProposedDiff",
         "icon": "$(discard)"
       },
       {
-        "command": "claw-vscode.insertAtMention",
-        "title": "Claw Code: Insert @-Mention Reference"
+        "command": "clawd-vscode.insertAtMention",
+        "title": "Clawd Code: Insert @-Mention Reference"
       },
       {
-        "command": "claw-vscode.installPlugin",
-        "title": "Claw Code: Install Plugin"
+        "command": "clawd-vscode.installPlugin",
+        "title": "Clawd Code: Install Plugin"
       },
       {
-        "command": "claw-vscode.showLogs",
-        "title": "Claw Code: Show Logs"
+        "command": "clawd-vscode.showLogs",
+        "title": "Clawd Code: Show Logs"
       },
       {
-        "command": "claw-vscode.openWalkthrough",
-        "title": "Claw Code: Open Walkthrough"
+        "command": "clawd-vscode.openWalkthrough",
+        "title": "Clawd Code: Open Walkthrough"
       },
       {
-        "command": "claw-vscode.toggleFocusView",
-        "title": "Claw Code: Toggle Focus View"
+        "command": "clawd-vscode.toggleFocusView",
+        "title": "Clawd Code: Toggle Focus View"
       }
     ],
     "keybindings": [
       {
-        "command": "claw-vscode.insertAtMention",
+        "command": "clawd-vscode.insertAtMention",
         "key": "alt+k",
         "mac": "alt+k",
         "when": "editorTextFocus"
       },
       {
-        "command": "claw-vscode.focus",
+        "command": "clawd-vscode.focus",
         "key": "cmd+escape",
         "mac": "cmd+escape",
         "win": "ctrl+escape",
@@ -235,7 +235,7 @@
         "when": "!config.claudeCode.useTerminal && editorTextFocus"
       },
       {
-        "command": "claw-vscode.blur",
+        "command": "clawd-vscode.blur",
         "key": "cmd+escape",
         "mac": "cmd+escape",
         "win": "ctrl+escape",
@@ -243,7 +243,7 @@
         "when": "!config.claudeCode.useTerminal && !editorTextFocus"
       },
       {
-        "command": "claw-vscode.editor.open",
+        "command": "clawd-vscode.editor.open",
         "key": "cmd+shift+escape",
         "mac": "cmd+shift+escape",
         "win": "ctrl+shift+escape",
@@ -251,7 +251,7 @@
         "when": "!config.claudeCode.useTerminal"
       },
       {
-        "command": "claw-vscode.terminal.open.keyboard",
+        "command": "clawd-vscode.terminal.open.keyboard",
         "key": "cmd+escape",
         "mac": "cmd+escape",
         "win": "ctrl+escape",
@@ -259,7 +259,7 @@
         "when": "config.claudeCode.useTerminal"
       },
       {
-        "command": "claw-vscode.insertAtMention",
+        "command": "clawd-vscode.insertAtMention",
         "key": "cmd+alt+K",
         "mac": "cmd+alt+K",
         "win": "ctrl+alt+K",
@@ -267,81 +267,81 @@
         "when": "editorTextFocus"
       },
       {
-        "command": "claw-vscode.newConversation",
+        "command": "clawd-vscode.newConversation",
         "key": "cmd+n",
         "mac": "cmd+n",
         "win": "ctrl+n",
         "linux": "ctrl+n",
-        "when": "config.clawCode.enableNewConversationShortcut && (activeWebviewPanelId == 'clawVSCodePanel' || (claw-vscode.sideBarActive && !editorFocus && !panelFocus))"
+        "when": "config.clawdCode.enableNewConversationShortcut && (activeWebviewPanelId == 'clawdVSCodePanel' || (clawd-vscode.sideBarActive && !editorFocus && !panelFocus))"
       },
       {
-        "command": "claw-vscode.reopenClosedSession",
+        "command": "clawd-vscode.reopenClosedSession",
         "key": "cmd+shift+t",
         "mac": "cmd+shift+t",
         "win": "ctrl+shift+t",
         "linux": "ctrl+shift+t",
-        "when": "config.clawCode.enableReopenClosedSessionShortcut && claw-vscode.lastClosedWasSession"
+        "when": "config.clawdCode.enableReopenClosedSessionShortcut && clawd-vscode.lastClosedWasSession"
       },
       {
-        "command": "claw-vscode.toggleFocusView",
+        "command": "clawd-vscode.toggleFocusView",
         "key": "ctrl+alt+f",
         "mac": "cmd+alt+f",
-        "when": "activeWebviewPanelId == 'clawVSCodePanel' || (claw-vscode.sideBarActive && !editorFocus && !panelFocus)"
+        "when": "activeWebviewPanelId == 'clawdVSCodePanel' || (clawd-vscode.sideBarActive && !editorFocus && !panelFocus)"
       }
     ],
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "claw-sidebar",
-          "title": "Claw Code",
+          "id": "clawd-sidebar",
+          "title": "Clawd Code",
           "icon": "resources/clawd.svg",
-          "when": "claw-code:doesNotSupportSecondarySidebar"
+          "when": "clawd-code:doesNotSupportSecondarySidebar"
         },
         {
-          "id": "claw-sessions-sidebar",
-          "title": "Claw Code",
+          "id": "clawd-sessions-sidebar",
+          "title": "Clawd Code",
           "icon": "resources/clawd.svg",
-          "when": "claw-vscode.sessionsListEnabled"
+          "when": "clawd-vscode.sessionsListEnabled"
         }
       ],
       "secondarySidebar": [
         {
-          "id": "claw-sidebar-secondary",
-          "title": "Claw Code",
+          "id": "clawd-sidebar-secondary",
+          "title": "Clawd Code",
           "icon": "resources/clawd.svg",
-          "when": "!claw-code:doesNotSupportSecondarySidebar"
+          "when": "!clawd-code:doesNotSupportSecondarySidebar"
         }
       ]
     },
     "views": {
-      "claw-sidebar": [
+      "clawd-sidebar": [
         {
           "type": "webview",
-          "id": "clawVSCodeSidebar",
-          "name": "Claw Code",
-          "when": "claw-code:doesNotSupportSecondarySidebar"
+          "id": "clawdVSCodeSidebar",
+          "name": "Clawd Code",
+          "when": "clawd-code:doesNotSupportSecondarySidebar"
         }
       ],
-      "claw-sidebar-secondary": [
+      "clawd-sidebar-secondary": [
         {
           "type": "webview",
-          "id": "clawVSCodeSidebarSecondary",
-          "name": "Claw Code",
-          "when": "!claw-code:doesNotSupportSecondarySidebar"
+          "id": "clawdVSCodeSidebarSecondary",
+          "name": "Clawd Code",
+          "when": "!clawd-code:doesNotSupportSecondarySidebar"
         }
       ],
-      "claw-sessions-sidebar": [
+      "clawd-sessions-sidebar": [
         {
           "type": "webview",
-          "id": "clawVSCodeSessionsList",
+          "id": "clawdVSCodeSessionsList",
           "name": "",
-          "when": "claw-vscode.sessionsListEnabled"
+          "when": "clawd-vscode.sessionsListEnabled"
         }
       ]
     },
     "walkthroughs": [
       {
-        "id": "claw-code-walkthrough",
+        "id": "clawd-code-walkthrough",
         "title": "Get started with Claude Code",
         "description": "Learn how to use Claude Code to write, edit, and understand your code.",
         "steps": [
@@ -361,8 +361,8 @@
               "markdown": "resources/walkthrough/step2.md"
             },
             "completionEvents": [
-              "onCommand:claw-vscode.sidebar.open",
-              "onCommand:claw-vscode.editor.open"
+              "onCommand:clawd-vscode.sidebar.open",
+              "onCommand:clawd-vscode.editor.open"
             ]
           },
           {
@@ -387,57 +387,57 @@
     "menus": {
       "editor/title": [
         {
-          "command": "claw-vscode.acceptProposedDiff",
-          "when": "claw-vscode.viewingProposedDiff",
+          "command": "clawd-vscode.acceptProposedDiff",
+          "when": "clawd-vscode.viewingProposedDiff",
           "group": "navigation"
         },
         {
-          "command": "claw-vscode.rejectProposedDiff",
-          "when": "claw-vscode.viewingProposedDiff",
+          "command": "clawd-vscode.rejectProposedDiff",
+          "when": "clawd-vscode.viewingProposedDiff",
           "group": "navigation"
         },
         {
-          "command": "claw-vscode.editor.openLast",
+          "command": "clawd-vscode.editor.openLast",
           "when": "!config.claudeCode.useTerminal",
           "group": "navigation"
         },
         {
-          "command": "claw-vscode.terminal.open",
+          "command": "clawd-vscode.terminal.open",
           "when": "config.claudeCode.useTerminal",
           "group": "navigation"
         }
       ],
       "commandPalette": [
         {
-          "command": "claw-vscode.update",
-          "when": "claw-vscode.updateSupported"
+          "command": "clawd-vscode.update",
+          "when": "clawd-vscode.updateSupported"
         },
         {
-          "command": "claw-vscode.editor.openLast",
+          "command": "clawd-vscode.editor.openLast",
           "when": "false"
         },
         {
-          "command": "claw-vscode.primaryEditor.open",
-          "when": "claw-vscode.primaryEditorEnabled"
+          "command": "clawd-vscode.primaryEditor.open",
+          "when": "clawd-vscode.primaryEditorEnabled"
         },
         {
-          "command": "claw-vscode.createWorktree",
-          "when": "claw-vscode.createWorktreeEnabled"
+          "command": "clawd-vscode.createWorktree",
+          "when": "clawd-vscode.createWorktreeEnabled"
         },
         {
-          "command": "claw-vscode.blur",
+          "command": "clawd-vscode.blur",
           "when": "false"
         },
         {
-          "command": "claw-vscode.newConversation",
+          "command": "clawd-vscode.newConversation",
           "when": "false"
         },
         {
-          "command": "claw-vscode.insertAtMention"
+          "command": "clawd-vscode.insertAtMention"
         },
         {
-          "command": "claw-vscode.installPlugin",
-          "when": "claw-vscode.updateSupported"
+          "command": "clawd-vscode.installPlugin",
+          "when": "clawd-vscode.updateSupported"
         }
       ]
     }

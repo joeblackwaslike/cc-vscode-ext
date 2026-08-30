@@ -1,8 +1,8 @@
-# Claw Code
+# Clawd Code
 
 A clean, documented, ground-up reimplementation of the Claude Code VS Code extension.
 
-Claw Code drives the real [`claude` CLI](https://github.com/anthropics/claude-code) behind a
+Clawd Code drives the real [`claude` CLI](https://github.com/anthropics/claude-code) behind a
 from-scratch webview UI — same underlying agent, independent implementation of everything
 above it. Built as a readable reference for how a Claude Code–style editor integration works,
 and as a usable extension in its own right.
@@ -23,7 +23,7 @@ and as a usable extension in its own right.
 - **Focus View** — collapse routine tool-call activity into an expandable per-turn summary, so
   a busy session reads as a clean narrative instead of a wall of tool calls.
 - **Drop-in command compatibility** — when the official Anthropic extension isn't installed,
-  Claw Code answers its command IDs and keybindings too, so existing muscle memory and saved
+  Clawd Code answers its command IDs and keybindings too, so existing muscle memory and saved
   workflows keep working.
 
 ## Requirements
@@ -35,17 +35,17 @@ and as a usable extension in its own right.
 ## Getting Started
 
 1. Install the extension.
-2. Click the Claw Code icon in the editor toolbar, or run **Claw Code: Open** from the Command
+2. Click the Clawd Code icon in the editor toolbar, or run **Clawd Code: Open** from the Command
    Palette.
 3. Sign in when prompted, then start chatting.
 
-The built-in walkthrough (**Help → Get Started → Claw Code**) covers the basics interactively.
+The built-in walkthrough (**Help → Get Started → Clawd Code**) covers the basics interactively.
 
 ## Why a reimplementation?
 
-Claw Code exists as a clean, from-scratch counterpart to the official extension — independently
+Clawd Code exists as a clean, from-scratch counterpart to the official extension — independently
 built, openly documented, and free to diverge or experiment where the official extension can't.
-It's designed to coexist peacefully: install both, and Claw Code detects the official extension
+It's designed to coexist peacefully: install both, and Clawd Code detects the official extension
 and steps out of its way rather than fighting over command IDs.
 
 ## Development

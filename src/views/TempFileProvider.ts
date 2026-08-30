@@ -4,7 +4,7 @@ import * as vscode from 'vscode';
  * TextDocumentContentProvider for in-memory "virtual" files used by the diff editor.
  *
  * Two instances are registered — one for the left (original) side and one for the right
- * (proposed) side — with distinct URI schemes (`claw-vscode-left` / `claw-vscode-right`).
+ * (proposed) side — with distinct URI schemes (`clawd-vscode-left` / `clawd-vscode-right`).
  * When a diff is opened, the webview places content here so VS Code can display it as a
  * read-only virtual document in the diff editor.
  */

@@ -6,7 +6,7 @@ import type { TerminalLauncher } from '../terminal/TerminalLauncher';
 import type { ILogger } from '../process/ClaudeProcessManager';
 
 /**
- * The original Anthropic Claude Code extension. Claw Code is a drop-in
+ * The original Anthropic Claude Code extension. Clawd Code is a drop-in
  * replacement, so when this extension is NOT installed we also expose its
  * `claude-code.*` command IDs (below) for keybinding/workflow compatibility.
  * When it IS installed it owns those IDs — re-registering them throws
@@ -16,9 +16,9 @@ const CLAUDE_CODE_EXTENSION_ID = 'anthropic.claude-code';
 
 /**
  * Command suffixes shared 1:1 between the official extension's primary
- * `claude-vscode.*` namespace and our `claw-vscode.*` namespace (verified against
+ * `claude-vscode.*` namespace and our `clawd-vscode.*` namespace (verified against
  * anthropic.claude-code 2.1.181). Each `claude-vscode.<suffix>` is aliased onto
- * `claw-vscode.<suffix>` so a stand-alone Claw Code answers the original IDs.
+ * `clawd-vscode.<suffix>` so a stand-alone Clawd Code answers the original IDs.
  */
 const MIRRORED_COMMAND_SUFFIXES = [
   'editor.open',
@@ -50,11 +50,11 @@ const MIRRORED_COMMAND_SUFFIXES = [
  */
 const COMPAT_COMMAND_ALIASES: ReadonlyArray<[legacyId: string, ourId: string]> = [
   ...MIRRORED_COMMAND_SUFFIXES.map(
-    (s): [string, string] => [`claude-vscode.${s}`, `claw-vscode.${s}`],
+    (s): [string, string] => [`claude-vscode.${s}`, `clawd-vscode.${s}`],
   ),
-  ['claude-code.acceptProposedDiff', 'claw-vscode.acceptProposedDiff'],
-  ['claude-code.rejectProposedDiff', 'claw-vscode.rejectProposedDiff'],
-  ['claude-code.insertAtMentioned', 'claw-vscode.insertAtMention'],
+  ['claude-code.acceptProposedDiff', 'clawd-vscode.acceptProposedDiff'],
+  ['claude-code.rejectProposedDiff', 'clawd-vscode.rejectProposedDiff'],
+  ['claude-code.insertAtMentioned', 'clawd-vscode.insertAtMention'],
 ];
 
 export interface IPanelOpener {
@@ -95,15 +95,15 @@ export class CommandRegistry {
 
     const disposables: vscode.Disposable[] = [
       // ─── Panel / editor ───────────────────────────────────────────────
-      r('claw-vscode.editor.open', () => this.panelOpener.openNewPanel()),
-      r('claw-vscode.editor.openLast', () => this.panelOpener.reopenLastSession()),
-      r('claw-vscode.primaryEditor.open', () => this.panelOpener.openNewPanel()),
-      r('claw-vscode.window.open', () => this.panelOpener.openNewPanel()),
-      r('claw-vscode.sidebar.open', () =>
-        vscode.commands.executeCommand('clawVSCodeSidebarSecondary.focus'),
+      r('clawd-vscode.editor.open', () => this.panelOpener.openNewPanel()),
+      r('clawd-vscode.editor.openLast', () => this.panelOpener.reopenLastSession()),
+      r('clawd-vscode.primaryEditor.open', () => this.panelOpener.openNewPanel()),
+      r('clawd-vscode.window.open', () => this.panelOpener.openNewPanel()),
+      r('clawd-vscode.sidebar.open', () =>
+        vscode.commands.executeCommand('clawdVSCodeSidebarSecondary.focus'),
       ),
-      r('claw-vscode.newConversation', () => this.panelOpener.openNewPanel()),
-      r('claw-vscode.reopenClosedSession', () => {
+      r('clawd-vscode.newConversation', () => this.panelOpener.openNewPanel()),
+      r('clawd-vscode.reopenClosedSession', () => {
         const lastId = this.sessionHistory.getLastClosed();
         if (lastId) {
           this.sessionHistory.clearLastClosed();
@@ -115,35 +115,35 @@ export class CommandRegistry {
       // Canonical IDs. The original `claude-code.*` IDs are aliased onto these
       // conditionally below (only when the real extension is absent) — see
       // COMPAT_COMMAND_ALIASES.
-      r('claw-vscode.acceptProposedDiff', () => this.acceptActiveDiff()),
-      r('claw-vscode.rejectProposedDiff', () => this.rejectActiveDiff()),
+      r('clawd-vscode.acceptProposedDiff', () => this.acceptActiveDiff()),
+      r('clawd-vscode.rejectProposedDiff', () => this.rejectActiveDiff()),
 
       // ─── Terminal ─────────────────────────────────────────────────────
-      r('claw-vscode.terminal.open', () =>
+      r('clawd-vscode.terminal.open', () =>
         this.terminalLauncher.openClaudeTerminal(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath),
       ),
-      r('claw-vscode.terminal.open.keyboard', () =>
+      r('clawd-vscode.terminal.open.keyboard', () =>
         this.terminalLauncher.openClaudeTerminal(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath),
       ),
 
       // ─── Stubs for remaining commands ─────────────────────────────────
-      r('claw-vscode.focus', () => undefined),
-      r('claw-vscode.blur', () => undefined),
-      r('claw-vscode.logout', () => undefined),
-      r('claw-vscode.update', () => undefined),
-      r('claw-vscode.insertAtMention', () => undefined),
-      r('claw-vscode.installPlugin', () => undefined),
-      r('claw-vscode.showLogs', () => this.logger.info('showLogs command invoked')),
-      r('claw-vscode.openWalkthrough', () =>
+      r('clawd-vscode.focus', () => undefined),
+      r('clawd-vscode.blur', () => undefined),
+      r('clawd-vscode.logout', () => undefined),
+      r('clawd-vscode.update', () => undefined),
+      r('clawd-vscode.insertAtMention', () => undefined),
+      r('clawd-vscode.installPlugin', () => undefined),
+      r('clawd-vscode.showLogs', () => this.logger.info('showLogs command invoked')),
+      r('clawd-vscode.openWalkthrough', () =>
         vscode.commands.executeCommand(
           'workbench.action.openWalkthrough',
-          'reference.claw-code#claw-code-walkthrough',
+          'joeblackwaslike.clawd-code#clawd-code-walkthrough',
         ),
       ),
-      r('claw-vscode.createWorktree', () => undefined),
+      r('clawd-vscode.createWorktree', () => undefined),
 
       // ─── Focus View ─────────────────────────────────────────────────
-      r('claw-vscode.toggleFocusView', () => {
+      r('clawd-vscode.toggleFocusView', () => {
         this.viewManager.toggleFocusView();
         this.viewManager.broadcastSessionStates();
       }),
@@ -151,7 +151,7 @@ export class CommandRegistry {
 
     // Drop-in compatibility: when the official Anthropic.claude-code extension
     // is NOT installed, also expose its command IDs so existing keybindings and
-    // saved workflows keep working against Claw Code. When it IS installed we
+    // saved workflows keep working against Clawd Code. When it IS installed we
     // must NOT register them — it owns those IDs and a duplicate registerCommand
     // throws `command '…' already exists`, which crash-loops the extension host.
     // Registered at runtime only (not contributed in package.json), which is all

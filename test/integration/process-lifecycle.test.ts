@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 
-const EXT_ID = 'reference.claw-code';
+const EXT_ID = 'joeblackwaslike.clawd-code';
 
 function getExtensionPath(): string {
   const ext = vscode.extensions.getExtension(EXT_ID);

@@ -1,5 +1,5 @@
 /* ============================================================================
- * Claw Code webview — single bundled stylesheet.
+ * Clawd Code webview — single bundled stylesheet.
  *
  * Loaded in production via HtmlBuilder's <link href=".../webview/index.css">.
  * The webview-src/index.html <style> block only applies in Vite dev, so all

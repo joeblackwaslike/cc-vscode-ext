@@ -7,7 +7,7 @@ test.describe('Process and terminal integration', () => {
     const result = await launchVSCode();
     try {
       const { window } = result;
-      await runCommand(window, 'Claw Code: Open in Terminal');
+      await runCommand(window, 'Clawd Code: Open in Terminal');
       await window.waitForTimeout(3_000);
 
       const terminalPanel = window.locator('.terminal-outer-container, .panel.integrated-terminal');
@@ -21,7 +21,7 @@ test.describe('Process and terminal integration', () => {
     const result = await launchVSCode();
     try {
       const { window } = result;
-      await runCommand(window, 'Claw Code: Show Logs');
+      await runCommand(window, 'Clawd Code: Show Logs');
       await window.waitForTimeout(2_000);
 
       const outputPanel = window.locator('.panel .output');
@@ -39,7 +39,7 @@ test.describe('Process and terminal integration', () => {
         if (/claude/i.test(err.message)) errors.push(err.message);
       });
 
-      await runCommand(result.window, 'Claw Code: Open in New Tab');
+      await runCommand(result.window, 'Clawd Code: Open in New Tab');
       await result.window.waitForTimeout(1_500);
       await result.window.keyboard.press('Meta+w');
       await result.window.waitForTimeout(1_500);

@@ -42,12 +42,12 @@ describe('CommandRunner (fallback path)', () => {
     mockVscode.workspace.workspaceFolders = undefined;
   });
 
-  it('opens a dedicated "Claw Code Run" terminal and shows it', async () => {
+  it('opens a dedicated "Clawd Code Run" terminal and shows it', async () => {
     const execFn = vi.fn().mockResolvedValue({ stdout: 'hi\n', stderr: '' });
     const runner = new CommandRunner(collect, execFn, TIMEOUT);
     await runner.run('e1', 'echo hi');
     expect(mockVscode.window.createTerminal).toHaveBeenCalledWith(
-      expect.objectContaining({ name: 'Claw Code Run' }),
+      expect.objectContaining({ name: 'Clawd Code Run' }),
     );
     expect(mockTerminal.show).toHaveBeenCalled();
   });

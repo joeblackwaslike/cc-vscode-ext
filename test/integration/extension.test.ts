@@ -1,30 +1,30 @@
 import * as assert from 'assert';
 import * as vscode from 'vscode';
 
-const EXT_ID = 'reference.claw-code';
+const EXT_ID = 'joeblackwaslike.clawd-code';
 
 // Expected command IDs from package.json contributes.commands
 const EXPECTED_COMMANDS = [
-  'claw-vscode.editor.open',
-  'claw-vscode.editor.openLast',
-  'claw-vscode.primaryEditor.open',
-  'claw-vscode.sidebar.open',
-  'claw-vscode.newConversation',
-  'claw-vscode.reopenClosedSession',
-  'claw-vscode.terminal.open',
-  'claw-vscode.acceptProposedDiff',
-  'claw-vscode.rejectProposedDiff',
-  'claw-vscode.insertAtMention',
-  'claw-vscode.showLogs',
-  'claw-vscode.openWalkthrough',
-  'claw-vscode.toggleFocusView',
+  'clawd-vscode.editor.open',
+  'clawd-vscode.editor.openLast',
+  'clawd-vscode.primaryEditor.open',
+  'clawd-vscode.sidebar.open',
+  'clawd-vscode.newConversation',
+  'clawd-vscode.reopenClosedSession',
+  'clawd-vscode.terminal.open',
+  'clawd-vscode.acceptProposedDiff',
+  'clawd-vscode.rejectProposedDiff',
+  'clawd-vscode.insertAtMention',
+  'clawd-vscode.showLogs',
+  'clawd-vscode.openWalkthrough',
+  'clawd-vscode.toggleFocusView',
 ];
 
-// The original Anthropic.claude-code command IDs. Claw Code is a drop-in
+// The original Anthropic.claude-code command IDs. Clawd Code is a drop-in
 // replacement, so it aliases these at RUNTIME when the real extension is absent
 // (it is, in this clean test host) — but must never *contribute* them statically
 // in package.json, which is what collided and crash-looped the host. Covers the
-// primary claude-vscode.* namespace (1:1 mirror of claw-vscode.*) plus the older
+// primary claude-vscode.* namespace (1:1 mirror of clawd-vscode.*) plus the older
 // claude-code.* IDs the real extension still carries.
 const MIRRORED_SUFFIXES = [
   'editor.open',
@@ -77,7 +77,7 @@ suite('Extension activation', () => {
 
   test('extension package.json has expected metadata', () => {
     const { packageJSON } = ext;
-    assert.strictEqual((packageJSON as Record<string, unknown>).name, 'claw-code');
+    assert.strictEqual((packageJSON as Record<string, unknown>).name, 'clawd-code');
     assert.strictEqual((packageJSON as Record<string, unknown>).publisher, 'reference');
   });
 });
@@ -109,7 +109,7 @@ suite('Command registration', () => {
     assert.deepStrictEqual(
       oursColliding,
       [],
-      `claw-code statically contributes colliding command IDs: ${oursColliding.join(', ')}`,
+      `clawd-code statically contributes colliding command IDs: ${oursColliding.join(', ')}`,
     );
   });
 

@@ -7,7 +7,7 @@ import type { SessionHistory } from '../sessions/SessionHistory';
 import type { ILogger } from '../process/ClaudeProcessManager';
 
 /**
- * Creates and manages `WebviewPanel` instances (the full-editor Claw Code tab).
+ * Creates and manages `WebviewPanel` instances (the full-editor Clawd Code tab).
  *
  * Each call to `openNewPanel` creates a fresh panel. The panel is registered with
  * ViewManager on creation and unregistered when disposed.
@@ -47,8 +47,8 @@ export class PanelWebviewProvider {
     viewColumn: vscode.ViewColumn,
   ): vscode.WebviewPanel {
     const panel = vscode.window.createWebviewPanel(
-      'claw-vscode.editor',
-      'Claw Code',
+      'clawd-vscode.editor',
+      'Clawd Code',
       viewColumn,
       {
         enableScripts: true,

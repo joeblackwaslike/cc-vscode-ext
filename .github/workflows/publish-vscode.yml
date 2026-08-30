@@ -1,4 +1,4 @@
-name: Publish Claw Code
+name: Publish Clawd Code
 
 # Builds a single, platform-independent .vsix (the extension has no bundled
 # native binaries — the `claude` CLI is downloaded into global storage on
@@ -58,7 +58,7 @@ jobs:
         run: |
           set -euo pipefail
           gh release create "${GITHUB_REF_NAME}" \
-            --title "Claw Code ${GITHUB_REF_NAME}" \
+            --title "Clawd Code ${GITHUB_REF_NAME}" \
             --generate-notes \
             ./*.vsix
 

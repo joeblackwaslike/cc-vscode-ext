@@ -9,14 +9,14 @@ const ACCEPTANCE_TIMEOUT = 120_000;
 
 const COMPOSE_PLACEHOLDER = 'Message Claude… (@ to mention files)';
 
-test.describe('Acceptance: Claw Code extension', () => {
+test.describe('Acceptance: Clawd Code extension', () => {
   test('extension activates and panel UI renders', async () => {
     test.setTimeout(ACCEPTANCE_TIMEOUT);
     const result = await launchVSCode();
     try {
       const { window } = result;
 
-      await runCommand(window, 'Claw Code: Open in New Tab');
+      await runCommand(window, 'Clawd Code: Open in New Tab');
       const frame = getWebviewFrame(window);
 
       // Either welcome screen (fresh install) or conversation view (existing sessions) is valid.
@@ -39,7 +39,7 @@ test.describe('Acceptance: Claw Code extension', () => {
     try {
       const { window } = result;
 
-      await runCommand(window, 'Claw Code: Open in New Tab');
+      await runCommand(window, 'Clawd Code: Open in New Tab');
       const frame = getWebviewFrame(window);
       const welcome = new WelcomePage(frame);
 
@@ -65,7 +65,7 @@ test.describe('Acceptance: Claw Code extension', () => {
     try {
       const { window } = result;
 
-      await runCommand(window, 'Claw Code: Open in New Tab');
+      await runCommand(window, 'Clawd Code: Open in New Tab');
       const frame = getWebviewFrame(window);
       const welcome = new WelcomePage(frame);
 
@@ -103,7 +103,7 @@ test.describe('Acceptance: Claw Code extension', () => {
     try {
       const { window } = result;
 
-      await runCommand(window, 'Claw Code: Open in New Tab');
+      await runCommand(window, 'Clawd Code: Open in New Tab');
       const frame = getWebviewFrame(window);
       const welcome = new WelcomePage(frame);
 

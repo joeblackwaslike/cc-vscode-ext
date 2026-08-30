@@ -18,7 +18,7 @@ test.describe('Composer controls + tabs', () => {
     const result = await launchVSCode({ env: { CLAUDE_CONFIG_DIR: creds.configDir } });
     try {
       const { window } = result;
-      await runCommand(window, 'Claw Code: Open in New Tab');
+      await runCommand(window, 'Clawd Code: Open in New Tab');
       const frame = getWebviewFrame(window);
       await new WelcomePage(frame).newConversationButton().click();
 
@@ -43,7 +43,7 @@ test.describe('Composer controls + tabs', () => {
     const result = await launchVSCode({ env: { CLAUDE_CONFIG_DIR: creds.configDir } });
     try {
       const { window } = result;
-      await runCommand(window, 'Claw Code: Open in New Tab');
+      await runCommand(window, 'Clawd Code: Open in New Tab');
       const frame = getWebviewFrame(window);
       await new WelcomePage(frame).newConversationButton().click();
 
@@ -67,7 +67,7 @@ test.describe('Composer controls + tabs', () => {
     const result = await launchVSCode({ env: { CLAUDE_CONFIG_DIR: creds.configDir } });
     try {
       const { window } = result;
-      await runCommand(window, 'Claw Code: Open in New Tab');
+      await runCommand(window, 'Clawd Code: Open in New Tab');
       const frame = getWebviewFrame(window);
       await new WelcomePage(frame).newConversationButton().click();
 

@@ -65,12 +65,12 @@ describe('CommandRegistry', () => {
     const registeredIds = mockVscode.commands.registerCommand.mock.calls.map(
       (c: [string, ...unknown[]]) => c[0],
     );
-    expect(registeredIds).toContain('claw-vscode.editor.open');
-    expect(registeredIds).toContain('claw-vscode.acceptProposedDiff');
-    expect(registeredIds).toContain('claw-vscode.rejectProposedDiff');
-    expect(registeredIds).toContain('claw-vscode.terminal.open');
-    expect(registeredIds).toContain('claw-vscode.showLogs');
-    expect(registeredIds).toContain('claw-vscode.reopenClosedSession');
+    expect(registeredIds).toContain('clawd-vscode.editor.open');
+    expect(registeredIds).toContain('clawd-vscode.acceptProposedDiff');
+    expect(registeredIds).toContain('clawd-vscode.rejectProposedDiff');
+    expect(registeredIds).toContain('clawd-vscode.terminal.open');
+    expect(registeredIds).toContain('clawd-vscode.showLogs');
+    expect(registeredIds).toContain('clawd-vscode.reopenClosedSession');
   });
 
   const registeredIds = () =>
@@ -102,12 +102,12 @@ describe('CommandRegistry', () => {
     expect(ids).toContain('claude-code.insertAtMentioned');
   });
 
-  it('a compat alias delegates to the canonical claw-vscode.* command', () => {
+  it('a compat alias delegates to the canonical clawd-vscode.* command', () => {
     mockVscode.extensions.getExtension.mockReturnValue(undefined);
     makeRegistry().register();
     for (const [legacyId, ourId] of [
-      ['claude-vscode.editor.open', 'claw-vscode.editor.open'],
-      ['claude-code.acceptProposedDiff', 'claw-vscode.acceptProposedDiff'],
+      ['claude-vscode.editor.open', 'clawd-vscode.editor.open'],
+      ['claude-code.acceptProposedDiff', 'clawd-vscode.acceptProposedDiff'],
     ]) {
       const call = mockVscode.commands.registerCommand.mock.calls.find(
         (c: [string, ...unknown[]]) => c[0] === legacyId,
@@ -122,7 +122,7 @@ describe('CommandRegistry', () => {
     registry.register();
 
     const call = mockVscode.commands.registerCommand.mock.calls.find(
-      (c: [string, ...unknown[]]) => c[0] === 'claw-vscode.editor.open',
+      (c: [string, ...unknown[]]) => c[0] === 'clawd-vscode.editor.open',
     );
     const handler = call?.[1] as () => Promise<void>;
     await handler();
@@ -140,7 +140,7 @@ describe('CommandRegistry', () => {
     registry.register();
 
     const call = mockVscode.commands.registerCommand.mock.calls.find(
-      (c: [string, ...unknown[]]) => c[0] === 'claw-vscode.acceptProposedDiff',
+      (c: [string, ...unknown[]]) => c[0] === 'clawd-vscode.acceptProposedDiff',
     );
     const handler = call?.[1] as () => Promise<void>;
     await handler();
@@ -157,7 +157,7 @@ describe('CommandRegistry', () => {
     registry.register();
 
     const call = mockVscode.commands.registerCommand.mock.calls.find(
-      (c: [string, ...unknown[]]) => c[0] === 'claw-vscode.acceptProposedDiff',
+      (c: [string, ...unknown[]]) => c[0] === 'clawd-vscode.acceptProposedDiff',
     );
     const handler = call?.[1] as () => void;
     handler();
@@ -169,7 +169,7 @@ describe('CommandRegistry', () => {
     registry.register();
 
     const call = mockVscode.commands.registerCommand.mock.calls.find(
-      (c: [string, ...unknown[]]) => c[0] === 'claw-vscode.terminal.open',
+      (c: [string, ...unknown[]]) => c[0] === 'clawd-vscode.terminal.open',
     );
     const handler = call?.[1] as () => void;
     handler();
@@ -181,17 +181,17 @@ describe('CommandRegistry', () => {
     registry.register();
 
     const call = mockVscode.commands.registerCommand.mock.calls.find(
-      (c: [string, ...unknown[]]) => c[0] === 'claw-vscode.showLogs',
+      (c: [string, ...unknown[]]) => c[0] === 'clawd-vscode.showLogs',
     );
     const handler = call?.[1] as () => void;
     handler();
     expect(logger.info).toHaveBeenCalled();
   });
 
-  it('registers claw-vscode.toggleFocusView', () => {
+  it('registers clawd-vscode.toggleFocusView', () => {
     const registry = makeRegistry();
     registry.register();
-    expect(registeredIds()).toContain('claw-vscode.toggleFocusView');
+    expect(registeredIds()).toContain('clawd-vscode.toggleFocusView');
   });
 
   it('toggleFocusView calls viewManager.toggleFocusView() then broadcastSessionStates()', () => {
@@ -199,7 +199,7 @@ describe('CommandRegistry', () => {
     registry.register();
 
     const call = mockVscode.commands.registerCommand.mock.calls.find(
-      (c: [string, ...unknown[]]) => c[0] === 'claw-vscode.toggleFocusView',
+      (c: [string, ...unknown[]]) => c[0] === 'clawd-vscode.toggleFocusView',
     );
     const handler = call?.[1] as () => void;
     handler();

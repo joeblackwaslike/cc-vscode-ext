@@ -9,7 +9,7 @@ test.describe('Session management', () => {
     const result = await launchVSCode();
     try {
       const { window } = result;
-      await runCommand(window, 'Claw Code: Open in Side Bar');
+      await runCommand(window, 'Clawd Code: Open in Side Bar');
       await window.waitForTimeout(2_000);
 
       const sidebar = window.locator('.sidebar, .activitybar');
@@ -23,7 +23,7 @@ test.describe('Session management', () => {
     const result = await launchVSCode();
     try {
       const { window } = result;
-      await runCommand(window, 'Claw Code: Open in New Tab');
+      await runCommand(window, 'Clawd Code: Open in New Tab');
       await window.waitForTimeout(3_000);
 
       const frame = getWebviewFrame(window);
@@ -39,7 +39,7 @@ test.describe('Session management', () => {
     const result = await launchVSCode({ env: { CLAUDE_CONFIG_DIR: creds.configDir } });
     try {
       const { window } = result;
-      await runCommand(window, 'Claw Code: Open in New Tab');
+      await runCommand(window, 'Clawd Code: Open in New Tab');
       const frame = getWebviewFrame(window);
       const welcome = new WelcomePage(frame);
 

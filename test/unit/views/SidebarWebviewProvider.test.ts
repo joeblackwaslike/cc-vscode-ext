@@ -45,8 +45,8 @@ describe('SidebarWebviewProvider', () => {
   }
 
   it('VIEW_ID matches the manifest view ids', () => {
-    expect(SidebarWebviewProvider.VIEW_ID).toBe('clawVSCodeSidebar');
-    expect(SidebarWebviewProvider.VIEW_ID_SECONDARY).toBe('clawVSCodeSidebarSecondary');
+    expect(SidebarWebviewProvider.VIEW_ID).toBe('clawdVSCodeSidebar');
+    expect(SidebarWebviewProvider.VIEW_ID_SECONDARY).toBe('clawdVSCodeSidebarSecondary');
   });
 
   it('isActive() returns false before resolveWebviewView', () => {

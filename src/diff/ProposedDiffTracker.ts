@@ -4,7 +4,7 @@ import type * as vscode from 'vscode';
  * Tracks which open editors are showing proposed diffs (the right-side virtual document).
  *
  * When a diff is accepted or rejected, the corresponding URI is untracked. The tracker
- * drives the `claw-vscode.viewingProposedDiff` context key so the accept/reject
+ * drives the `clawd-vscode.viewingProposedDiff` context key so the accept/reject
  * editor-title buttons are only visible when a proposed diff is active.
  */
 export class ProposedDiffTracker {
@@ -30,11 +30,11 @@ export class ProposedDiffTracker {
   }
 
   /**
-   * Update the `claw-vscode.viewingProposedDiff` context key based on the active editor.
+   * Update the `clawd-vscode.viewingProposedDiff` context key based on the active editor.
    * Call this from the `onDidChangeActiveTextEditor` listener.
    */
   updateContextKey(activeEditor: vscode.TextEditor | undefined): void {
     const viewing = activeEditor !== undefined && this.isProposedDiff(activeEditor.document.uri);
-    void this.setContext('claw-vscode.viewingProposedDiff', viewing);
+    void this.setContext('clawd-vscode.viewingProposedDiff', viewing);
   }
 }

@@ -9,7 +9,7 @@ const { createOutputChannel, mockChannel } = vi.hoisted(() => {
     hide: vi.fn(),
     clear: vi.fn(),
     dispose: vi.fn(),
-    name: 'Claw Code',
+    name: 'Clawd Code',
   };
   return { createOutputChannel: vi.fn(() => mockChannel), mockChannel };
 });

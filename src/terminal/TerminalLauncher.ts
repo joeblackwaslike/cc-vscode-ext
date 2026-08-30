@@ -19,7 +19,7 @@ export function shellQuote(path: string): string {
 /**
  * Opens the claude CLI in a VS Code integrated terminal.
  *
- * Used by the `claw-vscode.terminal.open` command and by the `open_terminal`
+ * Used by the `clawd-vscode.terminal.open` command and by the `open_terminal`
  * and `open_claude_in_terminal` IPC messages.
  */
 export class TerminalLauncher {
@@ -30,7 +30,7 @@ export class TerminalLauncher {
     const binaryPath = await this.binaryProvider();
     const resolvedCwd = cwd ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     const terminal = vscode.window.createTerminal({
-      name: 'Claw Code',
+      name: 'Clawd Code',
       ...(resolvedCwd !== undefined ? { cwd: resolvedCwd } : {}),
     });
     terminal.sendText(shellQuote(binaryPath));
@@ -42,7 +42,7 @@ export class TerminalLauncher {
   openTerminal(cwd?: string): vscode.Terminal {
     const resolvedCwd = cwd ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     const terminal = vscode.window.createTerminal({
-      name: 'Claw Code Terminal',
+      name: 'Clawd Code Terminal',
       ...(resolvedCwd !== undefined ? { cwd: resolvedCwd } : {}),
     });
     terminal.show();

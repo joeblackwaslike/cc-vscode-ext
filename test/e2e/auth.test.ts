@@ -13,7 +13,7 @@ test.describe('Auth flow', () => {
     const result = await launchVSCode({ env: { CLAUDE_CONFIG_DIR: creds.configDir } });
     try {
       const { window } = result;
-      await runCommand(window, 'Claw Code: Open in New Tab');
+      await runCommand(window, 'Clawd Code: Open in New Tab');
       const welcome = new WelcomePage(getWebviewFrame(window));
 
       // The CLI auth button renders; the loginUrl-gated Sign In button does not.
@@ -35,7 +35,7 @@ test.describe('Auth flow', () => {
     const result = await launchVSCode({ env: { CLAUDE_CONFIG_DIR: creds.configDir } });
     try {
       const { window } = result;
-      await runCommand(window, 'Claw Code: Open in New Tab');
+      await runCommand(window, 'Clawd Code: Open in New Tab');
       const welcome = new WelcomePage(getWebviewFrame(window));
 
       await expect(welcome.newConversationButton()).toBeVisible({ timeout: 20_000 });

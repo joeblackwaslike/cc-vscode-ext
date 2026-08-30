@@ -21,7 +21,7 @@ export interface CredentialsFixture {
  * file on activation but preserves the seeded `oauthAccount`.
  */
 export async function seedCredentials(authenticated: boolean): Promise<CredentialsFixture> {
-  const configDir = path.join(os.tmpdir(), `claw-e2e-creds-${randomUUID()}`);
+  const configDir = path.join(os.tmpdir(), `clawd-e2e-creds-${randomUUID()}`);
   await fsp.mkdir(configDir, { recursive: true });
 
   const config = authenticated

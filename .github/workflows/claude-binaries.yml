@@ -69,5 +69,5 @@ jobs:
           tag="claude-cli-v${VERSION}"
           gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" \
             --title "Claude Code CLI ${VERSION}" \
-            --notes "Per-platform \`claude\` binaries (pinned ${VERSION}) downloaded by the Claw Code extension on first run."
+            --notes "Per-platform \`claude\` binaries (pinned ${VERSION}) downloaded by the Clawd Code extension on first run."
           gh release upload "$tag" dist-bin/* --clobber

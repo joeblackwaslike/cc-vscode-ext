@@ -6,13 +6,13 @@ import type { IWebview } from '../ipc/MessageBroker';
 import { adaptWebview } from '../utils/webviewAdapter';
 
 /**
- * WebviewViewProvider for the Claw Code sessions list panel.
+ * WebviewViewProvider for the Clawd Code sessions list panel.
  *
  * Registered with `window.registerWebviewViewProvider` for the view ID
- * `clawVSCodeSessionsList`. Shows the list of open/recent sessions.
+ * `clawdVSCodeSessionsList`. Shows the list of open/recent sessions.
  */
 export class SessionListProvider implements vscode.WebviewViewProvider {
-  static readonly VIEW_ID = 'clawVSCodeSessionsList';
+  static readonly VIEW_ID = 'clawdVSCodeSessionsList';
 
   private view: vscode.WebviewView | undefined;
 

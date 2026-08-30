@@ -20,7 +20,7 @@ interface ExecError {
   message?: string;
 }
 
-const TERMINAL_NAME = 'Claw Code Run';
+const TERMINAL_NAME = 'Clawd Code Run';
 const SHELL_INTEGRATION_TIMEOUT_MS = 5000;
 
 /**

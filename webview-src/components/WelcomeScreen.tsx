@@ -13,7 +13,7 @@ export function WelcomeScreen({ onNewSession, authenticated, loginUrl }: Props) 
         <div className="cc-welcome__card">
           <div className="cc-welcome__mark">✻</div>
           <h2 className="cc-welcome__title">Sign in to Claude</h2>
-          <p className="cc-welcome__sub">You need to sign in to use Claw Code.</p>
+          <p className="cc-welcome__sub">You need to sign in to use Clawd Code.</p>
           {loginUrl && (
             <button
               data-testid="sign-in-button"
@@ -39,7 +39,7 @@ export function WelcomeScreen({ onNewSession, authenticated, loginUrl }: Props) 
     <div data-testid="welcome-screen" className="cc-welcome">
       <div className="cc-welcome__card">
         <div className="cc-welcome__mark">✻</div>
-        <h2 className="cc-welcome__title">Claw Code</h2>
+        <h2 className="cc-welcome__title">Clawd Code</h2>
         <p className="cc-welcome__sub">Your AI coding partner</p>
         <button data-testid="new-session-button" className="cc-btn cc-btn--primary" onClick={onNewSession}>
           New Conversation
