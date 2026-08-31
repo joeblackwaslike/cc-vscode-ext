@@ -52,9 +52,33 @@ test.describe('Composer controls + tabs', () => {
       await expect(model).toContainText('Default');
 
       await model.click();
-      await frame.getByRole('menuitem', { name: /Sonnet/ }).click();
+      await frame.getByRole('menuitem', { name: /Sonnet 5/ }).click();
 
       await expect(model).toContainText('Sonnet');
+    } finally {
+      await closeVSCode(result);
+      await creds.cleanup();
+    }
+  });
+
+  test('model picker contains versioned model options alongside bare aliases', async () => {
+    test.setTimeout(TIMEOUT);
+    const creds = await seedCredentials(true);
+    const result = await launchVSCode({ env: { CLAUDE_CONFIG_DIR: creds.configDir } });
+    try {
+      const { window } = result;
+      await runCommand(window, 'Clawd Code: Open in New Tab');
+      const frame = getWebviewFrame(window);
+      await new WelcomePage(frame).newConversationButton().click();
+
+      const model = frame.getByTestId('model-selector');
+      await expect(model).toBeVisible({ timeout: 20_000 });
+      await model.click();
+
+      // Versioned pinned entries must be present — a bare-alias-only list is a regression.
+      await expect(frame.getByRole('menuitem', { name: /Opus 5/ })).toBeVisible();
+      await expect(frame.getByRole('menuitem', { name: /Sonnet 5/ })).toBeVisible();
+      await expect(frame.getByRole('menuitem', { name: /Opus 4\.8/ })).toBeVisible();
     } finally {
       await closeVSCode(result);
       await creds.cleanup();
