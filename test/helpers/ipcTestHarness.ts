@@ -15,7 +15,9 @@ import { vi } from 'vitest';
 import type {
   IAuthManager,
   IAtMentionHandler,
+  ICommandRunner,
   IFileListProvider,
+  ISessionRelayManager,
   IVSCodeBridge,
   IWorktreeManager,
   MessageBrokerServices,
@@ -37,6 +39,8 @@ export interface MockProcessManager {
 
 export interface MockSessionManager {
   updateSession: ReturnType<typeof vi.fn>;
+  updateLastSessionId: ReturnType<typeof vi.fn>;
+  syncFromFilesystem: ReturnType<typeof vi.fn>;
   listSessions: ReturnType<typeof vi.fn>;
   getSession: ReturnType<typeof vi.fn>;
   deleteSession: ReturnType<typeof vi.fn>;
@@ -60,6 +64,8 @@ export interface MockViewManager {
   broadcastMessage: ReturnType<typeof vi.fn>;
   broadcastSessionStates: ReturnType<typeof vi.fn>;
   postToSender: ReturnType<typeof vi.fn>;
+  setActiveSession: ReturnType<typeof vi.fn>;
+  setLastSessionId: ReturnType<typeof vi.fn>;
   setPermissionMode: ReturnType<typeof vi.fn>;
   setThinkingLevel: ReturnType<typeof vi.fn>;
   setModel: ReturnType<typeof vi.fn>;
@@ -101,13 +107,15 @@ export interface MockTerminalLauncher {
   openClaudeTerminal: ReturnType<typeof vi.fn>;
 }
 
-export interface MockMessageBrokerServices extends Required<MessageBrokerServices> {
+export interface MockMessageBrokerServices {
   authManager: MockAuthManager;
   worktreeManager: MockWorktreeManager;
   atMentionHandler: MockAtMentionHandler;
   fileListProvider: MockFileListProvider;
   vscode: MockVSCodeBridge;
   terminalLauncher: MockTerminalLauncher;
+  commandRunner: ICommandRunner;
+  sessionRelayManager: ISessionRelayManager;
 }
 
 export function createMockServices(): MockMessageBrokerServices {
@@ -151,6 +159,20 @@ export function createMockServices(): MockMessageBrokerServices {
     terminalLauncher: {
       openClaudeTerminal: vi.fn(),
     },
+    commandRunner: {
+      run: vi.fn(() => Promise.resolve()),
+    } as unknown as ICommandRunner,
+    sessionRelayManager: {
+      registerLaunch: vi.fn(),
+      unregisterChannel: vi.fn(),
+      onContextUsage: vi.fn(),
+      handleStreamEvent: vi.fn(),
+      getThreshold: vi.fn(() => 0),
+      setThreshold: vi.fn(),
+      isRelaying: vi.fn(() => false),
+      enqueueIfRelaying: vi.fn(() => false),
+      updateLaunchOptions: vi.fn(),
+    } as unknown as ISessionRelayManager,
   };
 }
 
@@ -215,6 +237,8 @@ export function createIpcTestHarness(): IpcTestHarness {
 
   const sessionManager: MockSessionManager = {
     updateSession: vi.fn(() => Promise.resolve()),
+    updateLastSessionId: vi.fn(() => Promise.resolve()),
+    syncFromFilesystem: vi.fn(() => Promise.resolve()),
     listSessions: vi.fn(() => []),
     getSession: vi.fn(() => null),
     deleteSession: vi.fn(() => Promise.resolve()),
@@ -238,6 +262,8 @@ export function createIpcTestHarness(): IpcTestHarness {
     broadcastMessage: vi.fn(),
     broadcastSessionStates: vi.fn(),
     postToSender: vi.fn(),
+    setActiveSession: vi.fn(),
+    setLastSessionId: vi.fn(),
     setPermissionMode: vi.fn(),
     setThinkingLevel: vi.fn(),
     setModel: vi.fn(),

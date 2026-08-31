@@ -7,6 +7,8 @@ export interface ExtensionState {
   sessions: SessionInfo[];
   groups: SessionGroup[];
   activeSessionId: string | undefined;
+  lastSessionId: string | undefined;
+  initialStateReceived: boolean;
   defaultPermissionMode: PermissionMode;
   thinkingLevel: ThinkingLevel;
   model: string | undefined;
@@ -20,6 +22,8 @@ const initialState: ExtensionState = {
   sessions: [],
   groups: [],
   activeSessionId: undefined,
+  lastSessionId: undefined,
+  initialStateReceived: false,
   defaultPermissionMode: 'default',
   thinkingLevel: 'medium',
   model: undefined,
@@ -36,7 +40,7 @@ type SessionDefaults = Partial<
 >;
 
 type Action =
-  | { type: 'UPDATE_STATE'; payload: Omit<ExtensionState, 'authenticated' | 'loginUrl'> }
+  | { type: 'UPDATE_STATE'; payload: Omit<ExtensionState, 'authenticated' | 'loginUrl' | 'lastSessionId'> & { lastSessionId?: string } }
   | { type: 'AUTH_STATUS'; authenticated: boolean; loginUrl?: string }
   | { type: 'LIST_SESSIONS'; sessions: SessionInfo[]; groups: SessionGroup[] }
   | { type: 'SET_DEFAULTS'; defaults: SessionDefaults };
@@ -44,7 +48,7 @@ type Action =
 function reducer(state: ExtensionState, action: Action): ExtensionState {
   switch (action.type) {
     case 'UPDATE_STATE':
-      return { ...state, ...action.payload };
+      return { ...state, ...action.payload, initialStateReceived: true };
     case 'SET_DEFAULTS':
       // Optimistic: reflect a selector change instantly, before the host echoes.
       return { ...state, ...action.defaults };
@@ -90,6 +94,7 @@ export function useExtensionReducer() {
               sessions: msg.sessions,
               groups: msg.groups,
               activeSessionId: msg.activeSessionId,
+              lastSessionId: msg.lastSessionId,
               defaultPermissionMode: msg.defaultPermissionMode,
               thinkingLevel: msg.thinkingLevel,
               model: msg.model,

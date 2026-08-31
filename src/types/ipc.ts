@@ -419,6 +419,7 @@ export interface UpdateStateMessage {
   sessions: SessionInfo[];
   groups: SessionGroup[];
   activeSessionId: string | undefined;
+  lastSessionId?: string;
   defaultPermissionMode: PermissionMode;
   thinkingLevel: ThinkingLevel;
   model?: string;

@@ -20,6 +20,7 @@ interface ISessionManagerForBroadcast {
 export class ViewManager {
   private readonly allComms = new Set<IPostable>();
   private activeSessionId: string | undefined;
+  private lastSessionId: string | undefined;
   private defaultPermissionMode: PermissionMode = 'default';
   private thinkingLevel: ThinkingLevel = 'medium';
   private model: string | undefined;
@@ -67,6 +68,7 @@ export class ViewManager {
       sessions,
       groups,
       activeSessionId: this.activeSessionId,
+      ...(this.lastSessionId !== undefined ? { lastSessionId: this.lastSessionId } : {}),
       defaultPermissionMode: this.defaultPermissionMode,
       thinkingLevel: this.thinkingLevel,
       ...(this.model !== undefined ? { model: this.model } : {}),
@@ -77,6 +79,10 @@ export class ViewManager {
 
   setActiveSession(id: string | undefined): void {
     this.activeSessionId = id;
+  }
+
+  setLastSessionId(id: string | undefined): void {
+    this.lastSessionId = id;
   }
 
   setPermissionMode(mode: PermissionMode): void {

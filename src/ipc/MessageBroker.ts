@@ -36,6 +36,8 @@ export interface IClaudeProcessManager {
 
 export interface ISessionManager {
   updateSession(id: string, state: 'idle' | 'running' | 'error', title?: string): Promise<void>;
+  updateLastSessionId(id: string): Promise<void>;
+  syncFromFilesystem(workspacePath: string): Promise<void>;
   listSessions(includeHidden?: boolean): unknown[];
   getSession(id: string): unknown | null;
   deleteSession(id: string): Promise<void>;
@@ -55,6 +57,8 @@ export interface IDiffManager {
 export interface IViewManager {
   broadcastMessage(msg: ToWebviewMessage): void;
   broadcastSessionStates(): void;
+  setActiveSession(id: string | undefined): void;
+  setLastSessionId(id: string | undefined): void;
   setPermissionMode(mode: PermissionMode): void;
   setThinkingLevel(level: ThinkingLevel): void;
   setModel(model: string): void;
@@ -124,6 +128,7 @@ export interface MessageBrokerServices {
   terminalLauncher?: ITerminalLauncher;
   commandRunner?: ICommandRunner;
   sessionRelayManager?: ISessionRelayManager;
+  workspacePath?: string;
 }
 
 /**
@@ -266,6 +271,10 @@ export class MessageBroker {
 
         // ─── Session management ─────────────────────────────────────────
         case 'list_sessions_request': {
+          const workspacePath = this.services.workspacePath;
+          if (workspacePath) {
+            await this.sessionManager.syncFromFilesystem(workspacePath);
+          }
           const sessions = this.sessionManager.listSessions(msg.includeHidden);
           const groups = this.sessionManager.listGroups();
           void this.webview.postMessage({
@@ -480,6 +489,9 @@ export class MessageBroker {
       });
     });
     void this.sessionManager.updateSession(channelId, 'running');
+    void this.sessionManager.updateLastSessionId(channelId);
+    this.viewManager.setActiveSession(channelId);
+    this.viewManager.setLastSessionId(channelId);
     this.viewManager.broadcastSessionStates();
   }
 

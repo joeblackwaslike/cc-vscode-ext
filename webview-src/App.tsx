@@ -94,6 +94,19 @@ function MainView() {
     [openTab, extState.sessions],
   );
 
+  // Auto-open the last session (or a fresh one) once the host sends initial state.
+  // The ref prevents double-fire if deps change while tabs are still empty.
+  const autoOpenFired = React.useRef(false);
+  React.useEffect(() => {
+    if (autoOpenFired.current || !extState.initialStateReceived || !extState.authenticated || tabs.length > 0) return;
+    autoOpenFired.current = true;
+    if (extState.lastSessionId) {
+      openSession(extState.lastSessionId);
+    } else {
+      startNewSession();
+    }
+  }, [extState.initialStateReceived, extState.authenticated, extState.lastSessionId, tabs.length, openSession, startNewSession]);
+
   const closeTab = useCallback(
     (channelId: string) => {
       close(channelId);
@@ -142,13 +155,17 @@ function MainView() {
   }, [activeId, requestContextUsage]);
 
   if (tabs.length === 0 || activeId === null) {
-    return (
-      <WelcomeScreen
-        onNewSession={startNewSession}
-        authenticated={extState.authenticated}
-        loginUrl={extState.loginUrl}
-      />
-    );
+    if (!extState.authenticated) {
+      return (
+        <WelcomeScreen
+          onNewSession={startNewSession}
+          authenticated={false}
+          loginUrl={extState.loginUrl}
+        />
+      );
+    }
+    // Auto-open effect will fire once initial state arrives; render nothing while waiting.
+    return null;
   }
 
   return (

@@ -6,6 +6,7 @@ const KEYS = {
   sessions: 'claudeCode.sessions',
   hiddenIds: 'claudeCode.hiddenSessionIds',
   lastLocation: 'claudeCode.lastClaudeLocation',
+  lastSessionId: 'claudeCode.lastSessionId',
   sessionGroups: 'claudeCode.sessionGroups',
 } as const;
 
@@ -15,7 +16,7 @@ const KEYS = {
  */
 export class SessionStorage {
   constructor(private readonly globalState: vscode.Memento) {
-    (globalState as vscode.Memento & { setKeysForSync?(keys: readonly string[]): void }).setKeysForSync?.([KEYS.sessions, KEYS.hiddenIds, KEYS.sessionGroups]);
+    (globalState as vscode.Memento & { setKeysForSync?(keys: readonly string[]): void }).setKeysForSync?.([KEYS.sessions, KEYS.hiddenIds, KEYS.lastSessionId, KEYS.sessionGroups]);
   }
 
   /** Retrieve all persisted sessions (returns empty map on first run). */
@@ -43,6 +44,14 @@ export class SessionStorage {
 
   async setLastLocation(location: string): Promise<void> {
     await this.globalState.update(KEYS.lastLocation, location);
+  }
+
+  getLastSessionId(): string | undefined {
+    return this.globalState.get<string | undefined>(KEYS.lastSessionId, undefined);
+  }
+
+  async setLastSessionId(id: string | undefined): Promise<void> {
+    await this.globalState.update(KEYS.lastSessionId, id);
   }
 
   getGroups(): SessionGroup[] {

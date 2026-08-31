@@ -84,6 +84,15 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const viewManager = new ViewManager(sessionManager);
 
+  // Restore last session ID so the first update_state broadcast includes it,
+  // allowing the webview to auto-resume the previous conversation on reopen.
+  viewManager.setLastSessionId(storage.getLastSessionId());
+
+  const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  if (workspacePath) {
+    void sessionManager.syncFromFilesystem(workspacePath);
+  }
+
   const applyCustomModels = (): void => {
     const cfg = vscode.workspace.getConfiguration('clawdCode');
     viewManager.setCustomModels(cfg.get<string[]>('customModels', []));
@@ -131,7 +140,7 @@ export function activate(context: vscode.ExtensionContext): void {
       channelRouter,
       webview,
       logger,
-      { authManager, worktreeManager, atMentionHandler, fileListProvider, vscode: vscBridge, terminalLauncher, commandRunner },
+      { authManager, worktreeManager, atMentionHandler, fileListProvider, vscode: vscBridge, terminalLauncher, commandRunner, ...(workspacePath !== undefined ? { workspacePath } : {}) },
     );
   };
 

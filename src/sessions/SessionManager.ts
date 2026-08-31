@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import type { SessionState, SessionInfo, SessionGroup } from '../types/session';
 import type { SessionStorage } from './SessionStorage';
 import type { SessionHistory } from './SessionHistory';
+import { ClaudeProjectReader } from './ClaudeProjectReader';
 
 /**
  * In-memory session registry with persistence via SessionStorage.
@@ -12,6 +13,7 @@ import type { SessionHistory } from './SessionHistory';
 export class SessionManager {
   private sessionStates: Map<string, SessionState>;
   private groups: SessionGroup[];
+  private readonly projectReader = new ClaudeProjectReader();
 
   constructor(
     private readonly storage: SessionStorage,
@@ -19,6 +21,42 @@ export class SessionManager {
   ) {
     this.sessionStates = storage.getSessions();
     this.groups = storage.getGroups();
+  }
+
+  /** Persist the last-used session ID so panels can auto-resume on reopen. */
+  async updateLastSessionId(id: string): Promise<void> {
+    await this.storage.setLastSessionId(id);
+  }
+
+  /**
+   * Sync the in-memory session registry from the Claude CLI's on-disk JSONL files
+   * for the given workspace path. Adds new sessions, updates titles of known ones,
+   * and removes entries that no longer have a corresponding file on disk.
+   */
+  async syncFromFilesystem(workspacePath: string): Promise<void> {
+    const discovered = await this.projectReader.readSessions(workspacePath);
+    const diskIds = new Set(discovered.map((s) => s.id));
+
+    for (const session of discovered) {
+      const existing = this.sessionStates.get(session.id);
+      const updated: SessionState = {
+        ...existing,
+        id: session.id,
+        title: session.title,
+        state: existing?.state ?? 'idle',
+        updatedAt: session.updatedAt.toISOString(),
+        ...(existing?.groupId !== undefined ? { groupId: existing.groupId } : {}),
+      };
+      this.sessionStates.set(session.id, updated);
+    }
+
+    for (const id of this.sessionStates.keys()) {
+      if (!diskIds.has(id)) {
+        this.sessionStates.delete(id);
+      }
+    }
+
+    await this.storage.saveSessions(this.sessionStates);
   }
 
   /** Update (or create) a session's state and title, then persist. */
