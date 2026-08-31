@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# When pushing a v* release tag, auto-install the built extension into VS Code Insiders.
+# The marketplace publish happens in CI (publish-vscode.yml); this wires up the local install
+# so both land together from a single `git push origin v<x.y.z>`.
+set -euo pipefail
+
+while IFS=' ' read -r local_ref _local_sha remote_ref _remote_sha; do
+  if [[ "$remote_ref" == refs/tags/v* ]]; then
+    echo "Release tag ${remote_ref#refs/tags/} detected — installing into VS Code Insiders..."
+    npm run install:insiders
+    break
+  fi
+done

@@ -56,7 +56,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.extension.json",
     "typecheck:webview": "tsc --noEmit -p tsconfig.webview.json",
     "package": "npx --yes @vscode/vsce package --allow-missing-repository --no-dependencies",
-    "install:insiders": "bash scripts/install-insiders.sh"
+    "install:insiders": "bash scripts/install-insiders.sh",
+    "prepare": "cp scripts/hooks/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
