@@ -45,7 +45,8 @@ export type Turn =
   | { kind: 'user'; key: string; text: string }
   | { kind: 'assistant'; key: string; blocks: AssistantBlock[] }
   | { kind: 'result'; key: string; isError: boolean; meta: ResultMeta }
-  | { kind: 'error'; key: string; message: string };
+  | { kind: 'error'; key: string; message: string }
+  | { kind: 'handoff_prompt'; key: string; content: string };
 
 export function buildConversation(events: ClaudeStreamEvent[]): Turn[] {
   // Pass 1: index every tool_result (carried inside user events) by its id.
@@ -85,6 +86,9 @@ export function buildConversation(events: ClaudeStreamEvent[]): Turn[] {
         break;
       case 'error':
         turns.push({ kind: 'error', key, message: String(event.message ?? 'Unknown error') });
+        break;
+      case 'handoff_prompt':
+        turns.push({ kind: 'handoff_prompt', key, content: String(event.content ?? '') });
         break;
       // 'system' and unknown event types render nothing.
     }

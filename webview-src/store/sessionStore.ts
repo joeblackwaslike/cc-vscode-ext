@@ -98,6 +98,14 @@ export function useSessionReducer() {
         dispatch({ type: 'SET_USAGE', channelId: msg.channelId, usage: msg.usage });
         return;
       }
+      if (msg.type === 'handoff_prompt') {
+        dispatch({
+          type: 'STREAM_EVENT',
+          channelId: msg.channelId,
+          event: { type: 'handoff_prompt', content: msg.content },
+        });
+        return;
+      }
       if (msg.type !== 'request') return;
       const event = msg.request;
       dispatch({ type: 'STREAM_EVENT', channelId: msg.channelId, event });

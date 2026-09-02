@@ -574,6 +574,12 @@ export interface RunCommandDoneMessage {
   exitCode: number | undefined;
 }
 
+export interface HandoffPromptMessage {
+  type: 'handoff_prompt';
+  channelId: string;
+  content: string;
+}
+
 /** Union of all messages sent from the extension host to the webview. */
 export type ToWebviewMessage =
   | StreamRequestMessage
@@ -602,4 +608,5 @@ export type ToWebviewMessage =
   | CheckGitStatusResponseMessage
   | CheckoutBranchResponseMessage
   | RunCommandOutputMessage
-  | RunCommandDoneMessage;
+  | RunCommandDoneMessage
+  | HandoffPromptMessage;

@@ -16,6 +16,7 @@ import type { ClaudeStreamEvent } from '../types/process';
 import type { ProcessLaunchOptions } from '../process/ClaudeProcessManager';
 import type { ILogger } from '../process/ClaudeProcessManager';
 import { SessionRelayManager } from '../relay/SessionRelayManager';
+import { HandoffWatcher } from '../process/HandoffWatcher';
 
 // ─── Dependency interfaces ─────────────────────────────────────────────────────
 
@@ -148,6 +149,7 @@ export class MessageBroker {
    * relay notification instead of racing that new turn (see
    * `refreshContextUsage`). */
   private readonly turnGenerations = new Map<string, number>();
+  private readonly handoffWatchers = new Map<string, HandoffWatcher>();
 
   constructor(
     private readonly processManager: IClaudeProcessManager,
@@ -282,6 +284,9 @@ export class MessageBroker {
             sessions: sessions as never,
             groups: groups as never,
           });
+          // Also broadcast full state so the webview's initialStateReceived flag is
+          // set on startup (the webview sends list_sessions_request on mount).
+          this.viewManager.broadcastSessionStates();
           return;
         }
         case 'get_session_request': {
@@ -428,6 +433,15 @@ export class MessageBroker {
     }
   }
 
+  private startHandoffWatcher(channelId: string, sessionId: string): void {
+    this.handoffWatchers.get(channelId)?.dispose();
+    const watcher = new HandoffWatcher(sessionId, (content) => {
+      this.viewManager.broadcastMessage({ type: 'handoff_prompt', channelId, content });
+      this.handoffWatchers.delete(channelId);
+    });
+    this.handoffWatchers.set(channelId, watcher);
+  }
+
   private handleLaunchClaude(msg: Extract<FromWebviewMessage, { type: 'launch_claude' }>): void {
     const { channelId } = msg;
     const options: ProcessLaunchOptions = {
@@ -438,6 +452,7 @@ export class MessageBroker {
     };
 
     this.sessionRelayManager.registerLaunch(channelId, options, msg.cwd);
+    if (options.resume) this.startHandoffWatcher(channelId, options.resume);
 
     // Forward stream events to all webviews. control_response lines are private
     // RPC plumbing — settle them here and never broadcast them as conversation
@@ -463,6 +478,10 @@ export class MessageBroker {
         });
       }
       if (typed.type === 'result') {
+        const sid = typeof (event as Record<string, unknown>).session_id === 'string'
+          ? String((event as Record<string, unknown>).session_id)
+          : undefined;
+        if (sid && !this.handoffWatchers.has(channelId)) this.startHandoffWatcher(channelId, sid);
         this.sessionRelayManager.handleStreamEvent(channelId, event as ClaudeStreamEvent);
         if (!relaying) void this.refreshContextUsage(channelId, true);
       }
@@ -501,6 +520,8 @@ export class MessageBroker {
     // hang until their 10s timeout after the channel is gone.
     this.control.dispose();
     this.turnGenerations.delete(msg.channelId);
+    this.handoffWatchers.get(msg.channelId)?.dispose();
+    this.handoffWatchers.delete(msg.channelId);
     this.sessionRelayManager.unregisterChannel(msg.channelId);
     void this.sessionManager.updateSession(msg.channelId, 'idle');
     this.viewManager.broadcastSessionStates();

@@ -1,4 +1,4 @@
-import { useContext, useEffect, useMemo, useRef } from 'react';
+import { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { buildConversation, type ResultMeta } from '../lib/conversationModel';
 import { AssistantTurn } from './AssistantTurn';
 import { UserTurn } from './UserTurn';
@@ -54,6 +54,8 @@ export function MessageList({
             return <ResultLine key={turn.key} isError={turn.isError} meta={turn.meta} />;
           case 'error':
             return <ErrorLine key={turn.key} message={turn.message} />;
+          case 'handoff_prompt':
+            return <HandoffPromptBlock key={turn.key} content={turn.content} />;
         }
       })}
         <div ref={bottomRef} />
@@ -90,4 +92,25 @@ function formatMeta(meta: ResultMeta): string {
 
 function formatTokens(n: number): string {
   return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
+}
+
+function HandoffPromptBlock({ content }: { content: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = () => {
+    void navigator.clipboard.writeText(content).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+  return (
+    <div className="cc-handoff-prompt">
+      <div className="cc-handoff-prompt__header">
+        <span>Compaction blocked — paste this into a new session</span>
+        <button className="cc-handoff-prompt__copy" onClick={copy}>
+          {copied ? 'Copied!' : 'Copy'}
+        </button>
+      </div>
+      <pre className="cc-handoff-prompt__body">{content}</pre>
+    </div>
+  );
 }
