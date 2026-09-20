@@ -1,21 +1,32 @@
-import type { KeyboardEvent } from 'react';
+import { useState, type KeyboardEvent } from 'react';
 
 interface Props {
   title: string;
   active: boolean;
   onSelect: () => void;
   onClose: () => void;
+  onRename: (title: string) => void;
 }
 
-/** A single conversation tab — ✻ + title + close. */
-export function ConversationTab({ title, active, onSelect, onClose }: Props) {
-  // The tab carries a nested close control, so it can't be a <button> (no nested
-  // buttons). Use role="tab" + keyboard activation instead; close is a real button.
+/** A single conversation tab — double-click title to rename inline. */
+export function ConversationTab({ title, active, onSelect, onClose, onRename }: Props) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+
+  const startEdit = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setDraft(title);
+    setEditing(true);
+  };
+
+  const commit = () => {
+    const t = draft.trim();
+    if (t && t !== title) onRename(t);
+    setEditing(false);
+  };
+
   const onTabKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      onSelect();
-    }
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(); }
   };
 
   return (
@@ -28,19 +39,31 @@ export function ConversationTab({ title, active, onSelect, onClose }: Props) {
       aria-label={title}
       onClick={onSelect}
       onKeyDown={onTabKeyDown}
-      title={title}
+      title={editing ? undefined : title}
     >
       <span className="cc-tab__star">✻</span>
-      <span className="cc-tab__title">{title}</span>
+      {editing ? (
+        <input
+          className="cc-tab__rename"
+          value={draft}
+          autoFocus
+          onClick={(e) => e.stopPropagation()}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') { e.preventDefault(); commit(); }
+            if (e.key === 'Escape') setEditing(false);
+          }}
+          onBlur={commit}
+        />
+      ) : (
+        <span className="cc-tab__title" onDoubleClick={startEdit}>{title}</span>
+      )}
       <button
         type="button"
         className="cc-tab__close"
         aria-label={`Close conversation: ${title}`}
         title="Close conversation"
-        onClick={(e) => {
-          e.stopPropagation();
-          onClose();
-        }}
+        onClick={(e) => { e.stopPropagation(); onClose(); }}
       >
         ×
       </button>

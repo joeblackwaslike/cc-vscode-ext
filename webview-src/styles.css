@@ -130,18 +130,6 @@ a { color: var(--vscode-textLink-foreground); }
   text-shadow: 0 1px 2px rgba(0,0,0,0.35);
 }
 .cc-empty-state__btn:hover { background: var(--vscode-button-hoverBackground); }
-.cc-empty-state__history { width: 100%; max-width: 360px; }
-.cc-empty-state__history-label {
-  font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
-  color: var(--cc-muted); margin: 0 0 8px; padding: 0 4px;
-}
-.cc-empty-state__session {
-  display: block; width: 100%; text-align: left; padding: 7px 10px;
-  background: transparent; color: var(--cc-fg); border: 0;
-  border-radius: var(--cc-radius); font-size: 13px; font-family: inherit;
-  cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.cc-empty-state__session:hover { background: var(--cc-accent-soft); }
 
 .cc-btn {
   display: block; width: 100%; padding: 9px 16px; margin-bottom: 8px;
@@ -189,39 +177,57 @@ a { color: var(--vscode-textLink-foreground); }
 }
 .cc-newtab:hover { color: var(--cc-fg); background: var(--cc-hover); }
 
-/* ── "Past conversations" subbar + dropdown ─────────────────────────────── */
-.cc-subbar { display: flex; align-items: center; padding: 8px 12px 4px; flex-shrink: 0; }
-.cc-past-wrap { position: relative; }
-.cc-past {
-  display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--cc-fg);
+/* ── History panel (clock dropdown + inline empty-state variant) ─────────── */
+.cc-hist-wrap { position: relative; }
+.cc-hist-trigger {
+  display: flex; align-items: center; justify-content: center; width: 36px; height: 100%;
+  background: none; border: 0; color: var(--cc-muted); cursor: pointer; flex-shrink: 0;
+}
+.cc-hist-trigger:hover { color: var(--cc-fg); background: var(--cc-hover); }
+.cc-hist-trigger[aria-expanded="true"] { color: var(--cc-accent); }
+.cc-hist-panel {
+  position: absolute; top: calc(100% + 4px); right: 0; z-index: 30;
+  width: 320px; background: var(--vscode-editorWidget-background, #1e1e1e);
+  border: 1px solid var(--cc-border); border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.45); display: flex; flex-direction: column;
+}
+.cc-hist-panel--inline {
+  position: static; width: 100%; max-width: 360px; box-shadow: none;
+  border: 1px solid var(--cc-border); border-radius: 8px;
+}
+.cc-hist-search-wrap { padding: 8px 8px 4px; }
+.cc-hist-search {
+  width: 100%; box-sizing: border-box; padding: 6px 10px;
   background: var(--cc-input-bg); border: 1px solid var(--cc-border);
-  border-radius: 14px; padding: 5px 12px; cursor: pointer;
+  border-radius: 6px; font-size: 12.5px; font-family: inherit; color: var(--cc-fg);
+  outline: none;
 }
-.cc-past:hover { border-color: var(--cc-accent); }
-.cc-past__chev { opacity: 0.6; font-size: 10px; }
-.cc-past-menu {
-  position: absolute; top: 110%; left: 0; z-index: 20; min-width: 240px; max-height: 320px;
-  overflow-y: auto; background: var(--vscode-editorWidget-background, #1e1e1e);
-  border: 1px solid var(--cc-border); border-radius: 8px; padding: 4px;
-  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.4);
+.cc-hist-search:focus { border-color: var(--cc-accent); }
+.cc-hist-list { overflow-y: auto; max-height: 340px; padding: 4px; }
+.cc-hist-panel--inline .cc-hist-list { max-height: 400px; }
+.cc-hist-empty { padding: 10px; font-size: 12px; color: var(--cc-muted); text-align: center; }
+.cc-hist-item {
+  display: flex; align-items: center; gap: 7px; padding: 6px 8px;
+  border-radius: 5px; font-size: 12.5px; cursor: pointer; user-select: none;
 }
-.cc-past-menu__empty { padding: 8px 10px; font-size: 12px; color: var(--cc-muted); }
-.cc-past-menu__item {
-  display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 5px;
-  font-size: 12.5px; cursor: pointer;
-}
-.cc-past-menu__item:hover { background: var(--vscode-list-hoverBackground, var(--cc-hover)); }
-.cc-past-menu__dot { width: 7px; height: 7px; border-radius: 50%; background: var(--cc-muted); flex-shrink: 0; }
-.cc-past-menu__dot[data-state='running'] { background: var(--cc-accent); }
-.cc-past-menu__dot[data-state='error'] { background: var(--vscode-testing-iconFailed, #e06c5e); }
-.cc-past-menu__title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cc-past-menu__del {
+.cc-hist-item:hover { background: var(--vscode-list-hoverBackground, var(--cc-hover)); }
+.cc-hist-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--cc-muted); flex-shrink: 0; }
+.cc-hist-dot[data-state='running'] { background: var(--cc-accent); }
+.cc-hist-dot[data-state='error'] { background: var(--vscode-testing-iconFailed, #e06c5e); }
+.cc-hist-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cc-hist-time { font-size: 11px; color: var(--cc-muted); flex-shrink: 0; white-space: nowrap; }
+.cc-hist-rename { flex: 1; padding: 1px 4px; font-size: 12.5px; font-family: inherit; color: var(--cc-fg); background: var(--cc-input-bg); border: 1px solid var(--cc-accent); border-radius: 4px; outline: none; }
+.cc-hist-action {
   opacity: 0; padding: 0 4px; border-radius: 4px; font-size: 13px;
-  /* now a <button> for a11y — strip native chrome to keep the icon look */
-  border: 0; background: none; color: inherit; cursor: pointer; line-height: inherit;
+  border: 0; background: none; color: inherit; cursor: pointer; flex-shrink: 0;
 }
-.cc-past-menu__item:hover .cc-past-menu__del { opacity: 0.6; }
-.cc-past-menu__del:hover { opacity: 1; background: var(--cc-hover); }
+.cc-hist-item:hover .cc-hist-action { opacity: 0.5; }
+.cc-hist-action:hover { opacity: 1 !important; background: var(--cc-hover); }
+.cc-tab__rename {
+  flex: 1; min-width: 0; padding: 0 4px; font-size: 12.5px; font-family: inherit;
+  color: var(--cc-fg); background: var(--cc-input-bg);
+  border: 1px solid var(--cc-accent); border-radius: 4px; outline: none;
+}
 
 /* ── Conversation layout ────────────────────────────────────────────────── */
 .cc-conversation { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }

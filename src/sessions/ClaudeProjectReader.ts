@@ -16,7 +16,9 @@ export interface DiscoveredSession {
  */
 export class ClaudeProjectReader {
   getProjectDir(workspacePath: string): string {
-    const hash = '-' + workspacePath.replace(/\//g, '-');
+    // Claude CLI hashes paths by replacing every '/' with '-'.
+    // The leading '/' already becomes the leading '-', so no extra prefix needed.
+    const hash = workspacePath.replace(/\//g, '-');
     return path.join(os.homedir(), '.claude', 'projects', hash);
   }
 

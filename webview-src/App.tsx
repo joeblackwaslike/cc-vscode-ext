@@ -8,6 +8,7 @@ import { WelcomeScreen } from './components/WelcomeScreen';
 import { ConversationView } from './components/ConversationView';
 import { SessionList } from './components/SessionList';
 import { TabBar, type TabInfo } from './components/TabBar';
+import { PastConversationsDropdown } from './components/PastConversationsDropdown';
 import type { ClaudeStreamEvent, ToWebviewMessage } from './lib/ipc';
 
 // ─── Detect view mode from flags injected by HtmlBuilder ─────────────────────
@@ -57,7 +58,7 @@ export function App() {
 function MainView() {
   const { state: extState } = React.useContext(ExtensionContext)!;
   const { state: sessState, dispatch } = React.useContext(SessionContext)!;
-  const { launch, sendText, interrupt, compact, requestContextUsage, close, deleteSession } = useSession();
+  const { launch, sendText, interrupt, compact, requestContextUsage, close, deleteSession, renameSession } = useSession();
 
   // One tab per conversation channel. `tabs` drives the tab bar; `activeId` is
   // the channel currently shown. Stream state lives in the session store keyed
@@ -165,7 +166,6 @@ function MainView() {
       );
     }
     if (!extState.initialStateReceived) {
-      // Waiting for first update_state from the host — render nothing yet.
       return null;
     }
     return (
@@ -173,20 +173,13 @@ function MainView() {
         <button className="cc-empty-state__btn" onClick={startNewSession}>
           + New conversation
         </button>
-        {extState.sessions.length > 0 && (
-          <div className="cc-empty-state__history">
-            <p className="cc-empty-state__history-label">Recent conversations</p>
-            {extState.sessions.slice(0, 8).map((s) => (
-              <button
-                key={s.id}
-                className="cc-empty-state__session"
-                onClick={() => openSession(s.id)}
-              >
-                {s.title}
-              </button>
-            ))}
-          </div>
-        )}
+        <PastConversationsDropdown
+          sessions={extState.sessions}
+          onOpen={openSession}
+          onDelete={deleteSession}
+          onRename={renameSession}
+          inline
+        />
       </div>
     );
   }
@@ -198,10 +191,14 @@ function MainView() {
         activeId={activeId}
         onSelect={setActiveId}
         onClose={closeTab}
+        onRenameTab={(channelId, title) => {
+          setTabs((prev) => prev.map((t) => t.channelId === channelId ? { ...t, title } : t));
+        }}
         onNew={startNewSession}
         sessions={extState.sessions}
         onOpenSession={openSession}
         onDeleteSession={deleteSession}
+        onRenameSession={renameSession}
       />
       <ConversationView
         channelId={activeId}
