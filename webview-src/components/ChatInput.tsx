@@ -32,6 +32,7 @@ const BASE_MODEL_OPTIONS: MenuOption[] = [
   { value: 'opus',              label: 'Opus',     hint: 'claude-opus-5' },
   { value: 'sonnet',            label: 'Sonnet',   hint: 'claude-sonnet-5' },
   { value: 'haiku',             label: 'Haiku',    hint: 'claude-haiku-4-5' },
+  { value: 'claude-fable-5-1',  label: 'Fable 5.1' },
   { value: 'claude-fable-5',    label: 'Fable 5' },
   { value: 'claude-opus-5',     label: 'Opus 5' },
   { value: 'claude-sonnet-5',   label: 'Sonnet 5' },
