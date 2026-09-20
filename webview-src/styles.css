@@ -127,6 +127,7 @@ a { color: var(--vscode-textLink-foreground); }
   background: var(--vscode-button-background); color: var(--vscode-button-foreground);
   border: 0; border-radius: var(--cc-radius); font-size: 14px; font-weight: 500;
   font-family: inherit; cursor: pointer; letter-spacing: 0.01em;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.35);
 }
 .cc-empty-state__btn:hover { background: var(--vscode-button-hoverBackground); }
 .cc-empty-state__history { width: 100%; max-width: 360px; }
