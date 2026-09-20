@@ -171,8 +171,22 @@ function MainView() {
     return (
       <div className="cc-empty-state">
         <button className="cc-empty-state__btn" onClick={startNewSession}>
-          New conversation
+          + New conversation
         </button>
+        {extState.sessions.length > 0 && (
+          <div className="cc-empty-state__history">
+            <p className="cc-empty-state__history-label">Recent conversations</p>
+            {extState.sessions.slice(0, 8).map((s) => (
+              <button
+                key={s.id}
+                className="cc-empty-state__session"
+                onClick={() => openSession(s.id)}
+              >
+                {s.title}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     );
   }
