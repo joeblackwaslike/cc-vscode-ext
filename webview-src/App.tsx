@@ -164,8 +164,17 @@ function MainView() {
         />
       );
     }
-    // Auto-open effect will fire once initial state arrives; render nothing while waiting.
-    return null;
+    if (!extState.initialStateReceived) {
+      // Waiting for first update_state from the host — render nothing yet.
+      return null;
+    }
+    return (
+      <div className="cc-empty-state">
+        <button className="cc-empty-state__btn" onClick={startNewSession}>
+          New conversation
+        </button>
+      </div>
+    );
   }
 
   return (

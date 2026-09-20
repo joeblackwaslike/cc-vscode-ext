@@ -118,6 +118,13 @@ a { color: var(--vscode-textLink-foreground); }
 .cc-welcome__sub { font-size: 14px; color: var(--cc-muted); margin: 0 0 24px; }
 .cc-welcome__hint { font-size: 12px; color: var(--cc-muted); margin-top: 16px; }
 
+.cc-empty-state { display: flex; align-items: center; justify-content: center; height: 100%; }
+.cc-empty-state__btn {
+  padding: 9px 20px; background: var(--cc-accent); color: #fff;
+  border: 0; border-radius: var(--cc-radius); font-size: 13px; font-family: inherit; cursor: pointer;
+}
+.cc-empty-state__btn:hover { background: var(--cc-accent-hover); }
+
 .cc-btn {
   display: block; width: 100%; padding: 9px 16px; margin-bottom: 8px;
   border: 0; border-radius: var(--cc-radius); font-size: 13px; font-family: inherit; cursor: pointer;
