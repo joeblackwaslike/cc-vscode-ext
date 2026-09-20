@@ -14,13 +14,13 @@ function timeAgo(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime();
   const min = Math.floor(ms / 60000);
   if (min < 1) return 'just now';
-  if (min < 60) return `${min}m ago`;
+  if (min < 60) return `${min}m`;
   const h = Math.floor(min / 60);
-  if (h < 24) return `${h}h ago`;
+  if (h < 24) return `${h}h`;
   const d = Math.floor(h / 24);
-  if (d < 7) return `${d}d ago`;
+  if (d < 7) return `${d}d`;
   const w = Math.floor(d / 7);
-  if (w < 5) return `${w}w ago`;
+  if (w < 5) return `${w}w`;
   return new Date(iso).toLocaleDateString();
 }
 
@@ -95,7 +95,14 @@ export function PastConversationsDropdown({ sessions, onOpen, onDelete, onRename
               onClick={() => renamingId !== s.id && openSession(s.id)}
               onKeyDown={(e) => { if (e.key === 'Enter' && renamingId !== s.id) openSession(s.id); }}
             >
-              <span className="cc-hist-dot" data-state={s.state} />
+              <button
+                type="button"
+                className="cc-hist-action cc-hist-rename-btn"
+                title="Rename"
+                onClick={(e) => startRename(s, e)}
+              >
+                ✎
+              </button>
               {renamingId === s.id ? (
                 <input
                   className="cc-hist-rename"
@@ -113,22 +120,6 @@ export function PastConversationsDropdown({ sessions, onOpen, onDelete, onRename
                 <span className="cc-hist-title" title={label}>{label}</span>
               )}
               <span className="cc-hist-time">{timeAgo(s.updatedAt)}</span>
-              <button
-                type="button"
-                className="cc-hist-action cc-hist-rename-btn"
-                title="Rename"
-                onClick={(e) => startRename(s, e)}
-              >
-                ✎
-              </button>
-              <button
-                type="button"
-                className="cc-hist-action cc-hist-del-btn"
-                title="Delete"
-                onClick={(e) => { e.stopPropagation(); onDelete(s.id); }}
-              >
-                ×
-              </button>
             </div>
           );
         })}

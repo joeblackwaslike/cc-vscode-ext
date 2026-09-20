@@ -39,6 +39,12 @@ export function TabBar({
           />
         ))}
       </div>
+      <PastConversationsDropdown
+        sessions={sessions}
+        onOpen={onOpenSession}
+        onDelete={onDeleteSession}
+        onRename={onRenameSession}
+      />
       <button
         className="cc-newtab"
         data-testid="new-tab-button"
@@ -47,12 +53,6 @@ export function TabBar({
       >
         +
       </button>
-      <PastConversationsDropdown
-        sessions={sessions}
-        onOpen={onOpenSession}
-        onDelete={onDeleteSession}
-        onRename={onRenameSession}
-      />
     </div>
   );
 }

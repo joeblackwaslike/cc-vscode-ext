@@ -56,9 +56,7 @@ export class ClaudeProjectReader {
                 const msg = parsed.message as Record<string, unknown> | undefined;
                 const content = msg?.content;
                 let text = '';
-                if (typeof content === 'string') {
-                  text = content.trim();
-                } else if (Array.isArray(content)) {
+                if (Array.isArray(content)) {
                   for (const block of content) {
                     if (block && typeof block === 'object' && (block as Record<string, unknown>).type === 'text') {
                       text = String((block as Record<string, unknown>).text ?? '').trim();
