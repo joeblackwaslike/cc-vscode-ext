@@ -2,7 +2,7 @@
   "name": "clawd-code",
   "displayName": "Clawd Code",
   "description": "A clean, documented reimplementation of the Claude Code VS Code extension",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "publisher": "joeblackwaslike",
   "license": "MIT",
   "repository": {
@@ -111,13 +111,24 @@
           },
           "clawdCode.defaultPermissionMode": {
             "type": "string",
-            "enum": ["auto", "default", "plan", "acceptEdits", "bypassPermissions"],
+            "enum": [
+              "auto",
+              "default",
+              "plan",
+              "acceptEdits",
+              "bypassPermissions"
+            ],
             "default": "auto",
             "description": "Default permission mode for new conversations. Set to 'plan' to always start in plan mode."
           },
           "clawdCode.exitPlanModeFallback": {
             "type": "string",
-            "enum": ["auto", "default", "acceptEdits", "bypassPermissions"],
+            "enum": [
+              "auto",
+              "default",
+              "acceptEdits",
+              "bypassPermissions"
+            ],
             "default": "auto",
             "description": "Permission mode to switch to when exiting plan mode."
           }
