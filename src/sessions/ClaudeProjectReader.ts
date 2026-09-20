@@ -11,7 +11,7 @@ export interface DiscoveredSession {
 /**
  * Reads Claude CLI session files from ~/.claude/projects/<hash>/ for a given workspace.
  *
- * The hash is the workspace path with every '/' replaced by '-', prefixed with '-'.
+ * The hash is the workspace path with every '/' replaced by '-'.
  * This matches the directory naming that the Claude CLI itself uses.
  */
 export class ClaudeProjectReader {
@@ -41,35 +41,27 @@ export class ClaudeProjectReader {
       try {
         const stat = await fs.promises.stat(filePath);
         const handle = await fs.promises.open(filePath, 'r');
-        let title: string;
+        let title = formatDateTitle(stat.mtime);
 
         try {
-          const buf = Buffer.alloc(8192);
-          const { bytesRead } = await handle.read(buf, 0, 8192, 0);
-          const lines = buf.toString('utf8', 0, bytesRead).split('\n');
-          title = formatDateTitle(stat.mtime);
-          for (const line of lines) {
-            if (!line.trim()) continue;
+          // recall-record (AI-generated title) is appended at session end — read tail.
+          const tailSize = Math.min(stat.size, 8192);
+          const tailBuf = Buffer.alloc(tailSize);
+          await handle.read(tailBuf, 0, tailSize, stat.size - tailSize);
+          const lines = tailBuf.toString('utf8').split('\n');
+          for (let i = lines.length - 1; i >= 0; i--) {
+            const line = lines[i].trim();
+            if (!line) continue;
             try {
               const parsed = JSON.parse(line) as Record<string, unknown>;
-              if (parsed.type === 'user') {
-                const msg = parsed.message as Record<string, unknown> | undefined;
-                const content = msg?.content;
-                let text = '';
-                if (Array.isArray(content)) {
-                  for (const block of content) {
-                    if (block && typeof block === 'object' && (block as Record<string, unknown>).type === 'text') {
-                      text = String((block as Record<string, unknown>).text ?? '').trim();
-                      break;
-                    }
-                  }
-                }
-                if (text) { title = text.slice(0, 80); break; }
+              if (parsed.type === 'recall-record' && typeof parsed.title === 'string' && parsed.title.trim()) {
+                title = parsed.title.trim();
+                break;
               }
-            } catch { /* skip malformed lines */ }
+            } catch { /* skip malformed */ }
           }
         } catch {
-          title = formatDateTitle(stat.mtime);
+          // keep date fallback
         } finally {
           await handle.close();
         }
