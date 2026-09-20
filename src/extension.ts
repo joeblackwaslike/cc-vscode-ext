@@ -89,9 +89,11 @@ export function activate(context: vscode.ExtensionContext): void {
   // allowing the webview to auto-resume the previous conversation on reopen.
   viewManager.setLastSessionId(storage.getLastSessionId());
 
-  // Initialize permission mode from settings so the first broadcast includes
-  // the user's configured default rather than the hardcoded 'auto'.
+  // Initialize permission mode and model from settings so the first broadcast
+  // includes the user's configured defaults rather than the hardcoded values.
   viewManager.setPermissionMode(settings.getDefaultPermissionMode());
+  const defaultModel = settings.getDefaultModel();
+  if (defaultModel) viewManager.setModel(defaultModel);
 
   const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? os.homedir();
   void sessionManager.syncFromFilesystem(workspacePath);

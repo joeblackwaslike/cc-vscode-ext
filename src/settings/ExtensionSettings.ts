@@ -52,26 +52,44 @@ export class ExtensionSettings {
 
   /**
    * Resolves the default permission mode to use for new conversations.
-   * Priority: VS Code setting → ~/.claude/settings.json → 'auto'
+   * Priority: clawdCode VS Code setting → claudeCode VS Code setting (official ext) → ~/.claude/settings.json → 'auto'
    */
   getDefaultPermissionMode(): PermissionMode {
     const validModes: PermissionMode[] = ['auto', 'default', 'plan', 'acceptEdits', 'bypassPermissions'];
-    const cfg = vscode.workspace.getConfiguration('clawdCode');
-    const configured = cfg.get<string>('defaultPermissionMode');
+    const ownCfg = vscode.workspace.getConfiguration('clawdCode');
+    const configured = ownCfg.get<string>('defaultPermissionMode');
     if (configured && configured !== 'auto' && validModes.includes(configured as PermissionMode)) {
       return configured as PermissionMode;
     }
-    // Fallback: ~/.claude/settings.json → permissions.defaultMode
+    // Fallback: official Claude Code extension's VS Code setting
+    const officialCfg = vscode.workspace.getConfiguration('claudeCode');
+    const officialMode = officialCfg.get<string>('initialPermissionMode');
+    if (officialMode && officialMode !== 'default' && validModes.includes(officialMode as PermissionMode)) {
+      return officialMode as PermissionMode;
+    }
+    // Fallback: ~/.claude/settings.json → defaultMode (top-level field)
     try {
       const settingsPath = path.join(os.homedir(), '.claude', 'settings.json');
       const raw = fs.readFileSync(settingsPath, 'utf8');
-      const parsed = JSON.parse(raw) as { permissions?: { defaultMode?: string } };
-      const mode = parsed.permissions?.defaultMode;
+      const parsed = JSON.parse(raw) as { defaultMode?: string };
+      const mode = parsed.defaultMode;
       if (mode && validModes.includes(mode as PermissionMode)) {
         return mode as PermissionMode;
       }
     } catch { /* file absent or unreadable */ }
     return 'auto';
+  }
+
+  /** Reads the default model from ~/.claude/settings.json, or undefined if not set. */
+  getDefaultModel(): string | undefined {
+    try {
+      const settingsPath = path.join(os.homedir(), '.claude', 'settings.json');
+      const raw = fs.readFileSync(settingsPath, 'utf8');
+      const parsed = JSON.parse(raw) as { model?: string };
+      const model = parsed.model;
+      if (model && typeof model === 'string') return model;
+    } catch { /* file absent or unreadable */ }
+    return undefined;
   }
 
   /** Subscribe to configuration changes. Returns a disposable. */
