@@ -1,5 +1,6 @@
 import React, { useContext, useEffect, useRef, useState, useCallback } from 'react';
 import { AtMentionDropdown } from './AtMentionDropdown';
+import { SlashCommandDropdown } from './SlashCommandDropdown';
 import { ComposerMenu, type MenuOption } from './ComposerMenu';
 import { ContextUsageRing } from './ContextUsageRing';
 import { ExtensionContext } from '../store/extensionStore';
@@ -20,6 +21,7 @@ interface Props {
 const MAX_HEIGHT = 168;
 
 const MODE_OPTIONS: MenuOption[] = [
+  { value: 'auto', label: 'Auto' },
   { value: 'default', label: 'Ask permissions' },
   { value: 'acceptEdits', label: 'Accept edits' },
   { value: 'plan', label: 'Plan mode' },
@@ -58,6 +60,7 @@ export function ChatInput({ channelId, onSend, onInterrupt, onCompact, onRefresh
   const state = ext?.state;
   const [text, setText] = useState('');
   const [mention, setMention] = useState<string | null>(null);
+  const [slashQuery, setSlashQuery] = useState<string | null>(null);
   const [focused, setFocused] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -102,6 +105,11 @@ export function ChatInput({ channelId, onSend, onInterrupt, onCompact, onRefresh
       }
     }
     setMention(null);
+    if (val.startsWith('/')) {
+      setSlashQuery(val.slice(1));
+    } else {
+      setSlashQuery(null);
+    }
   }, []);
 
   const handleMentionSelect = useCallback(
@@ -119,6 +127,13 @@ export function ChatInput({ channelId, onSend, onInterrupt, onCompact, onRefresh
   const insert = useCallback((ch: string) => {
     setText((prev) => prev + ch);
     if (ch === '@') setMention('');
+    if (ch === '/') setSlashQuery('');
+    textareaRef.current?.focus();
+  }, []);
+
+  const handleSlashSelect = useCallback((cmd: string) => {
+    setText('/' + cmd + ' ');
+    setSlashQuery(null);
     textareaRef.current?.focus();
   }, []);
 
@@ -175,6 +190,13 @@ export function ChatInput({ channelId, onSend, onInterrupt, onCompact, onRefresh
     <div className="cc-composer-wrap">
       {mention !== null && (
         <AtMentionDropdown query={mention} onSelect={handleMentionSelect} onClose={() => setMention(null)} />
+      )}
+      {slashQuery !== null && (
+        <SlashCommandDropdown
+          query={slashQuery}
+          onSelect={handleSlashSelect}
+          onClose={() => setSlashQuery(null)}
+        />
       )}
       <div className={`cc-composer${focused ? ' cc-composer--focus' : ''}`}>
         <textarea
@@ -241,7 +263,9 @@ export function ChatInput({ channelId, onSend, onInterrupt, onCompact, onRefresh
           {usage && <ContextUsageRing usage={usage} onCompact={onCompact} onRefresh={onRefreshUsage} />}
           {running ? (
             <button data-testid="interrupt-button" className="cc-stop" onClick={onInterrupt} title="Stop">
-              ■
+              <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14" aria-hidden="true">
+                <rect x="3" y="3" width="10" height="10" rx="1.5"/>
+              </svg>
             </button>
           ) : (
             <button
@@ -252,7 +276,9 @@ export function ChatInput({ channelId, onSend, onInterrupt, onCompact, onRefresh
               disabled={!text.trim() || disabled}
               title="Send (Enter)"
             >
-              ↑
+              <svg viewBox="0 0 16 16" fill="currentColor" width="16" height="16" aria-hidden="true">
+                <path d="M8 0a8 8 0 100 16A8 8 0 008 0zm.75 4.56l3.22 3.22a.75.75 0 11-1.06 1.06L9 6.94V12a.75.75 0 01-1.5 0V6.94L5.59 8.84a.75.75 0 11-1.06-1.06l3.22-3.22a.75.75 0 011.06 0z"/>
+              </svg>
             </button>
           )}
         </div>

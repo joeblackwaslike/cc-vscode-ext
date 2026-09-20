@@ -306,6 +306,11 @@ export interface ToolPermissionRequestMessage {
   toolInput: Record<string, unknown>;
 }
 
+export interface ListCommandsRequestMessage {
+  type: 'list_commands_request';
+  query: string;
+}
+
 /** Union of all messages sent from the webview to the extension host. */
 export type FromWebviewMessage =
   | LaunchClaudeMessage
@@ -400,7 +405,8 @@ export type FromWebviewMessage =
   | DismissTerminalBannerMessage
   | ShowClaudeTerminalSettingMessage
   | AskDebuggerHelpMessage
-  | ToolPermissionRequestMessage;
+  | ToolPermissionRequestMessage
+  | ListCommandsRequestMessage;
 
 // ═════════════════════════════════════════════════════════════════════════════
 // Extension Host → Webview (ToWebviewMessage)
@@ -580,6 +586,11 @@ export interface HandoffPromptMessage {
   content: string;
 }
 
+export interface ListCommandsResponseMessage {
+  type: 'list_commands_response';
+  commands: Array<{ name: string; namespace?: string; description?: string }>;
+}
+
 /** Union of all messages sent from the extension host to the webview. */
 export type ToWebviewMessage =
   | StreamRequestMessage
@@ -609,4 +620,5 @@ export type ToWebviewMessage =
   | CheckoutBranchResponseMessage
   | RunCommandOutputMessage
   | RunCommandDoneMessage
-  | HandoffPromptMessage;
+  | HandoffPromptMessage
+  | ListCommandsResponseMessage;

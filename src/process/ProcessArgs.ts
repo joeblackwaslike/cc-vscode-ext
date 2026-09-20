@@ -1,7 +1,7 @@
 import type { ThinkingLevel } from '../types/ipc';
 
 /** Permission modes that map to the `--permission-mode` CLI flag. */
-export type PermissionMode = 'default' | 'acceptEdits' | 'plan' | 'bypassPermissions';
+export type PermissionMode = 'auto' | 'default' | 'acceptEdits' | 'plan' | 'bypassPermissions';
 
 /**
  * Live effort changes go through the `set_max_thinking_tokens` control request
@@ -49,6 +49,7 @@ export function buildArgs(options: LaunchOptions): string[] {
   }
 
   if (options.permissionMode && options.permissionMode !== 'default') {
+    // 'auto' and all other explicit modes pass through as --permission-mode <value>
     args.push('--permission-mode', options.permissionMode);
   } else {
     // Default mode: route permission prompts through IPC so the webview handles them

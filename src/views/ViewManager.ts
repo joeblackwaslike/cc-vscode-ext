@@ -21,7 +21,7 @@ export class ViewManager {
   private readonly allComms = new Set<IPostable>();
   private activeSessionId: string | undefined;
   private lastSessionId: string | undefined;
-  private defaultPermissionMode: PermissionMode = 'default';
+  private defaultPermissionMode: PermissionMode = 'auto';
   private thinkingLevel: ThinkingLevel = 'medium';
   private model: string | undefined;
   private focusViewEnabled = false;

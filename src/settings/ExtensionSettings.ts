@@ -1,3 +1,6 @@
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import * as vscode from 'vscode';
 import type { PermissionMode } from '../process/ProcessArgs';
 
@@ -45,6 +48,30 @@ export class ExtensionSettings {
       hideOnboarding: cfg.get<boolean>('hideOnboarding', false),
       usePythonEnvironment: cfg.get<boolean>('usePythonEnvironment', true),
     };
+  }
+
+  /**
+   * Resolves the default permission mode to use for new conversations.
+   * Priority: VS Code setting → ~/.claude/settings.json → 'auto'
+   */
+  getDefaultPermissionMode(): PermissionMode {
+    const validModes: PermissionMode[] = ['auto', 'default', 'plan', 'acceptEdits', 'bypassPermissions'];
+    const cfg = vscode.workspace.getConfiguration('clawdCode');
+    const configured = cfg.get<string>('defaultPermissionMode');
+    if (configured && configured !== 'auto' && validModes.includes(configured as PermissionMode)) {
+      return configured as PermissionMode;
+    }
+    // Fallback: ~/.claude/settings.json → permissions.defaultMode
+    try {
+      const settingsPath = path.join(os.homedir(), '.claude', 'settings.json');
+      const raw = fs.readFileSync(settingsPath, 'utf8');
+      const parsed = JSON.parse(raw) as { permissions?: { defaultMode?: string } };
+      const mode = parsed.permissions?.defaultMode;
+      if (mode && validModes.includes(mode as PermissionMode)) {
+        return mode as PermissionMode;
+      }
+    } catch { /* file absent or unreadable */ }
+    return 'auto';
   }
 
   /** Subscribe to configuration changes. Returns a disposable. */

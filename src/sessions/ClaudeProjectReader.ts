@@ -42,11 +42,32 @@ export class ClaudeProjectReader {
         let title: string;
 
         try {
-          const buf = Buffer.alloc(4096);
-          const { bytesRead } = await handle.read(buf, 0, 4096, 0);
-          const firstLine = buf.toString('utf8', 0, bytesRead).split('\n')[0] ?? '';
-          const parsed = JSON.parse(firstLine || '{}') as { summary?: string };
-          title = parsed.summary?.trim() || formatDateTitle(stat.mtime);
+          const buf = Buffer.alloc(8192);
+          const { bytesRead } = await handle.read(buf, 0, 8192, 0);
+          const lines = buf.toString('utf8', 0, bytesRead).split('\n');
+          title = formatDateTitle(stat.mtime);
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const parsed = JSON.parse(line) as Record<string, unknown>;
+              if (parsed.role === 'user') {
+                const msg = parsed.message as Record<string, unknown> | undefined;
+                const content = msg?.content;
+                let text = '';
+                if (typeof content === 'string') {
+                  text = content.trim();
+                } else if (Array.isArray(content)) {
+                  for (const block of content) {
+                    if (block && typeof block === 'object' && (block as Record<string, unknown>).type === 'text') {
+                      text = String((block as Record<string, unknown>).text ?? '').trim();
+                      break;
+                    }
+                  }
+                }
+                if (text) { title = text.slice(0, 80); break; }
+              }
+            } catch { /* skip malformed lines */ }
+          }
         } catch {
           title = formatDateTitle(stat.mtime);
         } finally {

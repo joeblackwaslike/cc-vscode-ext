@@ -51,6 +51,7 @@ export function MessageList({
               />
             );
           case 'result':
+            if (turn.isError && !turns.slice(0, i).some((t) => t.kind === 'user')) return null;
             return <ResultLine key={turn.key} isError={turn.isError} meta={turn.meta} />;
           case 'error':
             return <ErrorLine key={turn.key} message={turn.message} />;

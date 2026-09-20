@@ -1,3 +1,4 @@
+import * as os from 'os';
 import * as vscode from 'vscode';
 import { Logger } from './logging/Logger';
 import { ExtensionSettings } from './settings/ExtensionSettings';
@@ -88,10 +89,12 @@ export function activate(context: vscode.ExtensionContext): void {
   // allowing the webview to auto-resume the previous conversation on reopen.
   viewManager.setLastSessionId(storage.getLastSessionId());
 
-  const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-  if (workspacePath) {
-    void sessionManager.syncFromFilesystem(workspacePath);
-  }
+  // Initialize permission mode from settings so the first broadcast includes
+  // the user's configured default rather than the hardcoded 'auto'.
+  viewManager.setPermissionMode(settings.getDefaultPermissionMode());
+
+  const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? os.homedir();
+  void sessionManager.syncFromFilesystem(workspacePath);
 
   const applyCustomModels = (): void => {
     const cfg = vscode.workspace.getConfiguration('clawdCode');
@@ -140,7 +143,14 @@ export function activate(context: vscode.ExtensionContext): void {
       channelRouter,
       webview,
       logger,
-      { authManager, worktreeManager, atMentionHandler, fileListProvider, vscode: vscBridge, terminalLauncher, commandRunner, ...(workspacePath !== undefined ? { workspacePath } : {}) },
+      {
+        authManager, worktreeManager, atMentionHandler, fileListProvider, vscode: vscBridge,
+        terminalLauncher, commandRunner, workspacePath,
+        getExitPlanModeFallback: () => {
+          const val = vscode.workspace.getConfiguration('clawdCode').get<string>('exitPlanModeFallback') ?? 'auto';
+          return val as import('./process/ProcessArgs').PermissionMode;
+        },
+      },
     );
   };
 

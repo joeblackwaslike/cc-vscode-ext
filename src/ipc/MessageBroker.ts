@@ -9,6 +9,7 @@ import type {
   ThinkingLevel,
   ContextUsage,
 } from '../types/ipc';
+import { CommandDiscovery } from '../commands/CommandDiscovery';
 import { EFFORT_THINKING_TOKENS, type PermissionMode } from '../process/ProcessArgs';
 import { parseContextUsage } from '../process/usage';
 import { ControlRequestManager, type ControlResponseEvent } from '../process/ControlRequest';
@@ -130,6 +131,8 @@ export interface MessageBrokerServices {
   commandRunner?: ICommandRunner;
   sessionRelayManager?: ISessionRelayManager;
   workspacePath?: string;
+  /** Returns the mode to switch to when the user exits plan mode. */
+  getExitPlanModeFallback?: () => PermissionMode;
 }
 
 /**
@@ -150,6 +153,9 @@ export class MessageBroker {
    * `refreshContextUsage`). */
   private readonly turnGenerations = new Map<string, number>();
   private readonly handoffWatchers = new Map<string, HandoffWatcher>();
+  /** Tracks the last permission mode applied, used to detect plan-mode exits. */
+  private currentPermissionMode: PermissionMode = 'auto';
+  private readonly commandDiscovery = new CommandDiscovery();
 
   constructor(
     private readonly processManager: IClaudeProcessManager,
@@ -228,12 +234,20 @@ export class MessageBroker {
 
         // ─── Live session controls (applied to the running process now, and
         //     stored as defaults for subsequent launches) ──────────────────
-        case 'set_permission_mode':
-          this.viewManager.setPermissionMode(msg.mode);
+        case 'set_permission_mode': {
+          const prev = this.currentPermissionMode;
+          let targetMode = msg.mode;
+          // When the user explicitly exits plan mode, apply the configured fallback.
+          if (msg.mode !== 'plan' && prev === 'plan' && this.services.getExitPlanModeFallback) {
+            targetMode = this.services.getExitPlanModeFallback();
+          }
+          this.currentPermissionMode = targetMode;
+          this.viewManager.setPermissionMode(targetMode);
           this.viewManager.broadcastSessionStates();
-          this.sendControl(msg.channelId, 'set_permission_mode', { mode: msg.mode, userInitiated: true });
-          this.sessionRelayManager.updateLaunchOptions(msg.channelId, { permissionMode: msg.mode });
+          this.sendControl(msg.channelId, 'set_permission_mode', { mode: targetMode, userInitiated: true });
+          this.sessionRelayManager.updateLaunchOptions(msg.channelId, { permissionMode: targetMode });
           return;
+        }
         case 'set_thinking_level':
           this.viewManager.setThinkingLevel(msg.level);
           this.viewManager.broadcastSessionStates();
@@ -404,6 +418,12 @@ export class MessageBroker {
             const files = await this.services.fileListProvider.listFiles(msg.query, msg.cwd);
             void this.webview.postMessage({ type: 'list_files_response', files });
           }
+          return;
+        }
+
+        case 'list_commands_request': {
+          const commands = await this.commandDiscovery.search(msg.query);
+          void this.webview.postMessage({ type: 'list_commands_response', commands });
           return;
         }
 

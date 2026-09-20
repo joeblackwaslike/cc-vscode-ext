@@ -343,10 +343,39 @@ a { color: var(--vscode-textLink-foreground); }
   flex-shrink: 0; width: 30px; height: 30px; border-radius: 9px; border: 0; cursor: pointer;
   display: flex; align-items: center; justify-content: center; margin-left: 2px; color: #fff;
 }
-.cc-send { background: var(--cc-accent); font-size: 15px; }
+.cc-send { background: var(--cc-accent); }
 .cc-send:hover:not(:disabled) { background: var(--cc-accent-hover); }
 .cc-send:disabled { cursor: default; }
-.cc-stop { background: var(--vscode-statusBarItem-warningBackground, #cc8a3a); font-size: 11px; }
+.cc-stop { background: var(--vscode-statusBarItem-warningBackground, #cc8a3a); }
+
+/* slash command dropdown */
+.cc-slash-dropdown {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  background: var(--vscode-dropdown-background, #1e1e1e);
+  border: 1px solid var(--vscode-dropdown-border, #454545);
+  border-radius: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 100;
+  margin-bottom: 4px;
+}
+.cc-slash-ns {
+  padding: 2px 8px;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.cc-slash-item {
+  padding: 4px 12px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.cc-slash-item--active { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); }
+.cc-slash-name { font-family: monospace; }
 
 /* context-usage ring — percent-filled circle; hover for tokens/%, click to compact */
 .cc-ring-wrap { position: relative; display: inline-flex; align-items: center; }
