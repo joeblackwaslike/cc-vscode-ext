@@ -54,6 +54,7 @@ export function MessageList({
             if (turn.isError && !turns.slice(0, i).some((t) => t.kind === 'user')) return null;
             return <ResultLine key={turn.key} isError={turn.isError} meta={turn.meta} />;
           case 'error':
+            if (!turns.slice(0, i).some((t) => t.kind === 'user')) return null;
             return <ErrorLine key={turn.key} message={turn.message} />;
           case 'handoff_prompt':
             return <HandoffPromptBlock key={turn.key} content={turn.content} />;

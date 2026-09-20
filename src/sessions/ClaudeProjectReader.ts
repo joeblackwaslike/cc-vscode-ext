@@ -50,7 +50,7 @@ export class ClaudeProjectReader {
             if (!line.trim()) continue;
             try {
               const parsed = JSON.parse(line) as Record<string, unknown>;
-              if (parsed.role === 'user') {
+              if (parsed.type === 'user') {
                 const msg = parsed.message as Record<string, unknown> | undefined;
                 const content = msg?.content;
                 let text = '';
