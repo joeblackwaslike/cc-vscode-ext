@@ -505,6 +505,15 @@ export class MessageBroker {
         this.sessionRelayManager.handleStreamEvent(channelId, event as ClaudeStreamEvent);
         if (!relaying) void this.refreshContextUsage(channelId, true);
       }
+      if (typed.type === 'ai-title') {
+        const ev = event as Record<string, unknown>;
+        const aiTitle = typeof ev.aiTitle === 'string' ? ev.aiTitle.trim() : '';
+        const sid = typeof ev.sessionId === 'string' ? ev.sessionId : '';
+        if (aiTitle && sid) {
+          void this.sessionManager.renameSession(sid, aiTitle);
+          this.viewManager.broadcastSessionStates();
+        }
+      }
     });
 
     // Fire-and-forget: the router is already registered, so events flow once the

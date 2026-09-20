@@ -95,6 +95,19 @@ function MainView() {
     [openTab, extState.sessions],
   );
 
+  // Update tab title when the CLI streams an ai-title event.
+  React.useEffect(() => {
+    const handler = (e: MessageEvent) => {
+      const msg = e.data as { type?: string; channelId?: string; request?: { type?: string; aiTitle?: string } };
+      if (msg.type === 'request' && msg.request?.type === 'ai-title' && msg.channelId && msg.request.aiTitle) {
+        const title = msg.request.aiTitle.trim();
+        if (title) setTabs((prev) => prev.map((t) => t.channelId === msg.channelId ? { ...t, title } : t));
+      }
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, []);
+
   // Auto-open the last session (or a fresh one) once the host sends initial state.
   // The ref prevents double-fire if deps change while tabs are still empty.
   const autoOpenFired = React.useRef(false);
