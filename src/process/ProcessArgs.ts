@@ -39,6 +39,7 @@ export interface LaunchOptions {
  */
 export function buildArgs(options: LaunchOptions): string[] {
   const args: string[] = [
+    '--print',
     '--output-format', 'stream-json',
     '--verbose',
     '--input-format', 'stream-json',
