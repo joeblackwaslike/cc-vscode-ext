@@ -41,6 +41,10 @@ export class ClaudeProcessManager {
   // simply vanish, and swapChannel() deletes an entry itself once it acts on
   // it.
   private readonly exitedProcesses = new WeakSet<ProcessHandle>();
+  // Channels that have received a 'result' or 'error' event from the CLI.
+  // Used to detect unexpected exits so the close handler can emit a synthetic
+  // error and clear the webview's running state instead of leaving it stuck.
+  private readonly resultReceived = new Set<string>();
 
   constructor(
     private readonly binaryProvider: () => Promise<string>,
@@ -226,7 +230,11 @@ export class ClaudeProcessManager {
     });
 
     const parser = new StreamJsonParser(
-      (event) => this.router.route(channelId, event),
+      (event) => {
+        this.router.route(channelId, event);
+        const t = (event as { type?: string }).type;
+        if (t === 'result' || t === 'error') this.resultReceived.add(channelId);
+      },
       (line) => this.logger.warn(`[channel:${channelId}] bad JSON: ${line}`),
     );
 
@@ -243,12 +251,14 @@ export class ClaudeProcessManager {
     proc.on('close', (code: unknown) => {
       this.logger.info(`[channel:${channelId}] closed (code=${String(code)})`);
       this.exitedProcesses.add(proc);
+      this._emitSyntheticErrorIfStuck(channelId, proc, `Claude process exited unexpectedly (code ${String(code)})`);
       this._cleanupIfCurrent(channelId, proc);
     });
 
     proc.on('error', (err: unknown) => {
       this.logger.error(`[channel:${channelId}] process error`, err);
       this.exitedProcesses.add(proc);
+      this._emitSyntheticErrorIfStuck(channelId, proc, `Claude process error: ${String(err)}`);
       this._cleanupIfCurrent(channelId, proc);
     });
 
@@ -340,10 +350,24 @@ export class ClaudeProcessManager {
    * that entry — see swapChannel's doc comment for why a token, not a plain
    * flag, is needed here.
    */
+  /** Emit a synthetic error result if the channel is still running but never received a result event. */
+  private _emitSyntheticErrorIfStuck(channelId: string, proc: ProcessHandle, message: string): void {
+    if (this.resultReceived.has(channelId)) return;
+    if (this.processes.get(channelId) !== proc) return;
+    if (this.swapping.has(channelId)) return;
+    this.router.route(channelId, {
+      type: 'result',
+      subtype: 'error',
+      is_error: true,
+      error: message,
+    });
+  }
+
   private _cleanupIfCurrent(channelId: string, proc: ProcessHandle): void {
     if (this.processes.get(channelId) !== proc) return;
     if (this.swapping.has(channelId)) return;
     this.processes.delete(channelId);
+    this.resultReceived.delete(channelId);
     this.router.unregister(channelId);
   }
 }
