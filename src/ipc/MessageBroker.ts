@@ -18,6 +18,7 @@ import type { ProcessLaunchOptions } from '../process/ClaudeProcessManager';
 import type { ILogger } from '../process/ClaudeProcessManager';
 import { SessionRelayManager } from '../relay/SessionRelayManager';
 import { HandoffWatcher } from '../process/HandoffWatcher';
+import { ClaudeProjectReader } from '../sessions/ClaudeProjectReader';
 
 // ─── Dependency interfaces ─────────────────────────────────────────────────────
 
@@ -111,6 +112,7 @@ export interface IVSCodeBridge {
   openUrl(url: string): Promise<void>;
   openFolder(folderPath: string, newWindow?: boolean): Promise<void>;
   openNewConversationTab(): Promise<void>;
+  openContent(content: string, language?: string): Promise<void>;
 }
 
 export interface ITerminalLauncher {
@@ -156,6 +158,7 @@ export class MessageBroker {
   /** Tracks the last permission mode applied, used to detect plan-mode exits. */
   private currentPermissionMode: PermissionMode = 'auto';
   private readonly commandDiscovery = new CommandDiscovery();
+  private readonly projectReader = new ClaudeProjectReader();
 
   constructor(
     private readonly processManager: IClaudeProcessManager,
@@ -443,6 +446,9 @@ export class MessageBroker {
         case 'new_conversation_tab':
           await this.services.vscode?.openNewConversationTab();
           return;
+        case 'open_content':
+          await this.services.vscode?.openContent(msg.content, msg.language);
+          return;
 
         // ─── Unhandled — log and ignore ─────────────────────────────────
         default:
@@ -462,7 +468,21 @@ export class MessageBroker {
     this.handoffWatchers.set(channelId, watcher);
   }
 
-  private handleLaunchClaude(msg: Extract<FromWebviewMessage, { type: 'launch_claude' }>): void {
+  private async replaySessionHistory(channelId: string, sessionId: string, cwd?: string): Promise<void> {
+    const workspacePath = cwd ?? this.services.workspacePath;
+    if (!workspacePath) return;
+    const events = await this.projectReader.readSessionEvents(sessionId, workspacePath);
+    for (const event of events) {
+      this.viewManager.broadcastMessage({
+        type: 'request',
+        channelId,
+        requestId: channelId,
+        request: event as ClaudeStreamEvent,
+      });
+    }
+  }
+
+  private async handleLaunchClaude(msg: Extract<FromWebviewMessage, { type: 'launch_claude' }>): Promise<void> {
     const { channelId } = msg;
     const options: ProcessLaunchOptions = {
       ...(msg.resume !== undefined ? { resume: msg.resume } : {}),
@@ -472,7 +492,10 @@ export class MessageBroker {
     };
 
     this.sessionRelayManager.registerLaunch(channelId, options, msg.cwd);
-    if (options.resume) this.startHandoffWatcher(channelId, options.resume);
+    if (options.resume) {
+      this.startHandoffWatcher(channelId, options.resume);
+      await this.replaySessionHistory(channelId, options.resume, msg.cwd);
+    }
 
     // Forward stream events to all webviews. control_response lines are private
     // RPC plumbing — settle them here and never broadcast them as conversation
