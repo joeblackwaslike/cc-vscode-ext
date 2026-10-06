@@ -60,6 +60,18 @@ export function MessageList({
             return <HandoffPromptBlock key={turn.key} content={turn.content} />;
         }
       })}
+        {running && lastAssistantIndex === -1 && (
+          <div className="cc-assistant" data-testid="chat-loading">
+            <div className="cc-assistant__gutter"><span className="cc-assistant__dot" /></div>
+            <div className="cc-assistant__body">
+              <span className="cc-thinking__dots" aria-label="Claude is thinking">
+                <span className="cc-thinking__dot" />
+                <span className="cc-thinking__dot" />
+                <span className="cc-thinking__dot" />
+              </span>
+            </div>
+          </div>
+        )}
         <div ref={bottomRef} />
       </div>
     </RunOutputProvider>
