@@ -134,6 +134,10 @@ export function activate(context: vscode.ExtensionContext): void {
     openNewConversationTab: async () => {
       await vscode.commands.executeCommand('clawd-vscode.editor.open');
     },
+    openContent: async (content: string, language = 'plaintext') => {
+      const doc = await vscode.workspace.openTextDocument({ content, language });
+      await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.Beside });
+    },
   };
 
   const makeBroker = (webview: ReturnType<typeof adaptWebview>): void => {
@@ -216,10 +220,11 @@ export function activate(context: vscode.ExtensionContext): void {
   // ─── Register webview view providers ────────────────────────────────────────
 
   context.subscriptions.push(
-    vscode.window.registerWebviewViewProvider(SidebarWebviewProvider.VIEW_ID, sidebarProvider),
+    vscode.window.registerWebviewViewProvider(SidebarWebviewProvider.VIEW_ID, sidebarProvider, { webviewOptions: { retainContextWhenHidden: true } }),
     vscode.window.registerWebviewViewProvider(
       SidebarWebviewProvider.VIEW_ID_SECONDARY,
       sidebarProvider,
+      { webviewOptions: { retainContextWhenHidden: true } },
     ),
     vscode.window.registerWebviewViewProvider(SessionListProvider.VIEW_ID, sessionListProvider),
   );
