@@ -372,12 +372,7 @@ export class ClaudeProcessManager {
     if (this.resultReceived.has(channelId)) return;
     if (this.processes.get(channelId) !== proc) return;
     if (this.swapping.has(channelId)) return;
-    this.router.route(channelId, {
-      type: 'result',
-      subtype: 'error',
-      is_error: true,
-      error: message,
-    });
+    this.router.route(channelId, { type: 'error', message });
   }
 
   private _cleanupIfCurrent(channelId: string, proc: ProcessHandle): void {
