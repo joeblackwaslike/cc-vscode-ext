@@ -10,12 +10,11 @@ export function ToolCall({ tool }: { tool: ToolUseBlock }) {
   const rendered = result ? renderer.renderResult(result.text, tool.input) : null;
 
   return (
-    <div className="cc-tool" data-testid="tool-call">
+    <div className={`cc-tool${result?.isError ? ' cc-tool--error' : ''}`} data-testid="tool-call">
       <div className="cc-tool__hd">
         <span className="cc-tool__name">{tool.name}</span>
         {arg && <span className="cc-tool__arg">({arg})</span>}
         <div className="cc-tool__actions">
-          {result?.isError && <span className="cc-tool__status--error">✗</span>}
           <button
             className="cc-tool__copy"
             title="Copy"
@@ -26,7 +25,7 @@ export function ToolCall({ tool }: { tool: ToolUseBlock }) {
         </div>
       </div>
       {rendered && rendered.content.trim() !== '' && (
-        <ToolResult result={rendered} isError={result?.isError ?? false} />
+        <ToolResult result={rendered} />
       )}
     </div>
   );

@@ -9,10 +9,9 @@ const LINE_NUM = /^\s*(\d+)[\t→](.*)$/;
 
 interface Props {
   result: RenderedResult;
-  isError: boolean;
 }
 
-export function ToolResult({ result, isError }: Props) {
+export function ToolResult({ result }: Props) {
   const [expanded, setExpanded] = useState(false);
   const lines = result.content.replace(/\n$/, '').split('\n');
   const collapseAt = result.mode === 'text' ? COLLAPSE_AT_TEXT : COLLAPSE_AT_OTHER;
@@ -20,7 +19,7 @@ export function ToolResult({ result, isError }: Props) {
   const shown = expanded ? lines : lines.slice(0, collapseAt);
 
   return (
-    <div className={`cc-tool__out${isError ? ' cc-tool__out--error' : ''}`}>
+    <div className="cc-tool__out">
       {result.mode === 'lines' && <LineNumbered lines={shown} />}
       {result.mode === 'diff' && <Diff lines={shown} />}
       {result.mode === 'text' && <pre className="cc-tool__text">{shown.join('\n')}</pre>}
