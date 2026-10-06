@@ -51,11 +51,7 @@ export function buildArgs(options: LaunchOptions): string[] {
   }
 
   if (options.permissionMode && options.permissionMode !== 'default') {
-    // 'auto' and all other explicit modes pass through as --permission-mode <value>
     args.push('--permission-mode', options.permissionMode);
-  } else {
-    // Default mode: route permission prompts through IPC so the webview handles them
-    args.push('--permission-prompt-tool', 'stdio');
   }
 
   if (options.effort) {
