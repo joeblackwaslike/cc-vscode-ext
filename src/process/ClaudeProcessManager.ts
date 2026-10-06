@@ -48,6 +48,10 @@ export class ClaudeProcessManager {
   // Messages written to a channel while its process is still spawning are
   // buffered here and flushed to stdin once the process is registered.
   private readonly pendingWrites = new Map<string, unknown[]>();
+  // Per-channel stderr accumulator and launch context, used to detect
+  // "No conversation found" errors so we can retry without --resume.
+  private readonly stderrBuffers = new Map<string, string>();
+  private readonly spawnContexts = new Map<string, { options: ProcessLaunchOptions; cwd?: string; env?: NodeJS.ProcessEnv }>();
 
   constructor(
     private readonly binaryProvider: () => Promise<string>,
@@ -71,6 +75,7 @@ export class ClaudeProcessManager {
       throw new Error(`Channel "${channelId}" is already active`);
     }
 
+    this.spawnContexts.set(channelId, { options, cwd, env });
     const proc = await this._launchProcess(channelId, options, cwd, env);
     this.processes.set(channelId, proc);
     this._drainPendingWrites(channelId);
@@ -252,9 +257,42 @@ export class ClaudeProcessManager {
       parser.feed(chunk.toString());
     });
 
+    proc.stderr.on('data', (chunk: Buffer) => {
+      const text = chunk.toString();
+      this.logger.warn(`[channel:${channelId}] stderr: ${text.trim()}`);
+      this.stderrBuffers.set(channelId, (this.stderrBuffers.get(channelId) ?? '') + text);
+    });
+
     proc.on('close', (code: unknown) => {
       this.logger.info(`[channel:${channelId}] closed (code=${String(code)})`);
       this.exitedProcesses.add(proc);
+
+      const stderr = this.stderrBuffers.get(channelId) ?? '';
+      this.stderrBuffers.delete(channelId);
+      const ctx = this.spawnContexts.get(channelId);
+
+      // If --resume failed because the session no longer exists, retry without it.
+      if (
+        code === 1 &&
+        ctx?.options.resume &&
+        stderr.includes('No conversation found') &&
+        this.processes.get(channelId) === proc &&
+        !this.swapping.has(channelId)
+      ) {
+        this.logger.info(`[channel:${channelId}] stale --resume, retrying as new session`);
+        const retryOptions = { ...ctx.options, resume: undefined };
+        this.spawnContexts.set(channelId, { ...ctx, options: retryOptions });
+        this.processes.delete(channelId);
+        void this._launchProcess(channelId, retryOptions, ctx.cwd, ctx.env).then((newProc) => {
+          this.processes.set(channelId, newProc);
+          this._drainPendingWrites(channelId);
+        }).catch((err: unknown) => {
+          this._emitSyntheticErrorIfStuck(channelId, proc, `Claude process error: ${String(err)}`);
+          this._cleanupIfCurrent(channelId, proc);
+        });
+        return;
+      }
+
       this._emitSyntheticErrorIfStuck(channelId, proc, `Claude process exited unexpectedly (code ${String(code)})`);
       this._cleanupIfCurrent(channelId, proc);
     });
@@ -381,6 +419,8 @@ export class ClaudeProcessManager {
     this.processes.delete(channelId);
     this.resultReceived.delete(channelId);
     this.pendingWrites.delete(channelId);
+    this.stderrBuffers.delete(channelId);
+    this.spawnContexts.delete(channelId);
     this.router.unregister(channelId);
   }
 }
