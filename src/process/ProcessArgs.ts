@@ -42,6 +42,7 @@ export function buildArgs(options: LaunchOptions): string[] {
     '--print',
     '--output-format', 'stream-json',
     '--verbose',
+    '--include-partial-messages',
     '--input-format', 'stream-json',
   ];
 
