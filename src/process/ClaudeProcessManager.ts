@@ -45,6 +45,9 @@ export class ClaudeProcessManager {
   // Used to detect unexpected exits so the close handler can emit a synthetic
   // error and clear the webview's running state instead of leaving it stuck.
   private readonly resultReceived = new Set<string>();
+  // Messages written to a channel while its process is still spawning are
+  // buffered here and flushed to stdin once the process is registered.
+  private readonly pendingWrites = new Map<string, unknown[]>();
 
   constructor(
     private readonly binaryProvider: () => Promise<string>,
@@ -70,6 +73,7 @@ export class ClaudeProcessManager {
 
     const proc = await this._launchProcess(channelId, options, cwd, env);
     this.processes.set(channelId, proc);
+    this._drainPendingWrites(channelId);
   }
 
   /**
@@ -265,12 +269,25 @@ export class ClaudeProcessManager {
     return proc;
   }
 
-  /** Write a JSON line to the channel's stdin. No-op if channel is inactive or stdin not writable. */
+  /** Write a JSON line to the channel's stdin. Buffers if the process is still spawning. */
   writeToChannel(channelId: string, data: unknown): void {
     const proc = this.processes.get(channelId);
-    if (proc === undefined) return;
+    if (proc === undefined) {
+      // Process is still spawning — buffer and flush once it's registered.
+      const q = this.pendingWrites.get(channelId) ?? [];
+      q.push(data);
+      this.pendingWrites.set(channelId, q);
+      return;
+    }
     if (proc.stdin === null || !proc.stdin.writable) return;
     proc.stdin.write(JSON.stringify(data) + '\n');
+  }
+
+  private _drainPendingWrites(channelId: string): void {
+    const q = this.pendingWrites.get(channelId);
+    this.pendingWrites.delete(channelId);
+    if (!q) return;
+    for (const data of q) this.writeToChannel(channelId, data);
   }
 
   /**
@@ -368,6 +385,7 @@ export class ClaudeProcessManager {
     if (this.swapping.has(channelId)) return;
     this.processes.delete(channelId);
     this.resultReceived.delete(channelId);
+    this.pendingWrites.delete(channelId);
     this.router.unregister(channelId);
   }
 }
