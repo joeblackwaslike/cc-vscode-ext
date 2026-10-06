@@ -21,6 +21,12 @@ export class SessionManager {
   ) {
     this.sessionStates = storage.getSessions();
     this.groups = storage.getGroups();
+    // Any session still marked 'running' at startup had its process killed by
+    // the extension host restart — reset them so the webview doesn't show a
+    // permanently stuck stop button.
+    for (const [id, s] of this.sessionStates) {
+      if (s.state === 'running') this.sessionStates.set(id, { ...s, state: 'idle' });
+    }
   }
 
   /** Persist the last-used session ID so panels can auto-resume on reopen. */
