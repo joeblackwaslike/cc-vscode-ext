@@ -37,7 +37,7 @@
   "scripts": {
     "build:ext": "node esbuild.config.js",
     "build:webview": "vite build --config vite.config.ts",
-    "build": "npm run build:ext && npm run build:webview",
+    "build": "pnpm build:ext && pnpm build:webview",
     "watch:ext": "node esbuild.config.js --watch",
     "watch:webview": "vite build --watch --config vite.config.ts",
     "test:unit": "vitest run --config vitest.config.ts",
@@ -50,17 +50,18 @@
     "test:e2e:ui": "playwright test --config playwright.e2e.config.ts --ui",
     "test:all": "bash scripts/test-all.sh",
     "build:integration": "tsc -p tsconfig.integrationtest.json",
-    "test:integration": "npm run build && npm run build:integration && vscode-test",
-    "test": "npm run test:unit",
+    "test:integration": "pnpm build && pnpm build:integration && vscode-test",
+    "test": "pnpm test:unit",
     "lint": "eslint src/ test/",
     "typecheck": "tsc --noEmit -p tsconfig.extension.json",
     "typecheck:webview": "tsc --noEmit -p tsconfig.webview.json",
-    "vscode:prepublish": "npm run build",
-    "package": "npx --yes @vscode/vsce package --allow-missing-repository --no-dependencies",
+    "vscode:prepublish": "pnpm build",
+    "package": "bunx @vscode/vsce package --allow-missing-repository --no-dependencies",
     "install:insiders": "bash scripts/install-insiders.sh",
     "prepare": "cp scripts/hooks/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
     "@playwright/test": "^1.60.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
@@ -78,6 +79,7 @@
     "@vscode/test-electron": "^2.4.0",
     "esbuild": "^0.24.0",
     "eslint": "^9.0.0",
+    "globals": "^17.13.0",
     "jsdom": "^29.1.1",
     "prettier": "^3.0.0",
     "react": "^18.0.0",
@@ -484,5 +486,6 @@
   "dependencies": {
     "highlight.js": "^11.11.1",
     "markdown-it": "^14.2.0"
-  }
+  },
+  "packageManager": "pnpm@11.0.8"
 }
