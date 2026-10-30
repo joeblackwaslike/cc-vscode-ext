@@ -494,7 +494,11 @@ export class MessageBroker {
     this.sessionRelayManager.registerLaunch(channelId, options, msg.cwd);
     if (options.resume) {
       this.startHandoffWatcher(channelId, options.resume);
-      await this.replaySessionHistory(channelId, options.resume, msg.cwd);
+      try {
+        await this.replaySessionHistory(channelId, options.resume, msg.cwd);
+      } catch (err) {
+        this.logger.warn(`[MessageBroker] history replay failed on ${channelId}: ${String(err)}`);
+      }
     }
 
     // Forward stream events to all webviews. control_response lines are private

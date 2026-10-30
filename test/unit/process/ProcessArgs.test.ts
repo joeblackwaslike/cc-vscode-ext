@@ -10,10 +10,9 @@ describe('buildArgs', () => {
     expect(args).toContain('--verbose');
   });
 
-  it('uses permission-prompt-tool stdio in default mode', () => {
+  it('omits the removed --permission-prompt-tool flag in default mode', () => {
     const args = buildArgs({});
-    expect(args).toContain('--permission-prompt-tool');
-    expect(args).toContain('stdio');
+    expect(args).not.toContain('--permission-prompt-tool');
     expect(args).not.toContain('--permission-mode');
   });
 
@@ -29,7 +28,7 @@ describe('buildArgs', () => {
   it('does not add --permission-mode for default mode', () => {
     const args = buildArgs({ permissionMode: 'default' });
     expect(args).not.toContain('--permission-mode');
-    expect(args).toContain('--permission-prompt-tool');
+    expect(args).not.toContain('--permission-prompt-tool');
   });
 
   it('adds --resume when provided', () => {

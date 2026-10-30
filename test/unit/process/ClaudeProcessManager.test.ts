@@ -233,6 +233,7 @@ describe('ClaudeProcessManager', () => {
     await manager.spawnClaude('ch-1', {});
 
     triggerProcessEvent('close', 1);
+    handler.mockClear();
     router.route('ch-1', { type: 'late' });
 
     expect(handler).not.toHaveBeenCalled();

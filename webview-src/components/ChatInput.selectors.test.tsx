@@ -64,17 +64,17 @@ describe('ChatInput selectors — live + optimistic', () => {
 });
 
 describe('ChatInput model picker — options', () => {
-  test('all 10 base model options are present in the picker', () => {
+  test('all 11 base model options are present in the picker', () => {
     render(<Harness />);
     fireEvent.click(screen.getByTestId('model-selector'));
 
     // Verify total count first so regressions (additions or removals) fail loudly.
-    expect(screen.getAllByRole('menuitem')).toHaveLength(10);
+    expect(screen.getAllByRole('menuitem')).toHaveLength(11);
 
     // cc-menu__check renders "✓" for the selected item, so use regex (substring)
     // rather than exact strings to avoid accessible-name prefix mismatches.
     // Versioned items have unambiguous labels.
-    for (const label of ['Default', 'Fable 5', 'Opus 5', 'Sonnet 5', 'Opus 4\\.8', 'Sonnet 4\\.6', 'Haiku 4\\.5']) {
+    for (const label of ['Default', 'Fable 5\\.1', 'Fable 5(?!\\.)', 'Opus 5', 'Sonnet 5', 'Opus 4\\.8', 'Sonnet 4\\.6', 'Haiku 4\\.5']) {
       expect(screen.getByRole('menuitem', { name: new RegExp(label) })).toBeInTheDocument();
     }
     // Bare aliases: spans are adjacent (no whitespace) so accessible name is label+hint

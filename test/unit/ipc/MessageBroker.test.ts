@@ -1,4 +1,16 @@
 import { describe, it, expect, vi } from 'vitest';
+
+vi.mock('vscode', () => ({
+  RelativePattern: vi.fn(),
+  Uri: { file: vi.fn((path: string) => ({ fsPath: path })) },
+  workspace: {
+    createFileSystemWatcher: vi.fn(() => ({
+      onDidCreate: vi.fn(),
+      onDidChange: vi.fn(),
+      dispose: vi.fn(),
+    })),
+  },
+}));
 import { createIpcTestHarness, createMockServices } from '../../helpers/ipcTestHarness';
 import { MessageBroker } from '../../../src/ipc/MessageBroker';
 
@@ -51,7 +63,7 @@ describe('MessageBroker', () => {
       );
     });
 
-    it('passes resume, permissionMode, and cwd to spawnClaude', () => {
+    it('passes resume, permissionMode, and cwd to spawnClaude', async () => {
       const { h } = makebroker();
       h.dispatch({
         type: 'launch_claude',
@@ -60,10 +72,12 @@ describe('MessageBroker', () => {
         permissionMode: 'acceptEdits',
         cwd: '/workspace',
       });
-      expect(h.processManager.spawnClaude).toHaveBeenCalledWith(
-        'ch-1',
-        expect.objectContaining({ resume: 'sess-abc', permissionMode: 'acceptEdits' }),
-        '/workspace',
+      await vi.waitFor(() =>
+        expect(h.processManager.spawnClaude).toHaveBeenCalledWith(
+          'ch-1',
+          expect.objectContaining({ resume: 'sess-abc', permissionMode: 'acceptEdits' }),
+          '/workspace',
+        ),
       );
     });
 

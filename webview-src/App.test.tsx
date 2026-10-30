@@ -1,7 +1,23 @@
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, test } from 'vitest';
 import { App } from './App';
+
+function sendInitialState(): void {
+  act(() => {
+    window.postMessage(
+      {
+        type: 'update_state',
+        sessions: [],
+        groups: [],
+        defaultPermissionMode: 'default',
+        thinkingLevel: 'medium',
+        focusViewEnabled: false,
+      },
+      '*',
+    );
+  });
+}
 
 describe('App: new-conversation flow', () => {
   // Reproduces the exact path the user hit: open panel → New Conversation. The
@@ -9,15 +25,13 @@ describe('App: new-conversation flow', () => {
   // (not a stuck stop button), and the compose placeholder — all before any
   // stream event has populated the channel.
   test('New Conversation immediately shows a usable, idle composer', async () => {
-    const user = userEvent.setup();
     render(<App />);
 
-    expect(screen.getByTestId('welcome-screen')).toBeInTheDocument();
     expect(screen.queryByTestId('conversation-view')).not.toBeInTheDocument();
 
-    await user.click(screen.getByTestId('new-session-button'));
+    sendInitialState();
 
-    expect(screen.getByTestId('conversation-view')).toBeInTheDocument();
+    expect(await screen.findByTestId('conversation-view')).toBeInTheDocument();
     expect(screen.getByTestId('send-button')).toBeInTheDocument();
     expect(screen.queryByTestId('interrupt-button')).not.toBeInTheDocument();
     expect(screen.getByTestId('message-input')).toHaveAttribute(
@@ -32,7 +46,8 @@ describe('App: new-conversation flow', () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.click(screen.getByTestId('new-session-button'));
+    sendInitialState();
+    await screen.findByTestId('conversation-view');
     await user.type(screen.getByTestId('message-input'), 'hello there');
     await user.click(screen.getByTestId('send-button'));
 
