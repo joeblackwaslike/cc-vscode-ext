@@ -78,7 +78,7 @@ suite('Extension activation', () => {
   test('extension package.json has expected metadata', () => {
     const { packageJSON } = ext;
     assert.strictEqual((packageJSON as Record<string, unknown>).name, 'clawd-code');
-    assert.strictEqual((packageJSON as Record<string, unknown>).publisher, 'reference');
+    assert.strictEqual((packageJSON as Record<string, unknown>).publisher, 'joeblackwaslike');
   });
 });
 
