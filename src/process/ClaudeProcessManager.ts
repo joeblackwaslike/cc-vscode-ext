@@ -338,6 +338,7 @@ export class ClaudeProcessManager {
    * response, so this envelope is the contract the whole send path depends on.
    */
   sendUserMessage(channelId: string, text: string): void {
+    this.resultReceived.delete(channelId);
     this.writeToChannel(channelId, { type: 'user', message: { role: 'user', content: text } });
   }
 

@@ -164,6 +164,21 @@ describe('ClaudeProcessManager', () => {
     );
   });
 
+  it('sendUserMessage() clears the stale result flag so a crash mid-turn-2 still emits a synthetic error', async () => {
+    const { manager, router } = makeManager();
+    const handler = vi.fn();
+    router.register('ch-1', handler);
+
+    await manager.spawnClaude('ch-1', {});
+    triggerStdoutData(Buffer.from(JSON.stringify({ type: 'result' }) + '\n'));
+    handler.mockClear();
+
+    manager.sendUserMessage('ch-1', 'turn two');
+    triggerProcessEvent('close', 1);
+
+    expect(handler).toHaveBeenCalledWith(expect.objectContaining({ type: 'error' }));
+  });
+
   it('writeToChannel() is a no-op for inactive channels', () => {
     const { manager } = makeManager();
     expect(() => manager.writeToChannel('nope', {})).not.toThrow();

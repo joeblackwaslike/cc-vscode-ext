@@ -60,7 +60,7 @@ export function MessageList({
             return <HandoffPromptBlock key={turn.key} content={turn.content} />;
         }
       })}
-        {running && lastAssistantIndex === -1 && (
+        {running && turns[turns.length - 1]?.kind !== 'assistant' && (
           <div className="cc-assistant" data-testid="chat-loading">
             <div className="cc-assistant__gutter"><span className="cc-assistant__dot" /></div>
             <div className="cc-assistant__body">

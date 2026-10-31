@@ -41,4 +41,19 @@ describe('MessageList: tool call + inline result', () => {
     // The tool_result carrier user event must NOT render as a user bubble
     expect(screen.queryByTestId('chat-message-user')).not.toBeInTheDocument();
   });
+
+  test('shows the thinking spinner while waiting for a second turn, after a prior assistant reply', () => {
+    render(
+      <MessageList
+        channelId="test-channel"
+        running
+        events={[
+          ev({ type: 'assistant', message: { content: [{ type: 'text', text: 'first reply' }] } }),
+          ev({ type: 'user', message: { content: 'second question' } }),
+        ]}
+      />,
+    );
+
+    expect(screen.getByTestId('chat-loading')).toBeInTheDocument();
+  });
 });
