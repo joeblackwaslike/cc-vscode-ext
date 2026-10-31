@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { ToolUseBlock } from '../lib/conversationModel';
-import { OTHER_LABEL, deriveAskStatus, parseAskAnswers, readAskQuestions } from '../lib/permissions';
+import { OTHER_LABEL, deriveAskStatus, ownValue, parseAskAnswers, readAskQuestions } from '../lib/permissions';
 import type { AskQuestion, AskStatus } from '../lib/permissions';
 import { useChannelPermissions } from '../store/sessionStore';
 
@@ -86,7 +86,7 @@ export function AskUserQuestionBlock({ tool, channelId, running }: { tool: ToolU
       {expanded && (
         <div className="cc-ask-block-body">
           {questions.map((q) => {
-            const answer = answers[q.question];
+            const answer = ownValue(answers, q.question);
             const { selected, typed } = answer === undefined ? { selected: [], typed: '' } : splitAnswer(answer, q);
             const role = q.multiSelect ? 'checkbox' : 'radio';
             const options = [...q.options.map((o) => o.label), OTHER_LABEL];

@@ -8,6 +8,7 @@ import {
   buildAskAnswerDecision,
   buildAskAnswers,
   isQuestionAnswered,
+  ownValue,
   readAskQuestions,
 } from '../../lib/permissions';
 import type { QuestionSelection } from '../../lib/permissions';
@@ -35,11 +36,11 @@ export function AskUserQuestionForm({ request, onDecision }: Props) {
   useEffect(() => () => clearTimeout(advanceTimer.current), []);
 
   const question = questions[activeTab];
-  const selection = (question && selections[question.question]) || EMPTY_SELECTION;
+  const selection = (question && ownValue(selections, question.question)) || EMPTY_SELECTION;
   const optionLabels = question ? [...question.options.map((o) => o.label), OTHER_LABEL] : [];
   const hasPreviews = !!question && !question.multiSelect && question.options.some((o) => o.preview);
   const otherSelected = selection.selected.includes(OTHER_LABEL);
-  const allAnswered = questions.length > 0 && questions.every((q) => isQuestionAnswered(selections[q.question]));
+  const allAnswered = questions.length > 0 && questions.every((q) => isQuestionAnswered(ownValue(selections, q.question)));
   const preview = hasPreviews ? question.options[focusedIndex]?.preview : undefined;
 
   useEffect(() => {
@@ -122,7 +123,7 @@ export function AskUserQuestionForm({ request, onDecision }: Props) {
             type="button"
             role="tab"
             aria-selected={i === activeTab}
-            className={`cc-ask-tab${isQuestionAnswered(selections[q.question]) ? ' cc-ask-tab--answered' : ''}`}
+            className={`cc-ask-tab${isQuestionAnswered(ownValue(selections, q.question)) ? ' cc-ask-tab--answered' : ''}`}
             onClick={() => goToTab(i)}
           >
             {q.header}

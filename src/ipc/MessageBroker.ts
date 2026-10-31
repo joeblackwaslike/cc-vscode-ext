@@ -26,6 +26,7 @@ import { PermissionRequests, isCanUseToolRequest } from '../process/PermissionRe
 export interface IChannelRouter {
   register(channelId: string, handler: (event: unknown) => void): void;
   unregister(channelId: string): void;
+  route(channelId: string, event: unknown): void;
 }
 
 export interface IClaudeProcessManager {
@@ -192,6 +193,7 @@ export class MessageBroker {
         write: (c, d) => this.processManager.writeToChannel(c, d),
         broadcast: (m) => this.viewManager.broadcastMessage(m),
         log: (m) => this.logger.warn(m),
+        reportError: (c, message) => this.channelRouter.route(c, { type: 'error', message }),
       });
     webview.onDidReceiveMessage((raw: unknown) => {
       void this.handleMessage(raw as FromWebviewMessage);

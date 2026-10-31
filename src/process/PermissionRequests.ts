@@ -44,6 +44,8 @@ interface PermissionRequestsDeps {
   write(channelId: string, data: unknown): boolean;
   broadcast(msg: ToWebviewMessage): void;
   log?(message: string): void;
+  /** Tell the user a decision never reached the CLI (the channel is no longer writable). */
+  reportError?(channelId: string, message: string): void;
 }
 
 interface ChannelMode {
@@ -83,6 +85,10 @@ export class PermissionRequests {
     this.pending.delete(requestId);
     if (!this.writeDecision(channelId, requestId, decision)) {
       this.deps.log?.(`[permissions] reply to ${requestId} on ${channelId} was dropped (channel not writable); cancelling the prompt`);
+      this.deps.reportError?.(
+        channelId,
+        'Your answer could not be sent because the Claude connection is unavailable. Resend your message to continue.'
+      );
       this.deps.broadcast({
         type: 'permission_cancelled',
         channelId,

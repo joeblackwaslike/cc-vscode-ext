@@ -43,6 +43,11 @@ export function readAskQuestions(input: Record<string, unknown>): AskQuestion[] 
   });
 }
 
+/** Own-property lookup, so a question text like `constructor` or `__proto__` can't hit Object.prototype. */
+export function ownValue<T>(record: Record<string, T>, key: string): T | undefined {
+  return Object.prototype.hasOwnProperty.call(record, key) ? record[key] : undefined;
+}
+
 export function isQuestionAnswered(sel: QuestionSelection | undefined): boolean {
   if (!sel || sel.selected.length === 0) return false;
   return !sel.selected.includes(OTHER_LABEL) || sel.otherText.trim() !== '';
@@ -52,9 +57,10 @@ export function buildAskAnswers(
   questions: AskQuestion[],
   selections: Record<string, QuestionSelection>,
 ): Record<string, string> {
-  const answers: Record<string, string> = {};
+  // Null-prototype so a question text of `__proto__` becomes an ordinary key instead of being dropped.
+  const answers = Object.create(null) as Record<string, string>;
   for (const { question } of questions) {
-    const sel = selections[question];
+    const sel = ownValue(selections, question);
     if (!sel) continue;
     answers[question] = sel.selected
       .map((label) => (label === OTHER_LABEL ? sel.otherText.trim() : label))

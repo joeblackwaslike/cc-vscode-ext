@@ -18,9 +18,14 @@ function makeTool(input: Record<string, unknown>, result?: { text: string; isErr
   return { type: 'tool_use', id: 'tu1', name: 'ExitPlanMode', input, ...(result && { result }) };
 }
 
-function renderBlock(tool: ToolUseBlock, dispatch: (a: Action) => void = () => undefined, isPending = true) {
+function renderBlock(
+  tool: ToolUseBlock,
+  dispatch: (a: Action) => void = () => undefined,
+  isPending = true,
+  requestInput: Record<string, unknown> = {}
+) {
   const pending = isPending
-    ? [{ channelId: 'ch', requestId: 'r1', toolName: 'ExitPlanMode', toolUseId: tool.id, input: {} }]
+    ? [{ channelId: 'ch', requestId: 'r1', toolName: 'ExitPlanMode', toolUseId: tool.id, input: requestInput }]
     : [];
   const state: SessionStoreState = {
     channels: {},
@@ -34,6 +39,12 @@ function renderBlock(tool: ToolUseBlock, dispatch: (a: Action) => void = () => u
 }
 
 beforeEach(() => postMessage.mockClear());
+
+test('falls back to the pending request when the streamed tool-use arguments omit the plan', () => {
+  renderBlock(makeTool({}), undefined, true, planInput);
+  expect(screen.getByText("Claude's Plan")).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: /Create hello.txt/ })).toBeInTheDocument();
+});
 afterEach(() => vi.restoreAllMocks());
 
 function selectPlanText(container: HTMLElement) {

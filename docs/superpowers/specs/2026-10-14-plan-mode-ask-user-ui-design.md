@@ -79,17 +79,21 @@ Mode changes show up as `{type:"system", subtype:"status", permissionMode}`.
      `priorMode` (see the per-channel modes bullet below).
    - `respond(channelId, requestId, decision): boolean` writes the `control_response`. It removes the
      entry and broadcasts `{type:"permission_resolved", channelId, requestId, toolUseId, decision}` only if
-     the write was delivered. A failed write cancels the request instead. An unknown ID (already answered
-     or cancelled) returns false, so a second answer from another view is a no-op.
+     the write was delivered. A failed write cancels the request instead, logs it, and reports a channel
+     error ("Your answer could not be sent because the Claude connection is unavailable…") so the user
+     knows the answer did not reach Claude. An unknown ID (already answered or cancelled) returns false and
+     is logged, so a second answer from another view is a no-op.
    - `cancelChannel(channelId)` drops the channel's prompts and broadcasts
-     `{type:"permission_cancelled", channelId, requestIds}`.
+     `{type:"permission_cancelled", channelId, requestIds, toolUseIds}`; `toolUseIds` lets the transcript
+     blocks show "No answer" or "Session ended" for the matching tool calls.
    - `replayTo(view)` sends every pending prompt to a webview that registers late (a reload).
    - Per-channel modes: it records `{current, beforePlan}` per channel from the CLI's `system/status`
      events and from adopted decisions. `beforePlan` is the mode in effect when the channel last entered
      `plan`, which drives the "Yes, and use auto mode" variant.
 3. `src/process/ClaudeProcessManager.ts`:
    - `writeToChannel` returns `boolean`. It returns false when stdin isn't writable, which today is
-     silently dropped. Buffering during spawn still returns true.
+     silently dropped, and for a channel that is neither running nor launching (a no-op). Buffering while
+     a launch is in flight (`beginLaunch`/`spawnClaude`/stale-resume retry) still returns true.
    - New `onChannelExit(listener)`. It fires from the existing close and error handlers for the current
      process of a channel, and is skipped during a relay swap. The shared coordinator subscribes and
      calls `cancelChannel`.

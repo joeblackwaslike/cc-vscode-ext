@@ -5,6 +5,7 @@ import {
   ASK_DECLINE_MESSAGE,
   KEEP_PLANNING_MESSAGE,
   OTHER_LABEL,
+  ownValue,
   buildAskAnswerDecision,
   buildAskAnswers,
   buildExitPlanDecision,
@@ -69,6 +70,23 @@ describe('answers', () => {
   it('builds the allow decision with answers merged into input', () => {
     const d = buildAskAnswerDecision(input, { a: 'b' });
     expect(d).toEqual({ behavior: 'allow', updatedInput: { ...input, answers: { a: 'b' } } });
+  });
+});
+
+describe('prototype-key question texts', () => {
+  test('buildAskAnswers ignores inherited properties and answers constructor/__proto__ questions', () => {
+    const questions = ['constructor', '__proto__', 'toString'].map((question) => ({
+      question,
+      header: 'H',
+      multiSelect: false,
+      options: [{ label: 'A', description: '' }],
+    }));
+    const selections = Object.fromEntries(
+      ['constructor', '__proto__'].map((q) => [q, { selected: ['A'], otherText: '' }])
+    );
+
+    expect(Object.keys(buildAskAnswers(questions as never, selections))).toEqual(['constructor', '__proto__']);
+    expect(ownValue({}, 'toString')).toBeUndefined();
   });
 });
 

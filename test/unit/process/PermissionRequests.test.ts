@@ -69,6 +69,17 @@ describe('PermissionRequests', () => {
     expect(log).toHaveBeenLastCalledWith(expect.stringContaining('auto-deny'));
   });
 
+  it('tells the user when a reply never reached the CLI', () => {
+    const reportError = vi.fn();
+    const reporting = new PermissionRequests({ write, broadcast, reportError });
+    reporting.register('c', ask);
+    writeOk = false;
+
+    expect(reporting.respond('c', ask.request_id, allow)).toBe(false);
+
+    expect(reportError).toHaveBeenCalledWith('c', expect.stringContaining('could not be sent'));
+  });
+
   it('respond returns false for an unknown or already-answered request', () => {
     expect(perms.respond('c', 'nope', allow)).toBe(false);
     perms.register('c', ask);

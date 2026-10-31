@@ -23,10 +23,18 @@ export function ExitPlanModeBlock({ tool, channelId, running }: { tool: ToolUseB
   const [draft, setDraft] = useState<PendingComment | null>(null);
   const [text, setText] = useState('');
 
-  const pending = permissions.pending.some((r) => r.toolUseId === tool.id);
+  const request = permissions.pending.find((r) => r.toolUseId === tool.id);
+  const pending = request !== undefined;
   const status = deriveExitPlanStatus({ ...(tool.result && { result: tool.result }), pending, running });
-  const plan = typeof tool.input.plan === 'string' ? tool.input.plan : '';
-  const planFilePath = typeof tool.input.planFilePath === 'string' ? tool.input.planFilePath : '';
+  // Streamed tool-use arguments can be incomplete; the pending request carries the full input.
+  const field = (key: string) => {
+    const own = tool.input[key];
+    if (typeof own === 'string') return own;
+    const fromRequest = request?.input[key];
+    return typeof fromRequest === 'string' ? fromRequest : '';
+  };
+  const plan = field('plan');
+  const planFilePath = field('planFilePath');
   const fileName = planFilePath.split(/[\\/]/).pop();
   const resultLine = RESULT_LINE[status];
 

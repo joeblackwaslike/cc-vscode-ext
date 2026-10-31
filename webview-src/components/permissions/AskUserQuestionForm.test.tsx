@@ -49,6 +49,31 @@ describe('AskUserQuestionForm', () => {
     expect(screen.getByRole('tab', { name: 'Pets' })).toHaveAttribute('aria-selected', 'true');
   });
 
+  test('a question whose text is an Object.prototype key renders and can be answered', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const { onDecision, user } = setup({
+      questions: [
+        {
+          question: 'constructor',
+          header: 'Proto',
+          multiSelect: false,
+          options: [
+            { label: 'A', description: '' },
+            { label: 'B', description: '' },
+          ],
+        },
+      ],
+    });
+    await user.click(screen.getByRole('radio', { name: /A/ }));
+    await user.click(screen.getByRole('button', { name: 'Submit answers' }));
+    expect(onDecision).toHaveBeenCalledWith(
+      expect.objectContaining({
+        behavior: 'allow',
+        updatedInput: expect.objectContaining({ answers: { constructor: 'A' } }),
+      })
+    );
+  });
+
   test('multi-select toggles checkboxes and does not auto-advance', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const { user } = setup();
