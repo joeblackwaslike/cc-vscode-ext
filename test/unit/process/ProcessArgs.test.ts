@@ -10,10 +10,18 @@ describe('buildArgs', () => {
     expect(args).toContain('--verbose');
   });
 
-  it('omits the removed --permission-prompt-tool flag in default mode', () => {
-    const args = buildArgs({});
+  it('passes --permission-prompt-tool stdio in every mode except bypassPermissions', () => {
+    for (const permissionMode of [undefined, 'default', 'plan', 'auto', 'acceptEdits'] as const) {
+      const args = buildArgs({ permissionMode });
+      const i = args.indexOf('--permission-prompt-tool');
+      expect(i).toBeGreaterThanOrEqual(0);
+      expect(args[i + 1]).toBe('stdio');
+    }
+  });
+
+  it('omits --permission-prompt-tool in bypassPermissions', () => {
+    const args = buildArgs({ permissionMode: 'bypassPermissions' });
     expect(args).not.toContain('--permission-prompt-tool');
-    expect(args).not.toContain('--permission-mode');
   });
 
   it('passes --permission-mode for non-default modes', () => {
@@ -21,14 +29,12 @@ describe('buildArgs', () => {
       const args = buildArgs({ permissionMode: mode });
       expect(args).toContain('--permission-mode');
       expect(args).toContain(mode);
-      expect(args).not.toContain('--permission-prompt-tool');
     }
   });
 
   it('does not add --permission-mode for default mode', () => {
     const args = buildArgs({ permissionMode: 'default' });
     expect(args).not.toContain('--permission-mode');
-    expect(args).not.toContain('--permission-prompt-tool');
   });
 
   it('adds --resume when provided', () => {

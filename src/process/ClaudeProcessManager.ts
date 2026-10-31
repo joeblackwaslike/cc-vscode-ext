@@ -49,6 +49,7 @@ export class ClaudeProcessManager {
   // Used to detect unexpected exits so the close handler can emit a synthetic
   // error and clear the webview's running state instead of leaving it stuck.
   private readonly resultReceived = new Set<string>();
+  private readonly exitListeners = new Set<(channelId: string) => void>();
   // Messages written to a channel while its process is still spawning are
   // buffered here and flushed to stdin once the process is registered.
   private readonly pendingWrites = new Map<string, unknown[]>();
@@ -292,6 +293,8 @@ export class ClaudeProcessManager {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
 
+    this.logger.info(`[channel:${channelId}] spawned pid=${String((proc as { pid?: number }).pid)} ${binary}`);
+
     const parser = new StreamJsonParser(
       (event) => {
         this.router.route(channelId, event);
@@ -387,14 +390,14 @@ export class ClaudeProcessManager {
         proc,
         `Claude process exited unexpectedly (code ${String(code)})${detail ? `: ${detail}` : ''}`
       );
-      this._cleanupIfCurrent(channelId, proc);
+      this._cleanupAndNotifyExit(channelId, proc);
     });
 
     proc.on('error', (err: unknown) => {
       this.logger.error(`[channel:${channelId}] process error`, err);
       this.exitedProcesses.add(proc);
       this._emitSyntheticErrorIfStuck(channelId, proc, `Claude process error: ${String(err)}`);
-      this._cleanupIfCurrent(channelId, proc);
+      this._cleanupAndNotifyExit(channelId, proc);
     });
 
     return proc;
@@ -404,17 +407,26 @@ export class ClaudeProcessManager {
    * Write a JSON line to the channel's stdin. Buffers while a launch is in
    * flight; a no-op for channels that are neither running nor launching.
    */
-  writeToChannel(channelId: string, data: unknown): void {
+  writeToChannel(channelId: string, data: unknown): boolean {
     const proc = this.processes.get(channelId);
     if (proc === undefined) {
-      if (!this.launching.has(channelId)) return;
+      if (!this.launching.has(channelId)) return false;
       const q = this.pendingWrites.get(channelId) ?? [];
       q.push(data);
       this.pendingWrites.set(channelId, q);
-      return;
+      return true;
     }
-    if (proc.stdin === null || !proc.stdin.writable) return;
+    if (proc.stdin === null || !proc.stdin.writable) return false;
     proc.stdin.write(JSON.stringify(data) + '\n');
+    return true;
+  }
+
+  /** Subscribe to the current process of any channel exiting. Returns an unsubscribe function. */
+  onChannelExit(listener: (channelId: string) => void): () => void {
+    this.exitListeners.add(listener);
+    return () => {
+      this.exitListeners.delete(listener);
+    };
   }
 
   private _drainPendingWrites(channelId: string): void {
@@ -523,6 +535,19 @@ export class ClaudeProcessManager {
     if (this.processes.get(channelId) !== proc) return;
     if (this.swapping.has(channelId)) return;
     this._teardownChannel(channelId);
+  }
+
+  private _cleanupAndNotifyExit(channelId: string, proc: ProcessHandle): void {
+    const isCurrent = this.processes.get(channelId) === proc && !this.swapping.has(channelId);
+    this._cleanupIfCurrent(channelId, proc);
+    if (!isCurrent) return;
+    for (const listener of this.exitListeners) {
+      try {
+        listener(channelId);
+      } catch (err) {
+        this.logger.error(`[channel:${channelId}] exit listener threw`, err);
+      }
+    }
   }
 
   /** Drop every per-channel record and unregister the channel from the router. */

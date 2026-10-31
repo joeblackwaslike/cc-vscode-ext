@@ -347,6 +347,58 @@ describe('ClaudeProcessManager', () => {
     expect(mockProcess.stdin.write).not.toHaveBeenCalled();
   });
 
+  it('writeToChannel returns false when stdin is not writable', async () => {
+    const { manager } = makeManager();
+    await manager.spawnClaude('ch-1', {});
+    mockProcess.stdin.writable = false;
+    expect(manager.writeToChannel('ch-1', { type: 'ping' })).toBe(false);
+  });
+
+  it('onChannelExit fires once when the current process closes', async () => {
+    const { manager } = makeManager();
+    const listener = vi.fn();
+    manager.onChannelExit(listener);
+    await manager.spawnClaude('ch-1', {});
+    triggerProcessEvent('close', 0);
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener).toHaveBeenCalledWith('ch-1');
+  });
+
+  it('a throwing exit listener does not prevent cleanup or later listeners', async () => {
+    const { manager, router } = makeManager();
+    const later = vi.fn();
+    manager.onChannelExit(() => { throw new Error('boom'); });
+    manager.onChannelExit(later);
+    const unregister = vi.spyOn(router, 'unregister');
+    await manager.spawnClaude('ch-1', {});
+    triggerProcessEvent('close', 0);
+    expect(unregister).toHaveBeenCalledWith('ch-1');
+    expect(later).toHaveBeenCalledWith('ch-1');
+  });
+
+  it('onChannelExit does not fire for a process replaced by swapChannel', async () => {
+    const { manager } = makeManager();
+    const listener = vi.fn();
+    manager.onChannelExit(listener);
+    await manager.spawnClaude('ch-1', {});
+    await manager.swapChannel('ch-1', {});
+    const oldClose = (mockProcess.on.mock.calls as [string, (...a: unknown[]) => void][])
+      .filter((c) => c[0] === 'close')[0];
+    oldClose[1](0);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('emits a synthetic error when the process dies mid-way through a second turn', async () => {
+    const { manager, router } = makeManager();
+    const handler = vi.fn();
+    router.register('ch-1', handler);
+    await manager.spawnClaude('ch-1', {});
+    triggerStdoutData(Buffer.from('{"type":"result"}\n'));
+    manager.sendUserMessage('ch-1', 'second');
+    triggerProcessEvent('close', 1);
+    expect(handler).toHaveBeenCalledWith(expect.objectContaining({ type: 'error' }));
+  });
+
   it('interruptClaude() sends SIGINT to the process', async () => {
     const { manager } = makeManager();
     await manager.spawnClaude('ch-1', {});
@@ -702,7 +754,7 @@ describe('ClaudeProcessManager', () => {
       // with the "closed" message oldProc's own 'close' handler would log,
       // so the "healthy" precondition for case 2 is explicit here rather
       // than merely implied by the test never triggering that handler.
-      expect(mockLogger.info).not.toHaveBeenCalled();
+      expect(mockLogger.info).not.toHaveBeenCalledWith(expect.stringContaining('closed'));
       expect(manager.hasChannel('ch-1')).toBe(false);
       expect(mockProcess.kill).toHaveBeenCalled();
       router.route('ch-1', { type: 'after-failed-swap' });

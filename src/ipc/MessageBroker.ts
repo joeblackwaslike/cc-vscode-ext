@@ -19,19 +19,21 @@ import type { ILogger } from '../process/ClaudeProcessManager';
 import { SessionRelayManager } from '../relay/SessionRelayManager';
 import { HandoffWatcher } from '../process/HandoffWatcher';
 import { ClaudeProjectReader } from '../sessions/ClaudeProjectReader';
+import { PermissionRequests, isCanUseToolRequest } from '../process/PermissionRequests';
 
 // ─── Dependency interfaces ─────────────────────────────────────────────────────
 
 export interface IChannelRouter {
   register(channelId: string, handler: (event: unknown) => void): void;
   unregister(channelId: string): void;
+  route(channelId: string, event: unknown): void;
 }
 
 export interface IClaudeProcessManager {
   spawnClaude(channelId: string, options: ProcessLaunchOptions, cwd?: string): Promise<void>;
   beginLaunch(channelId: string): void;
   cancelLaunch(channelId: string): void;
-  writeToChannel(channelId: string, data: unknown): void;
+  writeToChannel(channelId: string, data: unknown): boolean;
   sendUserMessage(channelId: string, text: string): void;
   interruptClaude(channelId: string): void;
   closeChannel(channelId: string): void;
@@ -134,6 +136,8 @@ export interface MessageBrokerServices {
   terminalLauncher?: ITerminalLauncher;
   commandRunner?: ICommandRunner;
   sessionRelayManager?: ISessionRelayManager;
+  /** Shared across every webview's broker so a prompt can be answered from any of them. */
+  permissionRequests?: PermissionRequests;
   workspacePath?: string;
   /** Returns the mode to switch to when the user exits plan mode. */
   getExitPlanModeFallback?: () => PermissionMode;
@@ -150,6 +154,7 @@ export class MessageBroker {
   /** Correlates control_request/control_response over the CLI stdin/stdout. */
   private readonly control: ControlRequestManager;
   private readonly sessionRelayManager: ISessionRelayManager;
+  private readonly permissionRequests: PermissionRequests;
   /** Per-channel counter, bumped on every REAL user-submitted turn. Lets an
    * in-flight post-result usage refresh detect that a genuinely new turn
    * started while it was awaiting its control round-trip, and drop its
@@ -182,9 +187,33 @@ export class MessageBroker {
     this.sessionRelayManager =
       this.services.sessionRelayManager ??
       new SessionRelayManager(this.processManager, this.control, this.viewManager, this.logger);
+    this.permissionRequests =
+      this.services.permissionRequests ??
+      new PermissionRequests({
+        write: (c, d) => this.processManager.writeToChannel(c, d),
+        broadcast: (m) => this.viewManager.broadcastMessage(m),
+        log: (m) => this.logger.warn(m),
+        reportError: (c, message) => this.channelRouter.route(c, { type: 'error', message }),
+      });
     webview.onDidReceiveMessage((raw: unknown) => {
       void this.handleMessage(raw as FromWebviewMessage);
     });
+  }
+
+  /** Record a mode change that already happened (or is being requested) and
+   * propagate it to the views, relay launch options and permission coordinator.
+   * Sends no control request. */
+  private adoptPermissionMode(channelId: string, mode: PermissionMode): void {
+    this.currentPermissionMode = mode;
+    this.viewManager.setPermissionMode(mode);
+    this.viewManager.broadcastSessionStates();
+    this.noteChannelMode(channelId, mode);
+  }
+
+  /** Per-channel half of a mode change: relay launch options and the permission coordinator. */
+  private noteChannelMode(channelId: string, mode: PermissionMode): void {
+    this.sessionRelayManager.updateLaunchOptions(channelId, { permissionMode: mode });
+    this.permissionRequests.noteMode(channelId, mode);
   }
 
   /** Fire a control request, swallowing failures into the log (live set_*). */
@@ -237,7 +266,18 @@ export class MessageBroker {
         case 'interrupt_claude':
         case 'cancel_request':
           this.processManager.interruptClaude(msg.channelId);
+          this.permissionRequests.cancelChannel(msg.channelId);
           return;
+        case 'permission_response': {
+          const answered = this.permissionRequests.respond(msg.channelId, msg.requestId, msg.decision);
+          if (answered && msg.decision.behavior === 'allow') {
+            const setMode = msg.decision.updatedPermissions?.find(
+              (u) => u.type === 'setMode' && u.destination === 'session' && u.mode !== undefined,
+            );
+            if (setMode?.mode) this.adoptPermissionMode(msg.channelId, setMode.mode);
+          }
+          return;
+        }
         case 'control_request':
           this.turnGenerations.set(
             msg.channelId,
@@ -257,15 +297,10 @@ export class MessageBroker {
           if (msg.mode !== 'plan' && prev === 'plan' && this.services.getExitPlanModeFallback) {
             targetMode = this.services.getExitPlanModeFallback();
           }
-          this.currentPermissionMode = targetMode;
-          this.viewManager.setPermissionMode(targetMode);
-          this.viewManager.broadcastSessionStates();
+          this.adoptPermissionMode(msg.channelId, targetMode);
           this.sendControl(msg.channelId, 'set_permission_mode', {
             mode: targetMode,
             userInitiated: true,
-          });
-          this.sessionRelayManager.updateLaunchOptions(msg.channelId, {
-            permissionMode: targetMode,
           });
           return;
         }
@@ -392,6 +427,7 @@ export class MessageBroker {
             authenticated: false,
           };
           void this.webview.postMessage(response);
+          this.permissionRequests.replayTo((m) => void this.webview.postMessage(m));
           return;
         }
 
@@ -535,8 +571,10 @@ export class MessageBroker {
       ...(msg.model !== undefined ? { model: msg.model } : {}),
     };
 
+    this.logger.info(`[MessageBroker] launch_claude ${channelId} resume=${options.resume ?? '-'} mode=${options.permissionMode ?? 'default'}`);
     this.processManager.beginLaunch(channelId);
     this.sessionRelayManager.registerLaunch(channelId, options, msg.cwd);
+    this.permissionRequests.noteMode(channelId, options.permissionMode ?? 'default');
     if (options.resume) {
       this.startHandoffWatcher(channelId, options.resume);
       this.launchesAwaitingReplay.add(channelId);
@@ -567,7 +605,35 @@ export class MessageBroker {
         this.control.handleResponse(event as ControlResponseEvent);
         return;
       }
+      if (typed.type === 'control_cancel_request') {
+        const requestId = (event as { request_id?: unknown }).request_id;
+        if (typeof requestId === 'string') this.permissionRequests.cancel(channelId, requestId);
+        return;
+      }
       const relaying = this.sessionRelayManager.isRelaying(channelId);
+      if (isCanUseToolRequest(event)) {
+        this.logger.info(`[MessageBroker] can_use_tool ${event.request.tool_name} on ${channelId}${relaying ? ' (relaying, denied)' : ''}`);
+        if (relaying) {
+          this.permissionRequests.denyWithoutPrompt(channelId, event, 'Tools are unavailable during session handoff');
+        } else {
+          this.permissionRequests.register(channelId, event);
+        }
+        return;
+      }
+      if (typed.type === 'control_request') {
+        this.logger.info(`[MessageBroker] ignoring unhandled control_request on ${channelId}`);
+        return;
+      }
+      if (typed.type === 'system') {
+        const mode = (event as { permissionMode?: unknown }).permissionMode;
+        if (typeof mode === 'string') {
+          // The picker mode is broker-wide, but relay options and the plan-exit
+          // prior mode are per channel, so a channel's own transition is recorded
+          // even when another channel already moved the broker-wide value.
+          if (mode !== this.currentPermissionMode) this.adoptPermissionMode(channelId, mode as PermissionMode);
+          else this.noteChannelMode(channelId, mode as PermissionMode);
+        }
+      }
       if (!relaying) {
         this.viewManager.broadcastMessage({
           type: 'request',
@@ -629,6 +695,7 @@ export class MessageBroker {
     // Reject any in-flight control requests immediately instead of letting them
     // hang until their 10s timeout after the channel is gone.
     this.control.dispose();
+    this.permissionRequests.cancelChannel(msg.channelId);
     this.turnGenerations.delete(msg.channelId);
     this.handoffWatchers.get(msg.channelId)?.dispose();
     this.handoffWatchers.delete(msg.channelId);

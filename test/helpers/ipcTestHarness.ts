@@ -193,6 +193,7 @@ export interface MockLogger {
 export interface MockChannelRouter {
   register: ReturnType<typeof vi.fn>;
   unregister: ReturnType<typeof vi.fn>;
+  route: ReturnType<typeof vi.fn>;
 }
 
 export interface IpcTestHarness {
@@ -281,6 +282,7 @@ export function createIpcTestHarness(): IpcTestHarness {
   const channelRouter: MockChannelRouter = {
     register: vi.fn(),
     unregister: vi.fn(),
+    route: vi.fn(),
   };
 
   const logger: MockLogger = {

@@ -4,6 +4,9 @@ import type {
   ThinkingLevel,
   ContextUsage,
   ContextCategory,
+  PermissionRequest,
+  PermissionDecision,
+  PermissionUpdate,
 } from '../../src/types/ipc';
 import type { ClaudeStreamEvent } from '../../src/types/process';
 import type { SessionInfo, ConversationState, SessionGroup } from '../../src/types/session';
@@ -20,6 +23,9 @@ export type {
   ThinkingLevel,
   ContextUsage,
   ContextCategory,
+  PermissionRequest,
+  PermissionDecision,
+  PermissionUpdate,
 };
 
 let _api: ReturnType<typeof acquireVsCodeApi> | null = null;

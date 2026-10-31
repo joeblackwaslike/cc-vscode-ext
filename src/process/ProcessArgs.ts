@@ -34,8 +34,9 @@ export interface LaunchOptions {
  * Builds the argument array for spawning the claude CLI.
  *
  * The CLI is always started in stream-json mode (bidirectional NDJSON over stdin/stdout).
- * Default permission mode omits `--permission-mode` entirely and relies on the CLI's own
- * default prompt handling; `--permission-prompt-tool` is no longer a supported flag.
+ * Default permission mode omits `--permission-mode` entirely. `--permission-prompt-tool stdio`
+ * is passed in every mode except bypassPermissions so permission prompts and the interactive
+ * tools (AskUserQuestion, ExitPlanMode) are delegated back through stdio; the CLI (2.1.x) accepts it.
  */
 export function buildArgs(options: LaunchOptions): string[] {
   const args: string[] = [
@@ -50,6 +51,10 @@ export function buildArgs(options: LaunchOptions): string[] {
 
   if (options.resume) {
     args.push('--resume', options.resume);
+  }
+
+  if (options.permissionMode !== 'bypassPermissions') {
+    args.push('--permission-prompt-tool', 'stdio');
   }
 
   if (options.permissionMode && options.permissionMode !== 'default') {

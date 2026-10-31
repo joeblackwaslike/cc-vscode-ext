@@ -18,6 +18,7 @@ import { SessionListProvider } from './views/SessionListProvider';
 import { ProposedDiffTracker } from './diff/ProposedDiffTracker';
 import { DiffManager } from './diff/DiffManager';
 import { MessageBroker } from './ipc/MessageBroker';
+import { PermissionRequests } from './process/PermissionRequests';
 import { CommandRegistry } from './commands/CommandRegistry';
 import { AtMentionHandler } from './mentions/AtMentionHandler';
 import { TerminalLauncher } from './terminal/TerminalLauncher';
@@ -141,6 +142,16 @@ export function activate(context: vscode.ExtensionContext): void {
     },
   };
 
+  const permissionRequests = new PermissionRequests({
+    write: (c, d) => processManager.writeToChannel(c, d),
+    broadcast: (m) => viewManager.broadcastMessage(m),
+    log: (m) => logger.warn(m),
+    reportError: (c, message) => channelRouter.route(c, { type: 'error', message }),
+  });
+  context.subscriptions.push({
+    dispose: processManager.onChannelExit((id) => permissionRequests.cancelChannel(id)),
+  });
+
   const makeBroker = (webview: ReturnType<typeof adaptWebview>): void => {
     new MessageBroker(
       processManager,
@@ -159,6 +170,7 @@ export function activate(context: vscode.ExtensionContext): void {
         terminalLauncher,
         commandRunner,
         workspacePath,
+        permissionRequests,
         getExitPlanModeFallback: () => {
           const val =
             vscode.workspace.getConfiguration('clawdCode').get<string>('exitPlanModeFallback') ??

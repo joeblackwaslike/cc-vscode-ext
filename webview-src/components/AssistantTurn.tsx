@@ -1,6 +1,8 @@
 import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { renderMarkdown } from '../lib/markdown';
+import { AskUserQuestionBlock } from './AskUserQuestionBlock';
+import { ExitPlanModeBlock } from './ExitPlanModeBlock';
 import { ToolCall } from './ToolCall';
 import { CommandOutput } from './CommandOutput';
 import { FocusSummaryRow } from './FocusSummaryRow';
@@ -121,6 +123,12 @@ function renderBlock(block: AssistantBlock, key: number, channelId: string, runn
   }
   if (block.type === 'thinking') {
     return <ThinkingSummary key={key} text={block.text} running={running} />;
+  }
+  if (block.name === 'AskUserQuestion') {
+    return <AskUserQuestionBlock key={key} tool={block} channelId={channelId} running={running} />;
+  }
+  if (block.name === 'ExitPlanMode') {
+    return <ExitPlanModeBlock key={key} tool={block} channelId={channelId} running={running} />;
   }
   return <ToolCall key={key} tool={block} />;
 }
