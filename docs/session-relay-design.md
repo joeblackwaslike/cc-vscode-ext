@@ -165,11 +165,11 @@ toSessionId }` — lets the webview show that a relay happened (e.g. a divider i
 ### Real risk to design around: the permission-prompt race
 
 Tool-use permission prompts travel over the same stdio control channel the CLI uses for
-`get_context_usage` and friends (`tool_permission_request` in `src/types/ipc.ts:272`, correlated
+`get_context_usage` and friends (`PermissionRequestMessage` in `src/types/ipc.ts:615`, correlated
 via request IDs by `ControlRequestManager` in `src/process/ControlRequest.ts`); see
 `src/process/ProcessArgs.ts` for the current launch-flag contract.
 
-If a relay fires while a `tool_permission_request` is in flight on the _old_ process, and
+If a relay fires while a `permission_request` is in flight on the _old_ process, and
 `swapChannel` force-closes that process, the pending control request is orphaned — the CLI is
 waiting on a stdio reply that will never come, and whatever tool call triggered the prompt is
 left in limbo. `SessionRelayManager.relay()` must check `ControlRequestManager` for a pending
@@ -192,7 +192,7 @@ above depends on it existing.
 Unit-test `SessionRelayManager`'s `onContextUsage`/threshold logic against a fake
 `IClaudeProcessManager` (the codebase already uses interface-based dependency injection
 throughout `MessageBroker` for exactly this purpose — see `IClaudeProcessManager` in
-`src/ipc/MessageBroker.ts:25`). Feed synthetic `percentage` values directly into the fake rather
+`src/ipc/MessageBroker.ts:31`). Feed synthetic `percentage` values directly into the fake rather
 than inflating a real transcript to hit a threshold — `get_context_usage` is already an exact
 number, so there's no estimation logic to exercise the way anti-compact's `chars/4` proxy would
 require.
@@ -200,7 +200,7 @@ require.
 Integration-level verification (once implemented) should additionally exercise the
 permission-prompt race directly: start a relay-eligible channel, issue a tool call that requires
 approval, fire a relay trigger mid-prompt, and assert the relay defers rather than orphaning the
-pending `tool_permission_request`.
+pending `permission_request`.
 
 ## Follow-up work (filed post-implementation)
 

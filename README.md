@@ -25,6 +25,9 @@ and as a usable extension in its own right.
 - **Drop-in command compatibility** — when the official Anthropic extension isn't installed,
   Clawd Code answers its command IDs and keybindings too, so existing muscle memory and saved
   workflows keep working.
+- **Plan mode and permission prompts** — review a proposed plan and approve or send it back for
+  changes, answer `AskUserQuestion` prompts inline, and approve or deny tool permission requests
+  without leaving the conversation.
 
 ## Requirements
 
