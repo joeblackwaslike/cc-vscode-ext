@@ -93,6 +93,7 @@ describe('MessageBroker', () => {
       h.dispatch({ type: 'close_channel', channelId: 'ch-1' });
       await new Promise((resolve) => setTimeout(resolve, 0));
       expect(h.processManager.spawnClaude).not.toHaveBeenCalled();
+      expect(h.processManager.cancelLaunch).toHaveBeenCalledWith('ch-1');
     });
 
     it('updates session state to running', () => {

@@ -30,6 +30,7 @@ export interface IChannelRouter {
 export interface IClaudeProcessManager {
   spawnClaude(channelId: string, options: ProcessLaunchOptions, cwd?: string): Promise<void>;
   beginLaunch(channelId: string): void;
+  cancelLaunch(channelId: string): void;
   writeToChannel(channelId: string, data: unknown): void;
   sendUserMessage(channelId: string, text: string): void;
   interruptClaude(channelId: string): void;
@@ -546,7 +547,10 @@ export class MessageBroker {
       } finally {
         this.launchesAwaitingReplay.delete(channelId);
       }
-      if (this.cancelledLaunches.delete(channelId)) return;
+      if (this.cancelledLaunches.delete(channelId)) {
+        this.processManager.cancelLaunch(channelId);
+        return;
+      }
     }
 
     // Forward stream events to all webviews. control_response lines are private

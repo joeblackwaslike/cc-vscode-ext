@@ -312,6 +312,20 @@ describe('ClaudeProcessManager', () => {
     expect(mockProcess.stdin.write).not.toHaveBeenCalled();
   });
 
+  it('cancelLaunch() clears launch state so a relaunch of the same channel survives', async () => {
+    const { manager } = makeManager();
+    manager.beginLaunch('ch-1');
+    manager.writeToChannel('ch-1', { type: 'stale' });
+    manager.closeChannel('ch-1');
+    manager.cancelLaunch('ch-1');
+
+    await manager.spawnClaude('ch-1', {});
+
+    expect(manager.hasChannel('ch-1')).toBe(true);
+    expect(mockProcess.kill).not.toHaveBeenCalled();
+    expect(mockProcess.stdin.write).not.toHaveBeenCalled();
+  });
+
   it('buffers writes made while a launch is in flight and delivers them in order', async () => {
     const { manager } = makeManager();
     manager.beginLaunch('ch-1');

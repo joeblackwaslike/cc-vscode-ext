@@ -124,6 +124,18 @@ export class ClaudeProcessManager {
   }
 
   /**
+   * Abandon a launch that was begun with beginLaunch() but will never reach
+   * spawnClaude() (its tab closed first). Drops the launching mark, any
+   * buffered writes and a pending close request so a later launch of the same
+   * channel id starts clean. No-op once a process exists.
+   */
+  cancelLaunch(channelId: string): void {
+    if (this.processes.has(channelId) || this.retrying.has(channelId)) return;
+    this.closeRequested.delete(channelId);
+    this._teardownChannel(channelId);
+  }
+
+  /**
    * Atomically replace the process behind an already-active channelId with a
    * freshly spawned one. Guarantees, across the whole swap window (including
    * the `await` inside `_launchProcess` while the binary resolves — which can
