@@ -914,6 +914,69 @@ describe('permission prompt routing', () => {
     expect(noteMode).toHaveBeenCalledWith('b', 'plan');
   });
 
+  describe('channel ownership', () => {
+    it('dispose() closes every channel the broker launched and cancels their prompts', () => {
+      const { h, broker } = makeBrokerWithPermissions();
+      const routedA = launch(h, 'a', 0);
+      launch(h, 'b', 1);
+      routedA(canUseTool());
+      h.viewManager.broadcastMessage.mockClear();
+
+      broker.dispose();
+
+      expect(h.processManager.closeChannel).toHaveBeenCalledWith('a');
+      expect(h.processManager.closeChannel).toHaveBeenCalledWith('b');
+      const cancelled = h.viewManager.broadcastMessage.mock.calls
+        .map(([m]) => m as { type: string; channelId?: string })
+        .filter((m) => m.type === 'permission_cancelled');
+      expect(cancelled.map((m) => m.channelId)).toEqual(['a']);
+    });
+
+    it('dispose() does not close a channel the user already closed', () => {
+      const { h, broker } = makeBrokerWithPermissions();
+      launch(h, 'a', 0);
+      launch(h, 'b', 1);
+      h.dispatch({ type: 'close_channel', channelId: 'a' });
+      h.processManager.closeChannel.mockClear();
+
+      broker.dispose();
+
+      expect(h.processManager.closeChannel.mock.calls.map(([id]) => id)).toEqual(['b']);
+    });
+
+    it('a re-mounted webview closes the channels its previous incarnation launched and gets no stale prompts', async () => {
+      const { h } = makeBrokerWithPermissions();
+      const routed = launch(h, 'a');
+      routed(canUseTool());
+      h.webview.postMessage.mockClear();
+
+      h.dispatch({ type: 'get_auth_status' });
+
+      await vi.waitFor(() => expect(h.processManager.closeChannel).toHaveBeenCalledWith('a'));
+      await vi.waitFor(() =>
+        expect(h.webview.postMessage).toHaveBeenCalledWith(
+          expect.objectContaining({ type: 'get_auth_status_response' })
+        )
+      );
+      expect(h.webview.postMessage).not.toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'permission_request' })
+      );
+    });
+
+    it('the first mount of a webview closes nothing', async () => {
+      const { h } = makeBrokerWithPermissions();
+
+      h.dispatch({ type: 'get_auth_status' });
+
+      await vi.waitFor(() =>
+        expect(h.webview.postMessage).toHaveBeenCalledWith(
+          expect.objectContaining({ type: 'get_auth_status_response' })
+        )
+      );
+      expect(h.processManager.closeChannel).not.toHaveBeenCalled();
+    });
+  });
+
   it('can_use_tool control_request is registered and never broadcast as a request event', () => {
     const { h } = makeBrokerWithPermissions();
     const routed = launch(h);
@@ -1004,17 +1067,6 @@ describe('permission prompt routing', () => {
     h.dispatch({ type: 'interrupt_claude', channelId: 'ch-1' });
     expect(h.viewManager.broadcastMessage).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'permission_cancelled', channelId: 'ch-1', requestIds: ['req-1'] }),
-    );
-  });
-
-  it('get_auth_status replays pending prompts to the requesting webview', async () => {
-    const { h } = makeBrokerWithPermissions();
-    const routed = launch(h);
-    routed(canUseTool());
-    h.clearMessages();
-    h.dispatch({ type: 'get_auth_status' });
-    await vi.waitFor(() =>
-      expect(h.postedMessages.some((m) => m.type === 'permission_request')).toBe(true),
     );
   });
 });

@@ -161,6 +161,10 @@ export class MessageBroker {
    * relay notification instead of racing that new turn (see
    * `refreshContextUsage`). */
   private readonly turnGenerations = new Map<string, number>();
+  // Channels this broker launched and has not closed. Their lifetime is tied to the
+  // webview that owns the tabs: when that webview goes away (dispose) or is
+  // re-created (a second get_auth_status), nothing can show or answer them any more.
+  private readonly ownedChannels = new Set<string>();
   // Channels still replaying history before spawn; a close arriving in that
   // window cancels the launch so a closed tab never starts a process.
   private readonly launchesAwaitingReplay = new Set<string>();
@@ -421,13 +425,16 @@ export class MessageBroker {
 
         // ─── Auth ───────────────────────────────────────────────────────
         case 'get_auth_status': {
+          // The webview mounts once per incarnation and tab state is not persisted, so
+          // any channel still owned here belongs to a previous incarnation: close it
+          // before the new UI auto-opens (and resumes) the last session.
+          this.closeOwnedChannels();
           await this.services.authManager?.ensureChecked();
           const response = this.services.authManager?.getAuthStatusResponse() ?? {
             type: 'get_auth_status_response' as const,
             authenticated: false,
           };
           void this.webview.postMessage(response);
-          this.permissionRequests.replayTo((m) => void this.webview.postMessage(m));
           return;
         }
 
@@ -572,6 +579,7 @@ export class MessageBroker {
     };
 
     this.logger.info(`[MessageBroker] launch_claude ${channelId} resume=${options.resume ?? '-'} mode=${options.permissionMode ?? 'default'}`);
+    this.ownedChannels.add(channelId);
     this.processManager.beginLaunch(channelId);
     this.sessionRelayManager.registerLaunch(channelId, options, msg.cwd);
     this.permissionRequests.noteMode(channelId, options.permissionMode ?? 'default');
@@ -689,7 +697,19 @@ export class MessageBroker {
     this.viewManager.broadcastSessionStates();
   }
 
+  /** Close every channel this broker launched; call when its webview is disposed. */
+  dispose(): void {
+    this.closeOwnedChannels();
+  }
+
+  private closeOwnedChannels(): void {
+    for (const channelId of [...this.ownedChannels]) {
+      this.handleCloseChannel({ type: 'close_channel', channelId });
+    }
+  }
+
   private handleCloseChannel(msg: Extract<FromWebviewMessage, { type: 'close_channel' }>): void {
+    this.ownedChannels.delete(msg.channelId);
     if (this.launchesAwaitingReplay.has(msg.channelId)) this.cancelledLaunches.add(msg.channelId);
     this.processManager.closeChannel(msg.channelId);
     // Reject any in-flight control requests immediately instead of letting them

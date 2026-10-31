@@ -20,7 +20,7 @@ export class SessionListProvider implements vscode.WebviewViewProvider {
     private readonly extensionUri: vscode.Uri,
     private readonly htmlBuilder: HtmlBuilder,
     private readonly viewManager: ViewManager,
-    private readonly makeBroker: (webview: IWebview) => void,
+    private readonly makeBroker: (webview: IWebview) => { dispose(): void } | undefined,
     private readonly logger: ILogger,
   ) {}
 
@@ -41,9 +41,10 @@ export class SessionListProvider implements vscode.WebviewViewProvider {
     });
 
     this.viewManager.register(webviewView.webview as never);
-    this.makeBroker(adaptWebview(webviewView.webview));
+    const broker = this.makeBroker(adaptWebview(webviewView.webview));
 
     webviewView.onDidDispose(() => {
+      broker?.dispose();
       this.viewManager.unregister(webviewView.webview as never);
       this.view = undefined;
       this.logger.info('SessionListProvider view disposed');

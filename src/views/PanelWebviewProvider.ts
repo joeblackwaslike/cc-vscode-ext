@@ -19,7 +19,7 @@ export class PanelWebviewProvider {
     private readonly extensionUri: vscode.Uri,
     private readonly htmlBuilder: HtmlBuilder,
     private readonly viewManager: ViewManager,
-    private readonly makeBroker: (webview: IWebview) => void,
+    private readonly makeBroker: (webview: IWebview) => { dispose(): void } | undefined,
     private readonly sessionHistory: SessionHistory,
     private readonly logger: ILogger,
   ) {}
@@ -60,10 +60,11 @@ export class PanelWebviewProvider {
     panel.webview.html = this.htmlBuilder.build(panel.webview, options);
 
     this.viewManager.register(panel.webview as never);
-    this.makeBroker(adaptWebview(panel.webview));
+    const broker = this.makeBroker(adaptWebview(panel.webview));
     this.panels.add(panel);
 
     panel.onDidDispose(() => {
+      broker?.dispose();
       this.viewManager.unregister(panel.webview as never);
       this.panels.delete(panel);
       this.logger.info('WebviewPanel disposed');

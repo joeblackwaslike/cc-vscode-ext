@@ -6,7 +6,7 @@ import {
   isCanUseToolRequest,
   type CanUseToolEvent,
 } from '../../../src/process/PermissionRequests';
-import type { PermissionDecision, ToWebviewMessage } from '../../../src/types/ipc';
+import type { PermissionDecision } from '../../../src/types/ipc';
 
 const fixtures = JSON.parse(
   readFileSync(join(__dirname, '../../../webview-src/lib/__fixtures__/permission-protocol.json'), 'utf8'),
@@ -100,9 +100,7 @@ describe('PermissionRequests', () => {
       requestIds: [ask.request_id],
       toolUseIds: [ask.request.tool_use_id],
     });
-    const post = vi.fn();
-    perms.replayTo(post);
-    expect(post).not.toHaveBeenCalled();
+    expect(perms.pendingFor('c')).toEqual([]);
   });
 
   it('cancelChannel drops only that channel and broadcasts requestIds and toolUseIds', () => {
@@ -116,10 +114,8 @@ describe('PermissionRequests', () => {
       requestIds: [ask.request_id],
       toolUseIds: [ask.request.tool_use_id],
     });
-    const post = vi.fn();
-    perms.replayTo(post);
-    expect(post).toHaveBeenCalledTimes(1);
-    expect((post.mock.calls[0][0] as ToWebviewMessage).type).toBe('permission_request');
+    expect(perms.pendingFor('a')).toEqual([]);
+    expect(perms.pendingFor('b')).toHaveLength(1);
 
     broadcast.mockClear();
     perms.cancelChannel('a');
@@ -139,17 +135,16 @@ describe('PermissionRequests', () => {
       requestIds: [ask.request_id],
       toolUseIds: [ask.request.tool_use_id],
     });
-    const post = vi.fn();
-    perms.replayTo(post);
-    expect(post).toHaveBeenCalledTimes(1);
+    expect(perms.pendingFor('a')).toHaveLength(1);
   });
 
-  it('replayTo posts every pending request', () => {
+  it('pendingFor returns only that channel\'s unanswered requests', () => {
     perms.register('a', ask);
     perms.register('b', exitPlan);
-    const post = vi.fn();
-    perms.replayTo(post);
-    expect(post).toHaveBeenCalledTimes(2);
+    expect(perms.pendingFor('a').map((r) => r.requestId)).toEqual([ask.request_id]);
+    expect(perms.pendingFor('nope')).toEqual([]);
+    perms.respond('a', ask.request_id, allow);
+    expect(perms.pendingFor('a')).toEqual([]);
   });
 
   it('ExitPlanMode requests carry the mode in effect before plan', () => {

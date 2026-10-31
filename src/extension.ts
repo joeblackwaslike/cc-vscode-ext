@@ -152,7 +152,7 @@ export function activate(context: vscode.ExtensionContext): void {
     dispose: processManager.onChannelExit((id) => permissionRequests.cancelChannel(id)),
   });
 
-  const makeBroker = (webview: ReturnType<typeof adaptWebview>): void => {
+  const makeBroker = (webview: ReturnType<typeof adaptWebview>): MessageBroker =>
     new MessageBroker(
       processManager,
       sessionManager,
@@ -179,7 +179,6 @@ export function activate(context: vscode.ExtensionContext): void {
         },
       }
     );
-  };
 
   const panelProvider = new PanelWebviewProvider(
     context.extensionUri,

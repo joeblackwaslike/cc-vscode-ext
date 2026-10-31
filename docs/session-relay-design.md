@@ -183,11 +183,10 @@ prompt on that channel before swapping, and if one exists, defer the relay until
 `result` event (i.e. until the current turn — including any pending permission round-trip —
 actually completes) rather than force-closing mid-prompt.
 
-`PermissionRequests` does not currently expose a "has pending prompts for this channel" query.
-Its `pending` map is keyed by `requestId`, but every entry carries its `channelId`
-(`cancelChannel` already filters on it), so the query is a small addition rather than new
-bookkeeping. The `writing-plans` pass must add it explicitly rather than leave it implicit,
-since the design above depends on it existing.
+`PermissionRequests.pendingFor(channelId)` returns a channel's unanswered prompts, which is the
+query that guard needs. The guard itself is not wired into `SessionRelayManager.relay()` yet; the
+`writing-plans` pass must add it explicitly rather than leave it implicit, since the design above
+depends on it.
 
 ### Verification approach
 
