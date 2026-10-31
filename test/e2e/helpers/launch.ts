@@ -110,7 +110,10 @@ export async function launchVSCode(opts: LaunchOptions = {}): Promise<LaunchResu
 
   const target = opts.target ?? (process.env.E2E_TARGET as 'dev' | 'vsix' | undefined) ?? 'dev';
   const codeBin = findVSCodeCode();
-  const userDataDir = path.join(os.tmpdir(), `vscode-e2e-${randomUUID()}`);
+  // VS Code binds a unix socket at <user-data-dir>/<ver>-main.sock; macOS caps that path at
+  // 103 chars and os.tmpdir() (/var/folders/...) plus a full UUID overruns it, so main dies.
+  const baseDir = process.platform === 'win32' ? os.tmpdir() : '/tmp';
+  const userDataDir = path.join(baseDir, `vscode-e2e-${randomUUID().slice(0, 8)}`);
   await fsp.mkdir(path.join(userDataDir, 'extensions'), { recursive: true });
 
   const cdpPort = await findFreePort();

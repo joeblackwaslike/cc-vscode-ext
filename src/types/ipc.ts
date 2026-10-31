@@ -298,12 +298,33 @@ export interface AskDebuggerHelpMessage { type: 'ask_debugger_help'; content: st
 
 // ─── Tool permissions ────────────────────────────────────────────────────────
 
-export interface ToolPermissionRequestMessage {
-  type: 'tool_permission_request';
+export interface PermissionUpdate {
+  type: string;
+  mode?: PermissionMode;
+  destination?: string;
+  [key: string]: unknown;
+}
+
+export type PermissionDecision =
+  | { behavior: 'allow'; updatedInput: Record<string, unknown>; updatedPermissions?: PermissionUpdate[] }
+  | { behavior: 'deny'; message: string };
+
+export interface PermissionRequest {
   channelId: string;
   requestId: string;
   toolName: string;
-  toolInput: Record<string, unknown>;
+  toolUseId: string | undefined;
+  input: Record<string, unknown>;
+  suggestions: PermissionUpdate[] | undefined;
+  description: string | undefined;
+  priorMode: PermissionMode | undefined;
+}
+
+export interface PermissionResponseMessage {
+  type: 'permission_response';
+  channelId: string;
+  requestId: string;
+  decision: PermissionDecision;
 }
 
 export interface ListCommandsRequestMessage {
@@ -405,7 +426,7 @@ export type FromWebviewMessage =
   | DismissTerminalBannerMessage
   | ShowClaudeTerminalSettingMessage
   | AskDebuggerHelpMessage
-  | ToolPermissionRequestMessage
+  | PermissionResponseMessage
   | ListCommandsRequestMessage;
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -591,6 +612,21 @@ export interface ListCommandsResponseMessage {
   commands: Array<{ name: string; namespace?: string; description?: string }>;
 }
 
+export interface PermissionRequestMessage { type: 'permission_request'; request: PermissionRequest }
+export interface PermissionResolvedMessage {
+  type: 'permission_resolved';
+  channelId: string;
+  requestId: string;
+  toolUseId: string | undefined;
+  decision: PermissionDecision;
+}
+export interface PermissionCancelledMessage {
+  type: 'permission_cancelled';
+  channelId: string;
+  requestIds: string[];
+  toolUseIds: string[];
+}
+
 /** Union of all messages sent from the extension host to the webview. */
 export type ToWebviewMessage =
   | StreamRequestMessage
@@ -621,4 +657,7 @@ export type ToWebviewMessage =
   | RunCommandOutputMessage
   | RunCommandDoneMessage
   | HandoffPromptMessage
-  | ListCommandsResponseMessage;
+  | ListCommandsResponseMessage
+  | PermissionRequestMessage
+  | PermissionResolvedMessage
+  | PermissionCancelledMessage;

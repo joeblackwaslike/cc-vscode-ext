@@ -13,6 +13,10 @@ vi.mock('vscode', () => ({
 }));
 import { createIpcTestHarness, createMockServices } from '../../helpers/ipcTestHarness';
 import { MessageBroker } from '../../../src/ipc/MessageBroker';
+import { PermissionRequests } from '../../../src/process/PermissionRequests';
+import type { PermissionMode } from '../../../src/process/ProcessArgs';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 function makebroker() {
   const h = createIpcTestHarness();
@@ -849,5 +853,154 @@ describe('SessionRelayManager wiring', () => {
       expect(sessionRelayManager.enqueueIfRelaying).toHaveBeenCalledWith('ch-1', 'hello');
       expect(h.processManager.sendUserMessage).toHaveBeenCalledWith('ch-1', 'hello');
     });
+  });
+});
+
+describe('permission prompt routing', () => {
+  const fixtures = JSON.parse(
+    readFileSync(resolve(__dirname, '../../../webview-src/lib/__fixtures__/permission-protocol.json'), 'utf8'),
+  ) as { statusEvent: Record<string, unknown> };
+
+  const canUseTool = (id = 'req-1', toolName = 'Bash') => ({
+    type: 'control_request',
+    request_id: id,
+    request: { subtype: 'can_use_tool', tool_name: toolName, input: { command: 'ls' }, tool_use_id: 'tu-1' },
+  });
+
+  function makeBrokerWithPermissions(
+    h = createIpcTestHarness(),
+    opts: { isRelaying?: boolean; fallback?: () => PermissionMode } = {},
+  ) {
+    const sessionRelayManager = {
+      registerLaunch: vi.fn(),
+      unregisterChannel: vi.fn(),
+      onContextUsage: vi.fn(),
+      handleStreamEvent: vi.fn(),
+      getThreshold: vi.fn(() => 70),
+      setThreshold: vi.fn(),
+      isRelaying: vi.fn(() => opts.isRelaying ?? false),
+      enqueueIfRelaying: vi.fn(() => false),
+      updateLaunchOptions: vi.fn(),
+    };
+    h.processManager.writeToChannel.mockReturnValue(true);
+    const permissionRequests = new PermissionRequests({
+      write: (c, d) => h.processManager.writeToChannel(c, d) as boolean,
+      broadcast: (m) => h.viewManager.broadcastMessage(m),
+    });
+    const broker = new MessageBroker(
+      h.processManager, h.sessionManager, h.diffManager, h.viewManager,
+      h.channelRouter, h.webview, h.logger,
+      { sessionRelayManager, permissionRequests, getExitPlanModeFallback: opts.fallback },
+    );
+    return { h, broker, sessionRelayManager, permissionRequests };
+  }
+
+  function launch(h: ReturnType<typeof createIpcTestHarness>, channelId = 'ch-1', index = 0) {
+    h.dispatch({ type: 'launch_claude', channelId });
+    return h.channelRouter.register.mock.calls[index][1] as (event: unknown) => void;
+  }
+
+  it('can_use_tool control_request is registered and never broadcast as a request event', () => {
+    const { h } = makeBrokerWithPermissions();
+    const routed = launch(h);
+    routed(canUseTool());
+    const broadcasts = h.viewManager.broadcastMessage.mock.calls.map(([m]) => m as { type: string });
+    expect(broadcasts.some((m) => m.type === 'permission_request')).toBe(true);
+    expect(broadcasts.some((m) => m.type === 'request' && (m as { request?: { type?: string } }).request?.type === 'control_request')).toBe(false);
+  });
+
+  it('control_cancel_request cancels the pending prompt and is never broadcast as a request', () => {
+    const { h } = makeBrokerWithPermissions();
+    const routed = launch(h);
+    routed(canUseTool());
+    h.viewManager.broadcastMessage.mockClear();
+    routed({ type: 'control_cancel_request', request_id: 'req-1' });
+    const broadcasts = h.viewManager.broadcastMessage.mock.calls.map(([m]) => m as { type: string });
+    expect(broadcasts).toEqual([
+      { type: 'permission_cancelled', channelId: 'ch-1', requestIds: ['req-1'], toolUseIds: ['tu-1'] },
+    ]);
+  });
+
+  it('a can_use_tool request during relay is denied with "Tools are unavailable during session handoff"', () => {
+    const { h } = makeBrokerWithPermissions(undefined, { isRelaying: true });
+    const routed = launch(h);
+    routed(canUseTool());
+    expect(h.processManager.writeToChannel).toHaveBeenCalledWith('ch-1', {
+      type: 'control_response',
+      response: {
+        subtype: 'success',
+        request_id: 'req-1',
+        response: { behavior: 'deny', message: 'Tools are unavailable during session handoff' },
+      },
+    });
+    expect(h.viewManager.broadcastMessage).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'permission_request' }));
+  });
+
+  it("a prompt raised on broker A's channel can be answered from broker B", () => {
+    const a = makeBrokerWithPermissions();
+    const routed = launch(a.h);
+    routed(canUseTool());
+    const b = createIpcTestHarness();
+    b.processManager.writeToChannel.mockReturnValue(true);
+    new MessageBroker(
+      b.processManager, b.sessionManager, b.diffManager, b.viewManager,
+      b.channelRouter, b.webview, b.logger,
+      { sessionRelayManager: a.sessionRelayManager, permissionRequests: a.permissionRequests },
+    );
+    b.dispatch({
+      type: 'permission_response', channelId: 'ch-1', requestId: 'req-1',
+      decision: { behavior: 'allow', updatedInput: {} },
+    });
+    expect(a.h.processManager.writeToChannel).toHaveBeenCalledWith('ch-1', expect.objectContaining({ type: 'control_response' }));
+  });
+
+  it('permission_response with setMode default adopts default without the exit-plan fallback', () => {
+    const { h, sessionRelayManager } = makeBrokerWithPermissions(undefined, { fallback: () => 'auto' });
+    const routed = launch(h);
+    routed({ ...fixtures.statusEvent, permissionMode: 'plan' });
+    routed(canUseTool('req-2', 'ExitPlanMode'));
+    vi.clearAllMocks();
+    h.dispatch({
+      type: 'permission_response', channelId: 'ch-1', requestId: 'req-2',
+      decision: {
+        behavior: 'allow', updatedInput: {},
+        updatedPermissions: [{ type: 'setMode', mode: 'default', destination: 'session' }],
+      },
+    });
+    expect(h.viewManager.setPermissionMode).toHaveBeenLastCalledWith('default');
+    expect(h.viewManager.setPermissionMode).not.toHaveBeenCalledWith('auto');
+    const sentSetMode = h.processManager.writeToChannel.mock.calls.some(
+      ([, data]) => (data as { request?: { subtype?: string } }).request?.subtype === 'set_permission_mode',
+    );
+    expect(sentSetMode).toBe(false);
+    expect(sessionRelayManager.updateLaunchOptions).toHaveBeenCalledWith('ch-1', { permissionMode: 'default' });
+  });
+
+  it('a system event carrying permissionMode is adopted', () => {
+    const { h } = makeBrokerWithPermissions();
+    const routed = launch(h);
+    routed({ ...fixtures.statusEvent, permissionMode: 'plan' });
+    expect(h.viewManager.setPermissionMode).toHaveBeenCalledWith('plan');
+  });
+
+  it('interrupt_claude cancels the channel\'s pending prompts', () => {
+    const { h } = makeBrokerWithPermissions();
+    const routed = launch(h);
+    routed(canUseTool());
+    h.dispatch({ type: 'interrupt_claude', channelId: 'ch-1' });
+    expect(h.viewManager.broadcastMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'permission_cancelled', channelId: 'ch-1', requestIds: ['req-1'] }),
+    );
+  });
+
+  it('get_auth_status replays pending prompts to the requesting webview', async () => {
+    const { h } = makeBrokerWithPermissions();
+    const routed = launch(h);
+    routed(canUseTool());
+    h.clearMessages();
+    h.dispatch({ type: 'get_auth_status' });
+    await vi.waitFor(() =>
+      expect(h.postedMessages.some((m) => m.type === 'permission_request')).toBe(true),
+    );
   });
 });

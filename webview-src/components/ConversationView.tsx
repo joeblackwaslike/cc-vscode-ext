@@ -1,5 +1,7 @@
 import { MessageList } from './MessageList';
 import { ChatInput } from './ChatInput';
+import { PermissionDock } from './permissions/PermissionDock';
+import { useChannelPermissions } from '../store/sessionStore';
 import type { ClaudeStreamEvent, ContextUsage } from '../lib/ipc';
 
 interface Props {
@@ -25,9 +27,11 @@ export function ConversationView({
   onCompact,
   onRefreshUsage,
 }: Props) {
+  const { permissions } = useChannelPermissions(channelId);
   return (
     <div data-testid="conversation-view" className="cc-conversation">
       <MessageList events={events} channelId={channelId} running={running} />
+      <PermissionDock channelId={channelId} />
       <ChatInput
         channelId={channelId}
         onSend={onSend}
@@ -36,6 +40,7 @@ export function ConversationView({
         onRefreshUsage={onRefreshUsage}
         running={running}
         usage={usage}
+        disabled={permissions.pending.length > 0}
       />
     </div>
   );

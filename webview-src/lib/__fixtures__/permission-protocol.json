@@ -1,0 +1,165 @@
+{
+  "_source": "Captured 2026-10-14 from pinned claude CLI 2.1.237 with --permission-prompt-tool stdio",
+  "askControlRequest": {
+    "type": "control_request",
+    "request_id": "02594363-8657-41a3-8780-cd3a114ce10f",
+    "request": {
+      "subtype": "can_use_tool",
+      "tool_name": "AskUserQuestion",
+      "display_name": "AskUserQuestion",
+      "input": {
+        "questions": [
+          {
+            "question": "What is your favorite color?",
+            "header": "Color",
+            "options": [
+              {
+                "label": "Red",
+                "description": "The color red"
+              },
+              {
+                "label": "Blue",
+                "description": "The color blue"
+              }
+            ],
+            "multiSelect": false
+          },
+          {
+            "question": "Which pets do you have?",
+            "header": "Pets",
+            "options": [
+              {
+                "label": "Cat",
+                "description": "A feline pet"
+              },
+              {
+                "label": "Dog",
+                "description": "A canine pet"
+              },
+              {
+                "label": "Fish",
+                "description": "An aquatic pet"
+              }
+            ],
+            "multiSelect": true
+          }
+        ]
+      },
+      "tool_use_id": "toolu_01Q8n2YXJzY82NqsJvF14pwF",
+      "requires_user_interaction": true
+    }
+  },
+  "askToolUse": {
+    "type": "tool_use",
+    "id": "toolu_01Q8n2YXJzY82NqsJvF14pwF",
+    "name": "AskUserQuestion",
+    "input": {
+      "questions": [
+        {
+          "question": "What is your favorite color?",
+          "header": "Color",
+          "multiSelect": false,
+          "options": [
+            {
+              "label": "Red",
+              "description": "The color red"
+            },
+            {
+              "label": "Blue",
+              "description": "The color blue"
+            }
+          ]
+        },
+        {
+          "question": "Which pets do you have?",
+          "header": "Pets",
+          "multiSelect": true,
+          "options": [
+            {
+              "label": "Cat",
+              "description": "A feline pet"
+            },
+            {
+              "label": "Dog",
+              "description": "A canine pet"
+            },
+            {
+              "label": "Fish",
+              "description": "An aquatic pet"
+            }
+          ]
+        }
+      ]
+    },
+    "caller": {
+      "type": "direct"
+    }
+  },
+  "askToolResult": {
+    "type": "tool_result",
+    "content": "The user answered: \"What is your favorite color?\"=\"My custom other answer\", \"Which pets do you have?\"=\"Cat, Dog\". Read the answers carefully — they may request clarification, changes, or that you not proceed — and follow what they actually say.",
+    "tool_use_id": "toolu_01Q8n2YXJzY82NqsJvF14pwF"
+  },
+  "exitPlanControlRequest": {
+    "type": "control_request",
+    "request_id": "12c16591-cf4b-4834-95f4-45667c5a2b25",
+    "request": {
+      "subtype": "can_use_tool",
+      "tool_name": "ExitPlanMode",
+      "display_name": "ExitPlanMode",
+      "input": {
+        "plan": "# Create hello.txt\n\n## Context\nUser requested a trivial file creation: a file named `hello.txt` containing the text `hi`.\n\n## Plan\n- Create `hello.txt` in the current working directory with the content `hi`.\n\n## Verification\n- Confirm the file exists and contains `hi` (e.g., `cat hello.txt`).\n",
+        "planFilePath": "/Users/joe/.claude/plans/plan-creating-a-file-vast-quail.md"
+      },
+      "tool_use_id": "toolu_01K4fL8JHXj9zNZPfqdtuoVw",
+      "requires_user_interaction": true
+    }
+  },
+  "exitPlanToolResult": {
+    "type": "tool_result",
+    "content": "User has approved your plan. You can now start coding. Start with updating your todo list if applicable\n\nYour plan has been saved to: /Users/joe/.claude/plans/plan-creating-a-file-vast-quail.md\nYou can refer back to it if needed during implementation.\n\nIf this plan can be broken down into multiple independent tasks, consider spawning named teammates with the Agent tool (pass a `name`) to parallelize the work.\n\n## Approved Plan:\n# Create hello.txt\n\n## Context\nUser requested a trivial file creation: a file named `hello.txt` containing the text `hi`.\n\n## Plan\n- Create `hello.txt` in the current working directory with the content `hi`.\n\n## Verification\n- Confirm the file exists and contains `hi` (e.g., `cat hello.txt`).\n",
+    "tool_use_id": "toolu_01K4fL8JHXj9zNZPfqdtuoVw"
+  },
+  "writeControlRequest": {
+    "type": "control_request",
+    "request_id": "71ec9c6d-5b93-4c29-bccc-99227e61c471",
+    "request": {
+      "subtype": "can_use_tool",
+      "tool_name": "Write",
+      "display_name": "Write",
+      "input": {
+        "file_path": "/private/tmp/claude-501/-Users-joe-github-joeblackwaslike-cc-vscode-ext/563b8d04-d7a2-4a6c-a371-033c7eaaf190/scratchpad/planrun/hello.txt",
+        "content": "hi"
+      },
+      "description": "hello.txt",
+      "permission_suggestions": [
+        {
+          "type": "setMode",
+          "mode": "acceptEdits",
+          "destination": "session"
+        }
+      ],
+      "tool_use_id": "toolu_01H3FMxwU91wKJCWL7o8dmtQ"
+    }
+  },
+  "statusEvent": {
+    "type": "system",
+    "subtype": "status",
+    "status": null,
+    "permissionMode": "default",
+    "uuid": "58dbfebf-b1d3-4f82-8bc2-81d3f99a61c3",
+    "session_id": "1b27c853-7dd0-4741-9e84-a02686a2bec2"
+  },
+  "askDeniedToolResult": {
+    "type": "tool_result",
+    "content": "User declined to answer questions",
+    "is_error": true,
+    "tool_use_id": "toolu_01WeMbtFYshLhmkumvFGR3w2"
+  },
+  "exitPlanDeniedToolResult": {
+    "type": "tool_result",
+    "content": "User chose to stay in plan mode and continue planning\n\nFeedback: use bye.txt instead",
+    "is_error": true,
+    "tool_use_id": "toolu_01WvLgoRP7GU2BxNorbFfemJ"
+  }
+}
