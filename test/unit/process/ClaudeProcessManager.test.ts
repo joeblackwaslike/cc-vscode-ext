@@ -204,6 +204,64 @@ describe('ClaudeProcessManager', () => {
     );
   });
 
+  it('stale --resume retry still replays the turn when the CLI emits an error result first', async () => {
+    const { manager, router } = makeManager();
+    router.register('ch-1', vi.fn());
+    await manager.spawnClaude('ch-1', { resume: 'gone' });
+    manager.sendUserMessage('ch-1', 'hello');
+    mockProcess.stdin.write.mockClear();
+
+    triggerStdoutData(
+      Buffer.from(JSON.stringify({ type: 'result', subtype: 'error_during_execution', is_error: true }) + '\n')
+    );
+    triggerStderrData('No conversation found with session ID: gone');
+    triggerProcessEvent('close', 1);
+
+    await vi.waitFor(() =>
+      expect(mockProcess.stdin.write).toHaveBeenCalledWith(
+        '{"type":"user","message":{"role":"user","content":"hello"}}\n'
+      )
+    );
+  });
+
+  it('closeChannel() during a stale --resume retry kills the replacement instead of keeping it', async () => {
+    const { manager, router } = makeManager();
+    router.register('ch-1', vi.fn());
+    await manager.spawnClaude('ch-1', { resume: 'gone' });
+
+    triggerStderrData('No conversation found with session ID: gone');
+    triggerProcessEvent('close', 1);
+    manager.closeChannel('ch-1');
+
+    await vi.waitFor(() => expect(mockProcess.kill).toHaveBeenCalled());
+    expect(manager.hasChannel('ch-1')).toBe(false);
+  });
+
+  it('spawnClaude() is rejected while a stale --resume retry owns the channel', async () => {
+    const { manager, router } = makeManager();
+    router.register('ch-1', vi.fn());
+    await manager.spawnClaude('ch-1', { resume: 'gone' });
+
+    triggerStderrData('No conversation found with session ID: gone');
+    triggerProcessEvent('close', 1);
+
+    await expect(manager.spawnClaude('ch-1', {})).rejects.toThrow('already active');
+  });
+
+  it('includes the CLI stderr diagnostic in the exit error', async () => {
+    const { manager, router } = makeManager();
+    const handler = vi.fn();
+    router.register('ch-1', handler);
+    await manager.spawnClaude('ch-1', {});
+
+    triggerStderrData('error: unknown option --bogus');
+    triggerProcessEvent('close', 1);
+
+    expect(handler).toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.stringContaining('unknown option --bogus') })
+    );
+  });
+
   it('stale --resume retry failure reports the error and tears the channel down', async () => {
     const router = new ChannelRouter();
     let launches = 0;
@@ -228,17 +286,6 @@ describe('ClaudeProcessManager', () => {
     expect(handler).not.toHaveBeenCalled();
   });
 
-  it('bounds the pre-spawn write buffer, dropping the oldest entries', async () => {
-    const { manager } = makeManager();
-    for (let i = 0; i < 101; i++) manager.writeToChannel('ch-1', { n: i });
-
-    await manager.spawnClaude('ch-1', {});
-
-    const written = (mockProcess.stdin.write.mock.calls as unknown as string[][]).map((c) => c[0]);
-    expect(written).toHaveLength(100);
-    expect(written[0]).toBe('{"n":1}\n');
-  });
-
   it('a failed spawn discards the writes buffered for it', async () => {
     const router = new ChannelRouter();
     let launches = 0;
@@ -246,6 +293,7 @@ describe('ClaudeProcessManager', () => {
       ++launches === 1 ? Promise.reject(new Error('no binary')) : Promise.resolve('/bin/claude')
     );
     const manager = new ClaudeProcessManager(provider, router, mockLogger, mockSpawn as never);
+    manager.beginLaunch('ch-1');
     manager.writeToChannel('ch-1', { type: 'stale' });
 
     await expect(manager.spawnClaude('ch-1', {})).rejects.toThrow('no binary');
@@ -254,10 +302,27 @@ describe('ClaudeProcessManager', () => {
     expect(mockProcess.stdin.write).not.toHaveBeenCalled();
   });
 
-  it('writeToChannel() is a no-op for inactive channels', () => {
+  it('writeToChannel() is a no-op for inactive channels and never leaks into a later spawn', async () => {
     const { manager } = makeManager();
-    expect(() => manager.writeToChannel('nope', {})).not.toThrow();
+    expect(() => manager.writeToChannel('nope', { type: 'stale' })).not.toThrow();
     expect(mockProcess.stdin.write).not.toHaveBeenCalled();
+
+    await manager.spawnClaude('nope', {});
+
+    expect(mockProcess.stdin.write).not.toHaveBeenCalled();
+  });
+
+  it('buffers writes made while a launch is in flight and delivers them in order', async () => {
+    const { manager } = makeManager();
+    manager.beginLaunch('ch-1');
+    manager.writeToChannel('ch-1', { n: 1 });
+    manager.writeToChannel('ch-1', { n: 2 });
+    expect(mockProcess.stdin.write).not.toHaveBeenCalled();
+
+    await manager.spawnClaude('ch-1', {});
+
+    expect(mockProcess.stdin.write).toHaveBeenNthCalledWith(1, '{"n":1}\n');
+    expect(mockProcess.stdin.write).toHaveBeenNthCalledWith(2, '{"n":2}\n');
   });
 
   it('writeToChannel() is a no-op when stdin is not writable', async () => {

@@ -81,6 +81,20 @@ describe('MessageBroker', () => {
       );
     });
 
+    it('marks the channel as launching before history replay so early writes are buffered', () => {
+      const { h } = makebroker();
+      h.dispatch({ type: 'launch_claude', channelId: 'ch-1', resume: 'sess-abc', cwd: '/workspace' });
+      expect(h.processManager.beginLaunch).toHaveBeenCalledWith('ch-1');
+    });
+
+    it('does not spawn when the channel is closed while history replay is in flight', async () => {
+      const { h } = makebroker();
+      h.dispatch({ type: 'launch_claude', channelId: 'ch-1', resume: 'sess-abc', cwd: '/workspace' });
+      h.dispatch({ type: 'close_channel', channelId: 'ch-1' });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(h.processManager.spawnClaude).not.toHaveBeenCalled();
+    });
+
     it('updates session state to running', () => {
       const { h } = makebroker();
       h.dispatch({ type: 'launch_claude', channelId: 'ch-1' });
@@ -474,6 +488,14 @@ describe('MessageBroker', () => {
       h.dispatch({ type: 'open_url', url: 'https://example.com' });
       await vi.waitFor(() =>
         expect(services.vscode.openUrl).toHaveBeenCalledWith('https://example.com')
+      );
+    });
+
+    it('open_content calls vscode.openContent with the content and language', async () => {
+      const { h, services } = makeBrokerWithServices();
+      h.dispatch({ type: 'open_content', content: 'line 1\nline 2', language: 'plaintext' });
+      await vi.waitFor(() =>
+        expect(services.vscode.openContent).toHaveBeenCalledWith('line 1\nline 2', 'plaintext')
       );
     });
 

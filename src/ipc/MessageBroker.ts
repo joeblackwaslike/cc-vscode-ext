@@ -29,6 +29,7 @@ export interface IChannelRouter {
 
 export interface IClaudeProcessManager {
   spawnClaude(channelId: string, options: ProcessLaunchOptions, cwd?: string): Promise<void>;
+  beginLaunch(channelId: string): void;
   writeToChannel(channelId: string, data: unknown): void;
   sendUserMessage(channelId: string, text: string): void;
   interruptClaude(channelId: string): void;
@@ -154,6 +155,10 @@ export class MessageBroker {
    * relay notification instead of racing that new turn (see
    * `refreshContextUsage`). */
   private readonly turnGenerations = new Map<string, number>();
+  // Channels still replaying history before spawn; a close arriving in that
+  // window cancels the launch so a closed tab never starts a process.
+  private readonly launchesAwaitingReplay = new Set<string>();
+  private readonly cancelledLaunches = new Set<string>();
   private readonly handoffWatchers = new Map<string, HandoffWatcher>();
   /** Tracks the last permission mode applied, used to detect plan-mode exits. */
   private currentPermissionMode: PermissionMode = 'auto';
@@ -529,14 +534,19 @@ export class MessageBroker {
       ...(msg.model !== undefined ? { model: msg.model } : {}),
     };
 
+    this.processManager.beginLaunch(channelId);
     this.sessionRelayManager.registerLaunch(channelId, options, msg.cwd);
     if (options.resume) {
       this.startHandoffWatcher(channelId, options.resume);
+      this.launchesAwaitingReplay.add(channelId);
       try {
         await this.replaySessionHistory(channelId, options.resume, msg.cwd);
       } catch (err) {
         this.logger.warn(`[MessageBroker] history replay failed on ${channelId}: ${String(err)}`);
+      } finally {
+        this.launchesAwaitingReplay.delete(channelId);
       }
+      if (this.cancelledLaunches.delete(channelId)) return;
     }
 
     // Forward stream events to all webviews. control_response lines are private
@@ -610,6 +620,7 @@ export class MessageBroker {
   }
 
   private handleCloseChannel(msg: Extract<FromWebviewMessage, { type: 'close_channel' }>): void {
+    if (this.launchesAwaitingReplay.has(msg.channelId)) this.cancelledLaunches.add(msg.channelId);
     this.processManager.closeChannel(msg.channelId);
     // Reject any in-flight control requests immediately instead of letting them
     // hang until their 10s timeout after the channel is gone.
