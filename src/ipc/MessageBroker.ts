@@ -161,12 +161,12 @@ export class MessageBroker {
    * relay notification instead of racing that new turn (see
    * `refreshContextUsage`). */
   private readonly turnGenerations = new Map<string, number>();
-  // Channels still replaying history before spawn; a close arriving in that
-  // window cancels the launch so a closed tab never starts a process.
   // Channels this broker launched and has not closed. Their lifetime is tied to the
   // webview that owns the tabs: when that webview goes away (dispose) or is
   // re-created (a second get_auth_status), nothing can show or answer them any more.
   private readonly ownedChannels = new Set<string>();
+  // Channels still replaying history before spawn; a close arriving in that
+  // window cancels the launch so a closed tab never starts a process.
   private readonly launchesAwaitingReplay = new Set<string>();
   private readonly cancelledLaunches = new Set<string>();
   private readonly handoffWatchers = new Map<string, HandoffWatcher>();
