@@ -62,6 +62,20 @@ describe('PanelWebviewProvider', () => {
     expect(viewManager.register).toHaveBeenCalled();
   });
 
+  it('panel disposal disposes its broker so the conversations it launched are closed', async () => {
+    const broker = { dispose: vi.fn() };
+    makeBroker.mockReturnValueOnce(broker);
+    const panel = makeMockPanel();
+    mockVscode.window.createWebviewPanel.mockReturnValue(panel);
+
+    const provider = makeProvider();
+    await provider.openNewPanel();
+    expect(broker.dispose).not.toHaveBeenCalled();
+    panel.dispose();
+
+    expect(broker.dispose).toHaveBeenCalledOnce();
+  });
+
   it('panel disposal unregisters from ViewManager', async () => {
     const panel = makeMockPanel();
     mockVscode.window.createWebviewPanel.mockReturnValue(panel);

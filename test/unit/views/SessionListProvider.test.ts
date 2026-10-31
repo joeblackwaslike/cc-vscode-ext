@@ -65,6 +65,17 @@ describe('SessionListProvider', () => {
     expect(viewManager.register).toHaveBeenCalledWith(wv.webview);
   });
 
+  it('dispose event disposes the broker so the conversations it launched are closed', () => {
+    const broker = { dispose: vi.fn() };
+    makeBroker.mockReturnValueOnce(broker);
+    const provider = makeProvider();
+    const wv = makeMockWebviewView();
+    provider.resolveWebviewView(wv as never, {} as never, {} as never);
+    expect(broker.dispose).not.toHaveBeenCalled();
+    wv._triggerDispose();
+    expect(broker.dispose).toHaveBeenCalledOnce();
+  });
+
   it('dispose event unregisters from ViewManager and marks inactive', () => {
     const provider = makeProvider();
     const wv = makeMockWebviewView();

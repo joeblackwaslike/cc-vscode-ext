@@ -86,7 +86,10 @@ Mode changes show up as `{type:"system", subtype:"status", permissionMode}`.
    - `cancelChannel(channelId)` drops the channel's prompts and broadcasts
      `{type:"permission_cancelled", channelId, requestIds, toolUseIds}`; `toolUseIds` lets the transcript
      blocks show "No answer" or "Session ended" for the matching tool calls.
-   - `replayTo(view)` sends every pending prompt to a webview that registers late (a reload).
+   - `pendingFor(channelId)` lists a channel's unanswered prompts. There is no replay to a late or
+     reloaded webview: tabs are not persisted, so a prompt replayed under its old channel id has no tab
+     to show it. Instead `MessageBroker` closes the channels a webview launched when that webview is
+     disposed or re-mounted (a second `get_auth_status`), which also cancels their prompts.
    - Per-channel modes: it records `{current, beforePlan}` per channel from the CLI's `system/status`
      events and from adopted decisions. `beforePlan` is the mode in effect when the channel last entered
      `plan`, which drives the "Yes, and use auto mode" variant.

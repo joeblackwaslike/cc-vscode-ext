@@ -137,8 +137,9 @@ export class PermissionRequests {
     });
   }
 
-  replayTo(post: (msg: ToWebviewMessage) => void): void {
-    for (const request of this.pending.values()) post({ type: 'permission_request', request });
+  /** Prompts still waiting for an answer on one channel. */
+  pendingFor(channelId: string): PermissionRequest[] {
+    return [...this.pending.values()].filter((r) => r.channelId === channelId);
   }
 
   noteMode(channelId: string, mode: PermissionMode): void {

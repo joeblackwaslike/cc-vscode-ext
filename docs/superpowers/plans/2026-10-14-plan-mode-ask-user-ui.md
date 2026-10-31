@@ -124,7 +124,7 @@ and renders the two tools as custom transcript blocks.
     respond(channelId: string, requestId: string, decision: PermissionDecision): boolean;
     denyWithoutPrompt(channelId: string, event: CanUseToolEvent, message: string): void;
     cancelChannel(channelId: string): void;                                     // broadcasts permission_cancelled if anything was dropped
-    replayTo(post: (msg: ToWebviewMessage) => void): void;
+    pendingFor(channelId: string): PermissionRequest[];
     noteMode(channelId: string, mode: PermissionMode): void;
   }
   ```
@@ -137,7 +137,7 @@ and renders the two tools as custom transcript blocks.
   - `respond returns false for an unknown or already-answered request`.
   - `respond cancels instead of resolving when the write is dropped`.
   - `cancelChannel drops only that channel and broadcasts requestIds and toolUseIds`.
-  - `replayTo posts every pending request`.
+  - `pendingFor returns only that channel's unanswered requests`.
   - `ExitPlanMode requests carry the mode in effect before plan`: `noteMode('c','auto')`, then `noteMode('c','plan')`, then register gives `priorMode === 'auto'`.
   - `denyWithoutPrompt writes a deny without broadcasting`.
   - `isCanUseToolRequest rejects control_response and other subtypes`.
