@@ -5,14 +5,24 @@ const postMessage = vi.fn();
 vi.mock('../lib/ipc', () => ({ postMessage: (m: unknown) => postMessage(m) }));
 
 import { ChatInput } from './ChatInput';
-import { ExtensionContext, useExtensionReducer, type ExtensionState } from '../store/extensionStore';
+import {
+  ExtensionContext,
+  useExtensionReducer,
+  type ExtensionState,
+} from '../store/extensionStore';
 
 function Harness({ stateOverride }: { stateOverride?: Partial<ExtensionState> } = {}) {
   const ext = useExtensionReducer();
   const value = stateOverride ? { ...ext, state: { ...ext.state, ...stateOverride } } : ext;
   return (
     <ExtensionContext.Provider value={value}>
-      <ChatInput channelId="ch1" running={false} onSend={() => {}} onInterrupt={() => {}} onCompact={() => {}} />
+      <ChatInput
+        channelId="ch1"
+        running={false}
+        onSend={() => {}}
+        onInterrupt={() => {}}
+        onCompact={() => {}}
+      />
     </ExtensionContext.Provider>
   );
 }
@@ -33,7 +43,11 @@ describe('ChatInput selectors — live + optimistic', () => {
     // Optimistic: pill reflects the choice before any host echo.
     expect(screen.getByTestId('model-selector')).toHaveTextContent('Sonnet');
     // And the live control message carries the channelId.
-    expect(postMessage).toHaveBeenCalledWith({ type: 'set_model', model: 'sonnet', channelId: 'ch1' });
+    expect(postMessage).toHaveBeenCalledWith({
+      type: 'set_model',
+      model: 'sonnet',
+      channelId: 'ch1',
+    });
   });
 
   test('choosing an effort posts set_thinking_level with channelId', () => {
@@ -44,7 +58,11 @@ describe('ChatInput selectors — live + optimistic', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: /High/ }));
 
     expect(screen.getByTestId('effort-selector')).toHaveTextContent('High');
-    expect(postMessage).toHaveBeenCalledWith({ type: 'set_thinking_level', level: 'high', channelId: 'ch1' });
+    expect(postMessage).toHaveBeenCalledWith({
+      type: 'set_thinking_level',
+      level: 'high',
+      channelId: 'ch1',
+    });
   });
 
   test('clicking the Focus View toolbar toggle posts toggle_focus_view and optimistically flips the active state', () => {
@@ -74,7 +92,16 @@ describe('ChatInput model picker — options', () => {
     // cc-menu__check renders "✓" for the selected item, so use regex (substring)
     // rather than exact strings to avoid accessible-name prefix mismatches.
     // Versioned items have unambiguous labels.
-    for (const label of ['Default', 'Fable 5\\.1', 'Fable 5(?!\\.)', 'Opus 5', 'Sonnet 5', 'Opus 4\\.8', 'Sonnet 4\\.6', 'Haiku 4\\.5']) {
+    for (const label of [
+      'Default',
+      'Fable 5\\.1',
+      'Fable 5(?!\\.)',
+      'Opus 5',
+      'Sonnet 5',
+      'Opus 4\\.8',
+      'Sonnet 4\\.6',
+      'Haiku 4\\.5',
+    ]) {
       expect(screen.getByRole('menuitem', { name: new RegExp(label) })).toBeInTheDocument();
     }
     // Bare aliases: spans are adjacent (no whitespace) so accessible name is label+hint

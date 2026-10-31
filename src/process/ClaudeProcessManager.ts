@@ -17,6 +17,7 @@ export interface ProcessLaunchOptions extends LaunchOptions {
 interface ProcessHandle {
   stdin: { write(data: string): unknown; writable: boolean } | null;
   stdout: { on(event: 'data', listener: (chunk: Buffer) => void): unknown };
+  stderr: { on(event: 'data', listener: (chunk: Buffer) => void): unknown };
   on(event: string, listener: (...args: unknown[]) => void): unknown;
   kill(signal?: string): unknown;
 }
@@ -51,13 +52,16 @@ export class ClaudeProcessManager {
   // Per-channel stderr accumulator and launch context, used to detect
   // "No conversation found" errors so we can retry without --resume.
   private readonly stderrBuffers = new Map<string, string>();
-  private readonly spawnContexts = new Map<string, { options: ProcessLaunchOptions; cwd?: string; env?: NodeJS.ProcessEnv }>();
+  private readonly spawnContexts = new Map<
+    string,
+    { options: ProcessLaunchOptions; cwd?: string; env?: NodeJS.ProcessEnv }
+  >();
 
   constructor(
     private readonly binaryProvider: () => Promise<string>,
     private readonly router: ChannelRouter,
     private readonly logger: ILogger,
-    private readonly spawnFn: SpawnFn = spawn as unknown as SpawnFn,
+    private readonly spawnFn: SpawnFn = spawn as unknown as SpawnFn
   ) {}
 
   /**
@@ -69,13 +73,17 @@ export class ClaudeProcessManager {
     channelId: string,
     options: ProcessLaunchOptions,
     cwd?: string,
-    env?: NodeJS.ProcessEnv,
+    env?: NodeJS.ProcessEnv
   ): Promise<void> {
     if (this.processes.has(channelId)) {
       throw new Error(`Channel "${channelId}" is already active`);
     }
 
-    this.spawnContexts.set(channelId, { options, cwd, env });
+    this.spawnContexts.set(channelId, {
+      options,
+      ...(cwd !== undefined && { cwd }),
+      ...(env !== undefined && { env }),
+    });
     const proc = await this._launchProcess(channelId, options, cwd, env);
     this.processes.set(channelId, proc);
     this._drainPendingWrites(channelId);
@@ -145,7 +153,7 @@ export class ClaudeProcessManager {
     channelId: string,
     options: ProcessLaunchOptions,
     cwd?: string,
-    env?: NodeJS.ProcessEnv,
+    env?: NodeJS.ProcessEnv
   ): Promise<void> {
     const oldProc = this.processes.get(channelId);
     const token = ++this.swapTokenSeq;
@@ -227,7 +235,7 @@ export class ClaudeProcessManager {
     channelId: string,
     options: ProcessLaunchOptions,
     cwd?: string,
-    env?: NodeJS.ProcessEnv,
+    env?: NodeJS.ProcessEnv
   ): Promise<ProcessHandle> {
     const binary = options.wrapper ?? (await this.binaryProvider());
     const args = buildArgs(options);
@@ -244,7 +252,7 @@ export class ClaudeProcessManager {
         const t = (event as { type?: string }).type;
         if (t === 'result' || t === 'error') this.resultReceived.add(channelId);
       },
-      (line) => this.logger.warn(`[channel:${channelId}] bad JSON: ${line}`),
+      (line) => this.logger.warn(`[channel:${channelId}] bad JSON: ${line}`)
     );
 
     proc.stdout.on('data', (chunk: Buffer) => {
@@ -280,20 +288,31 @@ export class ClaudeProcessManager {
         !this.swapping.has(channelId)
       ) {
         this.logger.info(`[channel:${channelId}] stale --resume, retrying as new session`);
-        const retryOptions = { ...ctx.options, resume: undefined };
+        const retryOptions: ProcessLaunchOptions = { ...ctx.options };
+        delete retryOptions.resume;
         this.spawnContexts.set(channelId, { ...ctx, options: retryOptions });
         this.processes.delete(channelId);
-        void this._launchProcess(channelId, retryOptions, ctx.cwd, ctx.env).then((newProc) => {
-          this.processes.set(channelId, newProc);
-          this._drainPendingWrites(channelId);
-        }).catch((err: unknown) => {
-          this._emitSyntheticErrorIfStuck(channelId, proc, `Claude process error: ${String(err)}`);
-          this._cleanupIfCurrent(channelId, proc);
-        });
+        void this._launchProcess(channelId, retryOptions, ctx.cwd, ctx.env)
+          .then((newProc) => {
+            this.processes.set(channelId, newProc);
+            this._drainPendingWrites(channelId);
+          })
+          .catch((err: unknown) => {
+            this._emitSyntheticErrorIfStuck(
+              channelId,
+              proc,
+              `Claude process error: ${String(err)}`
+            );
+            this._cleanupIfCurrent(channelId, proc);
+          });
         return;
       }
 
-      this._emitSyntheticErrorIfStuck(channelId, proc, `Claude process exited unexpectedly (code ${String(code)})`);
+      this._emitSyntheticErrorIfStuck(
+        channelId,
+        proc,
+        `Claude process exited unexpectedly (code ${String(code)})`
+      );
       this._cleanupIfCurrent(channelId, proc);
     });
 
@@ -407,7 +426,11 @@ export class ClaudeProcessManager {
    * flag, is needed here.
    */
   /** Emit a synthetic error result if the channel is still running but never received a result event. */
-  private _emitSyntheticErrorIfStuck(channelId: string, proc: ProcessHandle, message: string): void {
+  private _emitSyntheticErrorIfStuck(
+    channelId: string,
+    proc: ProcessHandle,
+    message: string
+  ): void {
     if (this.resultReceived.has(channelId)) return;
     if (this.processes.get(channelId) !== proc) return;
     if (this.swapping.has(channelId)) return;

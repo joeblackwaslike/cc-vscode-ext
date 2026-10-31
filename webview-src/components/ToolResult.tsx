@@ -31,7 +31,13 @@ export function ToolResult({ result }: Props) {
           {result.mode === 'text' && (
             <button
               className="cc-tool__open-window"
-              onClick={() => postMessage({ type: 'open_content', content: result.content, language: 'plaintext' })}
+              onClick={() =>
+                postMessage({
+                  type: 'open_content',
+                  content: result.content,
+                  language: 'plaintext',
+                })
+              }
             >
               ↗ Open
             </button>
@@ -62,10 +68,16 @@ function Diff({ lines }: { lines: string[] }) {
   return (
     <div className="cc-tool__text" style={{ padding: '8px 0' }}>
       {lines.map((line, i) => {
-        const cls = line.startsWith('+') ? ' cc-ln--add' : line.startsWith('-') ? ' cc-ln--del' : '';
+        const cls = line.startsWith('+')
+          ? ' cc-ln--add'
+          : line.startsWith('-')
+            ? ' cc-ln--del'
+            : '';
         return (
           <div className={`cc-ln${cls}`} key={i}>
-            <span className="cc-ln__txt" style={{ paddingLeft: 12 }}>{line}</span>
+            <span className="cc-ln__txt" style={{ paddingLeft: 12 }}>
+              {line}
+            </span>
           </div>
         );
       })}

@@ -39,9 +39,11 @@ const { mockProcess, mockSpawn } = vi.hoisted(() => {
 
 vi.mock('../../../src/process/ProcessArgs', () => ({
   buildArgs: vi.fn(() => [
-    '--output-format', 'stream-json',
+    '--output-format',
+    'stream-json',
     '--verbose',
-    '--input-format', 'stream-json',
+    '--input-format',
+    'stream-json',
   ]),
 }));
 
@@ -88,7 +90,7 @@ describe('ClaudeProcessManager', () => {
     expect(mockSpawn).toHaveBeenCalledWith(
       '/usr/local/bin/claude',
       ['--output-format', 'stream-json', '--verbose', '--input-format', 'stream-json'],
-      expect.objectContaining({ stdio: ['pipe', 'pipe', 'pipe'] }),
+      expect.objectContaining({ stdio: ['pipe', 'pipe', 'pipe'] })
     );
   });
 
@@ -160,7 +162,7 @@ describe('ClaudeProcessManager', () => {
     await manager.spawnClaude('ch-1', {});
     manager.sendUserMessage('ch-1', 'hi there');
     expect(mockProcess.stdin.write).toHaveBeenCalledWith(
-      '{"type":"user","message":{"role":"user","content":"hi there"}}\n',
+      '{"type":"user","message":{"role":"user","content":"hi there"}}\n'
     );
   });
 
@@ -263,7 +265,7 @@ describe('ClaudeProcessManager', () => {
     expect(manager.hasChannel('ch-1')).toBe(false);
     expect(mockLogger.error).toHaveBeenCalledWith(
       expect.stringContaining('ch-1'),
-      expect.any(Error),
+      expect.any(Error)
     );
   });
 
@@ -344,7 +346,7 @@ describe('ClaudeProcessManager', () => {
       expect(handler).toHaveBeenCalledWith({ type: 'from-new-proc' });
     });
 
-    it("drops stale stdout output from a superseded process instead of routing it", async () => {
+    it('drops stale stdout output from a superseded process instead of routing it', async () => {
       const { manager, router } = makeManager();
       const handler = vi.fn();
       router.register('ch-1', handler);
@@ -405,7 +407,7 @@ describe('ClaudeProcessManager', () => {
       expect(mockSpawn).toHaveBeenLastCalledWith(
         '/usr/local/bin/claude',
         expect.anything(),
-        expect.objectContaining({ cwd: '/workspace' }),
+        expect.objectContaining({ cwd: '/workspace' })
       );
     });
 
@@ -592,7 +594,7 @@ describe('ClaudeProcessManager', () => {
       expect(handler).toHaveBeenCalledWith({ type: 'still-routed-after-failed-swap' });
     });
 
-    it('cleans up the old process\'s stale registration when it already exited on its own before the subsequent launch also fails (compound failure)', async () => {
+    it("cleans up the old process's stale registration when it already exited on its own before the subsequent launch also fails (compound failure)", async () => {
       const router = new ChannelRouter();
       const handler = vi.fn();
       router.register('ch-1', handler);

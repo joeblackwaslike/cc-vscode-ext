@@ -23,7 +23,7 @@ function makebroker() {
     h.viewManager,
     h.channelRouter,
     h.webview,
-    h.logger,
+    h.logger
   );
   return { h, broker };
 }
@@ -39,7 +39,7 @@ function makeBrokerWithServices() {
     h.channelRouter,
     h.webview,
     h.logger,
-    services,
+    services
   );
   return { h, broker, services };
 }
@@ -59,7 +59,7 @@ describe('MessageBroker', () => {
       expect(h.processManager.spawnClaude).toHaveBeenCalledWith(
         'ch-1',
         expect.objectContaining({}),
-        undefined,
+        undefined
       );
     });
 
@@ -76,8 +76,8 @@ describe('MessageBroker', () => {
         expect(h.processManager.spawnClaude).toHaveBeenCalledWith(
           'ch-1',
           expect.objectContaining({ resume: 'sess-abc', permissionMode: 'acceptEdits' }),
-          '/workspace',
-        ),
+          '/workspace'
+        )
       );
     });
 
@@ -99,7 +99,7 @@ describe('MessageBroker', () => {
       h.dispatch({ type: 'launch_claude', channelId: 'ch-1' });
       // The catch runs on a microtask after dispatch returns.
       await vi.waitFor(() =>
-        expect(h.sessionManager.updateSession).toHaveBeenCalledWith('ch-1', 'error'),
+        expect(h.sessionManager.updateSession).toHaveBeenCalledWith('ch-1', 'error')
       );
     });
   });
@@ -140,15 +140,13 @@ describe('MessageBroker', () => {
       // Wait for that async microtask to complete.
       await vi.waitFor(() =>
         expect(h.logger.info).toHaveBeenCalledWith(
-          expect.stringContaining('get_context_usage failed'),
-        ),
+          expect.stringContaining('get_context_usage failed')
+        )
       );
 
       // Verify the error message includes the dispose message.
       const calls = h.logger.info.mock.calls;
-      const errorCall = calls.find((c) =>
-        String(c[0]).includes('get_context_usage failed'),
-      );
+      const errorCall = calls.find((c) => String(c[0]).includes('get_context_usage failed'));
       expect(errorCall).toBeDefined();
       expect(String(errorCall?.[0])).toContain('control channel disposed');
     });
@@ -199,7 +197,7 @@ describe('MessageBroker', () => {
       h.dispatch({ type: 'list_sessions_request' });
 
       expect(h.postedMessages).toContainEqual(
-        expect.objectContaining({ type: 'list_sessions_response', groups: fakeGroups }),
+        expect.objectContaining({ type: 'list_sessions_response', groups: fakeGroups })
       );
     });
   });
@@ -216,7 +214,7 @@ describe('MessageBroker', () => {
       const { h } = makebroker();
       h.dispatch({ type: 'rename_session_group', groupId: 'g1', name: 'New Name' });
       await vi.waitFor(() =>
-        expect(h.sessionManager.renameGroup).toHaveBeenCalledWith('g1', 'New Name'),
+        expect(h.sessionManager.renameGroup).toHaveBeenCalledWith('g1', 'New Name')
       );
       expect(h.viewManager.broadcastSessionStates).toHaveBeenCalled();
     });
@@ -232,7 +230,7 @@ describe('MessageBroker', () => {
       const { h } = makebroker();
       h.dispatch({ type: 'move_sessions_to_group', sessionIds: ['s1', 's2'], groupId: 'g1' });
       await vi.waitFor(() =>
-        expect(h.sessionManager.moveSessionsToGroup).toHaveBeenCalledWith(['s1', 's2'], 'g1'),
+        expect(h.sessionManager.moveSessionsToGroup).toHaveBeenCalledWith(['s1', 's2'], 'g1')
       );
       expect(h.viewManager.broadcastSessionStates).toHaveBeenCalled();
     });
@@ -241,7 +239,7 @@ describe('MessageBroker', () => {
       const { h } = makebroker();
       h.dispatch({ type: 'move_sessions_to_group', sessionIds: ['s1'], groupId: null });
       await vi.waitFor(() =>
-        expect(h.sessionManager.moveSessionsToGroup).toHaveBeenCalledWith(['s1'], null),
+        expect(h.sessionManager.moveSessionsToGroup).toHaveBeenCalledWith(['s1'], null)
       );
     });
   });
@@ -285,7 +283,7 @@ describe('MessageBroker', () => {
       const { h } = makebroker();
       h.dispatch({ type: 'delete_session', sessionId: 's1' });
       await vi.waitFor(() =>
-        expect(h.postedMessages).toContainEqual({ type: 'delete_session_response', success: true }),
+        expect(h.postedMessages).toContainEqual({ type: 'delete_session_response', success: true })
       );
     });
   });
@@ -295,7 +293,7 @@ describe('MessageBroker', () => {
       const { h } = makebroker();
       h.dispatch({ type: 'rename_session', sessionId: 's1', title: 'New Name' });
       await vi.waitFor(() =>
-        expect(h.sessionManager.renameSession).toHaveBeenCalledWith('s1', 'New Name'),
+        expect(h.sessionManager.renameSession).toHaveBeenCalledWith('s1', 'New Name')
       );
       expect(h.viewManager.broadcastSessionStates).toHaveBeenCalled();
     });
@@ -304,7 +302,7 @@ describe('MessageBroker', () => {
       const { h } = makebroker();
       h.dispatch({ type: 'rename_session', sessionId: 's1', title: 'New Name' });
       await vi.waitFor(() =>
-        expect(h.postedMessages).toContainEqual({ type: 'rename_session_response' }),
+        expect(h.postedMessages).toContainEqual({ type: 'rename_session_response' })
       );
     });
   });
@@ -312,9 +310,14 @@ describe('MessageBroker', () => {
   describe('update_session_state', () => {
     it('calls updateSession with state and title', async () => {
       const { h } = makebroker();
-      h.dispatch({ type: 'update_session_state', sessionId: 's1', state: 'running', title: 'My Chat' });
+      h.dispatch({
+        type: 'update_session_state',
+        sessionId: 's1',
+        state: 'running',
+        title: 'My Chat',
+      });
       await vi.waitFor(() =>
-        expect(h.sessionManager.updateSession).toHaveBeenCalledWith('s1', 'running', 'My Chat'),
+        expect(h.sessionManager.updateSession).toHaveBeenCalledWith('s1', 'running', 'My Chat')
       );
     });
 
@@ -360,7 +363,7 @@ describe('MessageBroker', () => {
         expect(h.postedMessages).toContainEqual({
           type: 'get_auth_status_response',
           authenticated: true,
-        }),
+        })
       );
     });
 
@@ -371,7 +374,7 @@ describe('MessageBroker', () => {
         expect(h.postedMessages).toContainEqual({
           type: 'get_auth_status_response',
           authenticated: false,
-        }),
+        })
       );
     });
   });
@@ -380,13 +383,21 @@ describe('MessageBroker', () => {
     it('calls worktreeManager.createWorktree and posts response', async () => {
       const { h, services } = makeBrokerWithServices();
       h.dispatch({ type: 'create_worktree', branchName: 'feat/test', cwd: '/repo' });
-      await vi.waitFor(() => expect(services.worktreeManager.createWorktree).toHaveBeenCalledWith('feat/test', '/repo'));
-      expect(h.postedMessages).toContainEqual({ type: 'create_worktree_response', success: true, worktreePath: '/tmp/branch' });
+      await vi.waitFor(() =>
+        expect(services.worktreeManager.createWorktree).toHaveBeenCalledWith('feat/test', '/repo')
+      );
+      expect(h.postedMessages).toContainEqual({
+        type: 'create_worktree_response',
+        success: true,
+        worktreePath: '/tmp/branch',
+      });
     });
 
     it('does nothing when no worktreeManager provided', () => {
       const { h } = makebroker();
-      expect(() => h.dispatch({ type: 'create_worktree', branchName: 'feat/test', cwd: '/repo' })).not.toThrow();
+      expect(() =>
+        h.dispatch({ type: 'create_worktree', branchName: 'feat/test', cwd: '/repo' })
+      ).not.toThrow();
     });
   });
 
@@ -394,8 +405,12 @@ describe('MessageBroker', () => {
     it('calls worktreeManager.checkGitStatus and posts response', async () => {
       const { h, services } = makeBrokerWithServices();
       h.dispatch({ type: 'check_git_status', cwd: '/repo' });
-      await vi.waitFor(() => expect(services.worktreeManager.checkGitStatus).toHaveBeenCalledWith('/repo'));
-      expect(h.postedMessages).toContainEqual(expect.objectContaining({ type: 'check_git_status_response', clean: true }));
+      await vi.waitFor(() =>
+        expect(services.worktreeManager.checkGitStatus).toHaveBeenCalledWith('/repo')
+      );
+      expect(h.postedMessages).toContainEqual(
+        expect.objectContaining({ type: 'check_git_status_response', clean: true })
+      );
     });
   });
 
@@ -403,7 +418,9 @@ describe('MessageBroker', () => {
     it('calls worktreeManager.checkoutBranch and posts response', async () => {
       const { h, services } = makeBrokerWithServices();
       h.dispatch({ type: 'checkout_branch', branchName: 'main', cwd: '/repo' });
-      await vi.waitFor(() => expect(services.worktreeManager.checkoutBranch).toHaveBeenCalledWith('main', '/repo'));
+      await vi.waitFor(() =>
+        expect(services.worktreeManager.checkoutBranch).toHaveBeenCalledWith('main', '/repo')
+      );
       expect(h.postedMessages).toContainEqual({ type: 'checkout_branch_response', success: true });
     });
   });
@@ -412,9 +429,11 @@ describe('MessageBroker', () => {
     it('posts get_current_selection_response from atMentionHandler', async () => {
       const { h, services } = makeBrokerWithServices();
       h.dispatch({ type: 'get_current_selection' });
-      await vi.waitFor(() => expect(services.atMentionHandler.getCurrentSelection).toHaveBeenCalled());
+      await vi.waitFor(() =>
+        expect(services.atMentionHandler.getCurrentSelection).toHaveBeenCalled()
+      );
       expect(h.postedMessages).toContainEqual(
-        expect.objectContaining({ type: 'get_current_selection_response', text: 'selected text' }),
+        expect.objectContaining({ type: 'get_current_selection_response', text: 'selected text' })
       );
     });
 
@@ -422,7 +441,10 @@ describe('MessageBroker', () => {
       const { h } = makebroker();
       h.dispatch({ type: 'get_current_selection' });
       await vi.waitFor(() =>
-        expect(h.postedMessages).toContainEqual({ type: 'get_current_selection_response', text: '' }),
+        expect(h.postedMessages).toContainEqual({
+          type: 'get_current_selection_response',
+          text: '',
+        })
       );
     });
   });
@@ -431,8 +453,13 @@ describe('MessageBroker', () => {
     it('calls fileListProvider.listFiles and posts list_files_response', async () => {
       const { h, services } = makeBrokerWithServices();
       h.dispatch({ type: 'list_files_request', query: 'foo', cwd: '/repo' });
-      await vi.waitFor(() => expect(services.fileListProvider.listFiles).toHaveBeenCalledWith('foo', '/repo'));
-      expect(h.postedMessages).toContainEqual({ type: 'list_files_response', files: ['src/foo.ts', 'src/bar.ts'] });
+      await vi.waitFor(() =>
+        expect(services.fileListProvider.listFiles).toHaveBeenCalledWith('foo', '/repo')
+      );
+      expect(h.postedMessages).toContainEqual({
+        type: 'list_files_response',
+        files: ['src/foo.ts', 'src/bar.ts'],
+      });
     });
 
     it('does nothing when no fileListProvider provided', () => {
@@ -445,25 +472,33 @@ describe('MessageBroker', () => {
     it('open_url calls vscode.openUrl', async () => {
       const { h, services } = makeBrokerWithServices();
       h.dispatch({ type: 'open_url', url: 'https://example.com' });
-      await vi.waitFor(() => expect(services.vscode.openUrl).toHaveBeenCalledWith('https://example.com'));
+      await vi.waitFor(() =>
+        expect(services.vscode.openUrl).toHaveBeenCalledWith('https://example.com')
+      );
     });
 
     it('open_file calls vscode.openFile with path and optional line', async () => {
       const { h, services } = makeBrokerWithServices();
       h.dispatch({ type: 'open_file', filePath: '/src/foo.ts', line: 42 });
-      await vi.waitFor(() => expect(services.vscode.openFile).toHaveBeenCalledWith('/src/foo.ts', 42));
+      await vi.waitFor(() =>
+        expect(services.vscode.openFile).toHaveBeenCalledWith('/src/foo.ts', 42)
+      );
     });
 
     it('open_folder calls vscode.openFolder', async () => {
       const { h, services } = makeBrokerWithServices();
       h.dispatch({ type: 'open_folder', folderPath: '/projects/myapp' });
-      await vi.waitFor(() => expect(services.vscode.openFolder).toHaveBeenCalledWith('/projects/myapp'));
+      await vi.waitFor(() =>
+        expect(services.vscode.openFolder).toHaveBeenCalledWith('/projects/myapp')
+      );
     });
 
     it('open_folder_in_new_window calls vscode.openFolder with newWindow=true', async () => {
       const { h, services } = makeBrokerWithServices();
       h.dispatch({ type: 'open_folder_in_new_window', folderPath: '/projects/myapp' });
-      await vi.waitFor(() => expect(services.vscode.openFolder).toHaveBeenCalledWith('/projects/myapp', true));
+      await vi.waitFor(() =>
+        expect(services.vscode.openFolder).toHaveBeenCalledWith('/projects/myapp', true)
+      );
     });
 
     it('new_conversation_tab calls vscode.openNewConversationTab', async () => {
@@ -503,7 +538,7 @@ function makeBrokerWithRelay() {
     h.channelRouter,
     h.webview,
     h.logger,
-    { sessionRelayManager },
+    { sessionRelayManager }
   );
   return { h, broker, sessionRelayManager };
 }
@@ -511,11 +546,16 @@ function makeBrokerWithRelay() {
 describe('SessionRelayManager wiring', () => {
   it('launch_claude registers the launch with SessionRelayManager', () => {
     const { h, sessionRelayManager } = makeBrokerWithRelay();
-    h.dispatch({ type: 'launch_claude', channelId: 'ch-1', cwd: '/work', permissionMode: 'acceptEdits' });
+    h.dispatch({
+      type: 'launch_claude',
+      channelId: 'ch-1',
+      cwd: '/work',
+      permissionMode: 'acceptEdits',
+    });
     expect(sessionRelayManager.registerLaunch).toHaveBeenCalledWith(
       'ch-1',
       expect.objectContaining({ permissionMode: 'acceptEdits' }),
-      '/work',
+      '/work'
     );
   });
 
@@ -533,7 +573,9 @@ describe('SessionRelayManager wiring', () => {
     routed({ type: 'result', subtype: 'success', result: 'x' });
 
     expect(sessionRelayManager.handleStreamEvent).toHaveBeenCalledWith('ch-1', {
-      type: 'result', subtype: 'success', result: 'x',
+      type: 'result',
+      subtype: 'success',
+      result: 'x',
     });
   });
 
@@ -552,7 +594,8 @@ describe('SessionRelayManager wiring', () => {
     // ControlRequestManager wrote the control_request to processManager.writeToChannel;
     // pull the request_id it generated so the response we feed back matches it.
     const writeCall = h.processManager.writeToChannel.mock.calls.find(
-      ([, data]) => (data as { request?: { subtype?: string } }).request?.subtype === 'get_context_usage',
+      ([, data]) =>
+        (data as { request?: { subtype?: string } }).request?.subtype === 'get_context_usage'
     );
     expect(writeCall).toBeDefined();
     const requestId = (writeCall![1] as { request_id: string }).request_id;
@@ -570,8 +613,8 @@ describe('SessionRelayManager wiring', () => {
     // is suppressed for the manual path.
     await vi.waitFor(() =>
       expect(h.viewManager.broadcastMessage).toHaveBeenCalledWith(
-        expect.objectContaining({ type: 'context_usage', channelId: 'ch-1' }),
-      ),
+        expect.objectContaining({ type: 'context_usage', channelId: 'ch-1' })
+      )
     );
     expect(sessionRelayManager.onContextUsage).not.toHaveBeenCalled();
   });
@@ -588,7 +631,8 @@ describe('SessionRelayManager wiring', () => {
     // The result handler fires a NEW get_context_usage control_request internally
     // (via refreshContextUsage(channelId, true)); pull its request_id the same way.
     const writeCall = h.processManager.writeToChannel.mock.calls.find(
-      ([, data]) => (data as { request?: { subtype?: string } }).request?.subtype === 'get_context_usage',
+      ([, data]) =>
+        (data as { request?: { subtype?: string } }).request?.subtype === 'get_context_usage'
     );
     expect(writeCall).toBeDefined();
     const requestId = (writeCall![1] as { request_id: string }).request_id;
@@ -605,8 +649,8 @@ describe('SessionRelayManager wiring', () => {
     await vi.waitFor(() =>
       expect(sessionRelayManager.onContextUsage).toHaveBeenCalledWith(
         'ch-1',
-        expect.objectContaining({ percentage: 80 }),
-      ),
+        expect.objectContaining({ percentage: 80 })
+      )
     );
   });
 
@@ -620,14 +664,20 @@ describe('SessionRelayManager wiring', () => {
     routed({ type: 'result', subtype: 'success', result: 'x' });
 
     const writeCall = h.processManager.writeToChannel.mock.calls.find(
-      ([, data]) => (data as { request?: { subtype?: string } }).request?.subtype === 'get_context_usage',
+      ([, data]) =>
+        (data as { request?: { subtype?: string } }).request?.subtype === 'get_context_usage'
     );
     expect(writeCall).toBeDefined();
     const requestId = (writeCall![1] as { request_id: string }).request_id;
 
     // Before that round-trip resolves, the user submits a genuinely new turn
     // (now possible because `running` flipped false on the earlier result).
-    h.dispatch({ type: 'control_request', channelId: 'ch-1', requestId: 'req-new', text: 'new turn' });
+    h.dispatch({
+      type: 'control_request',
+      channelId: 'ch-1',
+      requestId: 'req-new',
+      text: 'new turn',
+    });
 
     // The delayed usage response now arrives, crossing the threshold.
     routed({
@@ -642,8 +692,8 @@ describe('SessionRelayManager wiring', () => {
     // Usage is still broadcast to the webview...
     await vi.waitFor(() =>
       expect(h.viewManager.broadcastMessage).toHaveBeenCalledWith(
-        expect.objectContaining({ type: 'context_usage', channelId: 'ch-1' }),
-      ),
+        expect.objectContaining({ type: 'context_usage', channelId: 'ch-1' })
+      )
     );
     // ...but the relay manager must NOT be notified: a real new turn is now in flight,
     // and relaying now would inject the handoff into a process mid-turn.
@@ -661,11 +711,13 @@ describe('SessionRelayManager wiring', () => {
     routed({ type: 'result', subtype: 'success', result: 'HANDOFF SUMMARY' });
 
     expect(h.viewManager.broadcastMessage).not.toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'request' }),
+      expect.objectContaining({ type: 'request' })
     );
     // The relay's own capture mechanism must still see the event.
     expect(sessionRelayManager.handleStreamEvent).toHaveBeenCalledWith('ch-1', {
-      type: 'result', subtype: 'success', result: 'HANDOFF SUMMARY',
+      type: 'result',
+      subtype: 'success',
+      result: 'HANDOFF SUMMARY',
     });
   });
 
@@ -678,7 +730,8 @@ describe('SessionRelayManager wiring', () => {
     routed({ type: 'result', subtype: 'success', result: 'HANDOFF SUMMARY' });
 
     const writeCall = h.processManager.writeToChannel.mock.calls.find(
-      ([, data]) => (data as { request?: { subtype?: string } }).request?.subtype === 'get_context_usage',
+      ([, data]) =>
+        (data as { request?: { subtype?: string } }).request?.subtype === 'get_context_usage'
     );
     expect(writeCall).toBeUndefined();
   });
@@ -687,7 +740,11 @@ describe('SessionRelayManager wiring', () => {
     const { h, sessionRelayManager } = makeBrokerWithRelay();
     h.dispatch({ type: 'get_relay_threshold', channelId: 'ch-1' });
     expect(sessionRelayManager.getThreshold).toHaveBeenCalledWith('ch-1');
-    expect(h.postedMessages).toContainEqual({ type: 'relay_threshold', channelId: 'ch-1', threshold: 70 });
+    expect(h.postedMessages).toContainEqual({
+      type: 'relay_threshold',
+      channelId: 'ch-1',
+      threshold: 70,
+    });
   });
 
   it('set_relay_threshold updates and echoes back the new threshold', () => {
@@ -695,25 +752,35 @@ describe('SessionRelayManager wiring', () => {
     sessionRelayManager.getThreshold.mockReturnValue(55);
     h.dispatch({ type: 'set_relay_threshold', threshold: 55, channelId: 'ch-1' });
     expect(sessionRelayManager.setThreshold).toHaveBeenCalledWith(55, 'ch-1');
-    expect(h.postedMessages).toContainEqual({ type: 'relay_threshold', channelId: 'ch-1', threshold: 55 });
+    expect(h.postedMessages).toContainEqual({
+      type: 'relay_threshold',
+      channelId: 'ch-1',
+      threshold: 55,
+    });
   });
 
   it('set_permission_mode keeps the relay launch-option snapshot synced', () => {
     const { h, sessionRelayManager } = makeBrokerWithRelay();
     h.dispatch({ type: 'set_permission_mode', channelId: 'ch-1', mode: 'default' });
-    expect(sessionRelayManager.updateLaunchOptions).toHaveBeenCalledWith('ch-1', { permissionMode: 'default' });
+    expect(sessionRelayManager.updateLaunchOptions).toHaveBeenCalledWith('ch-1', {
+      permissionMode: 'default',
+    });
   });
 
   it('set_model keeps the relay launch-option snapshot synced', () => {
     const { h, sessionRelayManager } = makeBrokerWithRelay();
     h.dispatch({ type: 'set_model', channelId: 'ch-1', model: 'claude-opus' });
-    expect(sessionRelayManager.updateLaunchOptions).toHaveBeenCalledWith('ch-1', { model: 'claude-opus' });
+    expect(sessionRelayManager.updateLaunchOptions).toHaveBeenCalledWith('ch-1', {
+      model: 'claude-opus',
+    });
   });
 
   it('set_thinking_level keeps the relay launch-option snapshot synced', () => {
     const { h, sessionRelayManager } = makeBrokerWithRelay();
     h.dispatch({ type: 'set_thinking_level', channelId: 'ch-1', level: 'high' });
-    expect(sessionRelayManager.updateLaunchOptions).toHaveBeenCalledWith('ch-1', { effort: 'high' });
+    expect(sessionRelayManager.updateLaunchOptions).toHaveBeenCalledWith('ch-1', {
+      effort: 'high',
+    });
   });
 
   it('set_thinking_level with no channelId does not touch any relay snapshot', () => {
@@ -732,7 +799,11 @@ describe('SessionRelayManager wiring', () => {
   it('falls back to a real SessionRelayManager when none is injected', () => {
     const { h } = makebroker();
     expect(() => h.dispatch({ type: 'get_relay_threshold' })).not.toThrow();
-    expect(h.postedMessages).toContainEqual({ type: 'relay_threshold', channelId: undefined, threshold: 70 });
+    expect(h.postedMessages).toContainEqual({
+      type: 'relay_threshold',
+      channelId: undefined,
+      threshold: 70,
+    });
   });
 
   describe('control_request during an in-progress relay (Bug 1)', () => {

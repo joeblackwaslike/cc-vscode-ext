@@ -13,7 +13,10 @@ const fakeSessions: SessionInfo[] = [
 const fakeGroups: SessionGroup[] = [{ id: 'g1', name: 'Work' }];
 
 describe('ViewManager', () => {
-  let sessionManager: { listSessions: ReturnType<typeof vi.fn>; listGroups: ReturnType<typeof vi.fn> };
+  let sessionManager: {
+    listSessions: ReturnType<typeof vi.fn>;
+    listGroups: ReturnType<typeof vi.fn>;
+  };
   let manager: ViewManager;
 
   beforeEach(() => {
@@ -97,7 +100,7 @@ describe('ViewManager', () => {
       manager.broadcastSessionStates();
 
       expect(wv.postMessage).toHaveBeenCalledWith(
-        expect.objectContaining({ type: 'update_state', sessions: fakeSessions }),
+        expect.objectContaining({ type: 'update_state', sessions: fakeSessions })
       );
     });
 

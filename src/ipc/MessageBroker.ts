@@ -168,10 +168,10 @@ export class MessageBroker {
     private readonly channelRouter: IChannelRouter,
     private readonly webview: IWebview,
     private readonly logger: ILogger,
-    private readonly services: MessageBrokerServices = {},
+    private readonly services: MessageBrokerServices = {}
   ) {
     this.control = new ControlRequestManager((channelId, data) =>
-      this.processManager.writeToChannel(channelId, data),
+      this.processManager.writeToChannel(channelId, data)
     );
     this.sessionRelayManager =
       this.services.sessionRelayManager ??
@@ -182,7 +182,11 @@ export class MessageBroker {
   }
 
   /** Fire a control request, swallowing failures into the log (live set_*). */
-  private sendControl(channelId: string, subtype: Parameters<ControlRequestManager['send']>[1], payload?: Record<string, unknown>): void {
+  private sendControl(
+    channelId: string,
+    subtype: Parameters<ControlRequestManager['send']>[1],
+    payload?: Record<string, unknown>
+  ): void {
     this.control.send(channelId, subtype, payload).catch((err: unknown) => {
       this.logger.info(`[MessageBroker] control '${subtype}' failed: ${String(err)}`);
     });
@@ -229,7 +233,10 @@ export class MessageBroker {
           this.processManager.interruptClaude(msg.channelId);
           return;
         case 'control_request':
-          this.turnGenerations.set(msg.channelId, (this.turnGenerations.get(msg.channelId) ?? 0) + 1);
+          this.turnGenerations.set(
+            msg.channelId,
+            (this.turnGenerations.get(msg.channelId) ?? 0) + 1
+          );
           if (!this.sessionRelayManager.enqueueIfRelaying(msg.channelId, msg.text)) {
             this.processManager.sendUserMessage(msg.channelId, msg.text);
           }
@@ -247,8 +254,13 @@ export class MessageBroker {
           this.currentPermissionMode = targetMode;
           this.viewManager.setPermissionMode(targetMode);
           this.viewManager.broadcastSessionStates();
-          this.sendControl(msg.channelId, 'set_permission_mode', { mode: targetMode, userInitiated: true });
-          this.sessionRelayManager.updateLaunchOptions(msg.channelId, { permissionMode: targetMode });
+          this.sendControl(msg.channelId, 'set_permission_mode', {
+            mode: targetMode,
+            userInitiated: true,
+          });
+          this.sessionRelayManager.updateLaunchOptions(msg.channelId, {
+            permissionMode: targetMode,
+          });
           return;
         }
         case 'set_thinking_level':
@@ -278,13 +290,21 @@ export class MessageBroker {
         // ─── Session relay ──────────────────────────────────────────────
         case 'get_relay_threshold': {
           const threshold = this.sessionRelayManager.getThreshold(msg.channelId);
-          void this.webview.postMessage({ type: 'relay_threshold', channelId: msg.channelId, threshold });
+          void this.webview.postMessage({
+            type: 'relay_threshold',
+            channelId: msg.channelId,
+            threshold,
+          });
           return;
         }
         case 'set_relay_threshold': {
           this.sessionRelayManager.setThreshold(msg.threshold, msg.channelId);
           const threshold = this.sessionRelayManager.getThreshold(msg.channelId);
-          void this.webview.postMessage({ type: 'relay_threshold', channelId: msg.channelId, threshold });
+          void this.webview.postMessage({
+            type: 'relay_threshold',
+            channelId: msg.channelId,
+            threshold,
+          });
           return;
         }
 
@@ -308,7 +328,10 @@ export class MessageBroker {
         }
         case 'get_session_request': {
           const session = this.sessionManager.getSession(msg.sessionId);
-          void this.webview.postMessage({ type: 'get_session_response', session: session as never });
+          void this.webview.postMessage({
+            type: 'get_session_response',
+            session: session as never,
+          });
           return;
         }
         case 'delete_session':
@@ -358,8 +381,10 @@ export class MessageBroker {
         // ─── Auth ───────────────────────────────────────────────────────
         case 'get_auth_status': {
           await this.services.authManager?.ensureChecked();
-          const response = this.services.authManager?.getAuthStatusResponse()
-            ?? { type: 'get_auth_status_response' as const, authenticated: false };
+          const response = this.services.authManager?.getAuthStatusResponse() ?? {
+            type: 'get_auth_status_response' as const,
+            authenticated: false,
+          };
           void this.webview.postMessage(response);
           return;
         }
@@ -377,7 +402,7 @@ export class MessageBroker {
           if (this.services.worktreeManager) {
             const response = await this.services.worktreeManager.createWorktree(
               msg.branchName,
-              msg.cwd,
+              msg.cwd
             );
             void this.webview.postMessage(response);
           }
@@ -394,7 +419,7 @@ export class MessageBroker {
           if (this.services.worktreeManager) {
             const response = await this.services.worktreeManager.checkoutBranch(
               msg.branchName,
-              msg.cwd,
+              msg.cwd
             );
             void this.webview.postMessage(response);
           }
@@ -409,8 +434,13 @@ export class MessageBroker {
 
         // ─── At-mention / selection ─────────────────────────────────────
         case 'get_current_selection': {
-          const response = this.services.atMentionHandler?.getCurrentSelection()
-            ?? { type: 'get_current_selection_response' as const, text: '', filePath: undefined, startLine: undefined, endLine: undefined };
+          const response = this.services.atMentionHandler?.getCurrentSelection() ?? {
+            type: 'get_current_selection_response' as const,
+            text: '',
+            filePath: undefined,
+            startLine: undefined,
+            endLine: undefined,
+          };
           void this.webview.postMessage(response);
           return;
         }
@@ -452,7 +482,9 @@ export class MessageBroker {
 
         // ─── Unhandled — log and ignore ─────────────────────────────────
         default:
-          this.logger.info(`[MessageBroker] unhandled message type: ${(msg as { type: string }).type}`);
+          this.logger.info(
+            `[MessageBroker] unhandled message type: ${(msg as { type: string }).type}`
+          );
       }
     } catch (err) {
       this.logger.error(`[MessageBroker] error handling ${(msg as { type: string }).type}`, err);
@@ -468,7 +500,11 @@ export class MessageBroker {
     this.handoffWatchers.set(channelId, watcher);
   }
 
-  private async replaySessionHistory(channelId: string, sessionId: string, cwd?: string): Promise<void> {
+  private async replaySessionHistory(
+    channelId: string,
+    sessionId: string,
+    cwd?: string
+  ): Promise<void> {
     const workspacePath = cwd ?? this.services.workspacePath;
     if (!workspacePath) return;
     const events = await this.projectReader.readSessionEvents(sessionId, workspacePath);
@@ -482,7 +518,9 @@ export class MessageBroker {
     }
   }
 
-  private async handleLaunchClaude(msg: Extract<FromWebviewMessage, { type: 'launch_claude' }>): Promise<void> {
+  private async handleLaunchClaude(
+    msg: Extract<FromWebviewMessage, { type: 'launch_claude' }>
+  ): Promise<void> {
     const { channelId } = msg;
     const options: ProcessLaunchOptions = {
       ...(msg.resume !== undefined ? { resume: msg.resume } : {}),
@@ -525,9 +563,10 @@ export class MessageBroker {
         });
       }
       if (typed.type === 'result') {
-        const sid = typeof (event as Record<string, unknown>).session_id === 'string'
-          ? String((event as Record<string, unknown>).session_id)
-          : undefined;
+        const sid =
+          typeof (event as Record<string, unknown>).session_id === 'string'
+            ? String((event as Record<string, unknown>).session_id)
+            : undefined;
         if (sid && !this.handoffWatchers.has(channelId)) this.startHandoffWatcher(channelId, sid);
         this.sessionRelayManager.handleStreamEvent(channelId, event as ClaudeStreamEvent);
         if (!relaying) void this.refreshContextUsage(channelId, true);

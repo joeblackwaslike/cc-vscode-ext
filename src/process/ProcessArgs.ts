@@ -40,10 +40,12 @@ export interface LaunchOptions {
 export function buildArgs(options: LaunchOptions): string[] {
   const args: string[] = [
     '--print',
-    '--output-format', 'stream-json',
+    '--output-format',
+    'stream-json',
     '--verbose',
     '--include-partial-messages',
-    '--input-format', 'stream-json',
+    '--input-format',
+    'stream-json',
   ];
 
   if (options.resume) {

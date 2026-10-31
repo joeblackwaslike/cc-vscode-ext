@@ -20,7 +20,6 @@ import type {
   ISessionRelayManager,
   IVSCodeBridge,
   IWorktreeManager,
-  MessageBrokerServices,
 } from '../../src/ipc/MessageBroker';
 import type { FromWebviewMessage, ToWebviewMessage } from '../../src/types/ipc';
 
@@ -129,13 +128,17 @@ export function createMockServices(): MockMessageBrokerServices {
     },
     worktreeManager: {
       createWorktree: vi.fn(() =>
-        Promise.resolve({ type: 'create_worktree_response' as const, success: true, worktreePath: '/tmp/branch' }),
+        Promise.resolve({
+          type: 'create_worktree_response' as const,
+          success: true,
+          worktreePath: '/tmp/branch',
+        })
       ),
       checkGitStatus: vi.fn(() =>
-        Promise.resolve({ type: 'check_git_status_response' as const, clean: true, branch: 'main' }),
+        Promise.resolve({ type: 'check_git_status_response' as const, clean: true, branch: 'main' })
       ),
       checkoutBranch: vi.fn(() =>
-        Promise.resolve({ type: 'checkout_branch_response' as const, success: true }),
+        Promise.resolve({ type: 'checkout_branch_response' as const, success: true })
       ),
     },
     atMentionHandler: {
@@ -293,7 +296,7 @@ export function createIpcTestHarness(): IpcTestHarness {
     dispatch(msg: FromWebviewMessage) {
       if (!messageHandler) {
         throw new Error(
-          'No message handler registered. Ensure MessageBroker called webview.onDidReceiveMessage().',
+          'No message handler registered. Ensure MessageBroker called webview.onDidReceiveMessage().'
         );
       }
       messageHandler(msg);

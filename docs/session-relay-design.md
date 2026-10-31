@@ -16,8 +16,8 @@ copy-paste "handoff" prompt to seed a fresh session. That works for an interacti
 at the terminal, but it assumes someone is present to notice the block and paste the handoff
 into a new session. For a long-running or unattended/autonomous agent, nobody is watching —
 blocking `/compact` just delays the problem until the transcript keeps growing against the same
-uncompacted context, and in the worst case (a *reactive* recovery compaction, triggered because
-the API already returned a context-limit error, as opposed to a *proactive* one) blocking it
+uncompacted context, and in the worst case (a _reactive_ recovery compaction, triggered because
+the API already returned a context-limit error, as opposed to a _proactive_ one) blocking it
 outright fails the current turn. See `anti-compact`'s own `hooks/precompact-handoff.mjs` and its
 `docs/how-it-works.md` for that mechanism; it is out of scope here except as the reason a purely
 hook-based fix cannot solve the unattended case.
@@ -25,7 +25,7 @@ hook-based fix cannot solve the unattended case.
 The deeper reason a hook-based approach cannot fix this: **a `PreCompact` hook cannot see live,
 exact context usage.** It receives only `transcript_path` and has to estimate token count from
 `chars / 4` — a rough proxy, not the real number. The exact figure (`get_context_usage`'s
-`{totalTokens, maxTokens, percentage}`) is only reachable by whatever process is *driving* the
+`{totalTokens, maxTokens, percentage}`) is only reachable by whatever process is _driving_ the
 `claude` CLI's stdin/stdout directly in `--input-format/--output-format stream-json` mode — a
 terminal, or an orchestrator like this extension. A hook running as a detached subprocess of the
 CLI is structurally the wrong layer to fix this from. The fix belongs one layer up, in the
@@ -35,13 +35,13 @@ process that owns the CLI's stdio — which is exactly what `cc-vscode-ext` alre
 
 - **anti-compact can't do this.** It operates purely through Claude Code's hook system, which
   never gets the exact context percentage and has no channel to inject a new turn into a
-  *different* session and hand off UI continuity — hooks fire and exit, they don't own a
+  _different_ session and hand off UI continuity — hooks fire and exit, they don't own a
   long-lived process.
 - **A new repo would just re-build what already exists here.** `cc-vscode-ext` already owns
   every primitive an autonomous relay needs:
   - it drives `claude` via `--input-format/--output-format stream-json`
     (`src/process/ProcessArgs.ts`);
-  - it already polls the *exact* `get_context_usage` control response after relevant turns and
+  - it already polls the _exact_ `get_context_usage` control response after relevant turns and
     broadcasts it to the webview (`MessageBroker.refreshContextUsage()`,
     `src/ipc/MessageBroker.ts:144-152`);
   - it can run multiple concurrent session processes, one per `channelId`
@@ -55,14 +55,14 @@ process that owns the CLI's stdio — which is exactly what `cc-vscode-ext` alre
 
 This is the load-bearing fact behind routing the fix here instead of deeper into anti-compact:
 
-| | anti-compact (`PreCompact` hook) | cc-vscode-ext (this repo) |
-|---|---|---|
-| Context usage signal | estimated, `chars / 4` from `transcript_path` | exact, from the CLI's own `get_context_usage` control response (`{totalTokens, maxTokens, percentage}`) |
-| Process lifetime | fires once per compaction attempt, then exits | owns the `claude` process for the life of the channel |
-| Can inject a new turn into a *different* session | no — a hook has no persistent handle to any process | yes — `ClaudeProcessManager` already holds live process handles keyed by `channelId` |
-| Can act *before* the CLI ever proposes compaction | no — reactive by construction, only runs when `PreCompact` fires | yes — can watch the exact percentage on every turn and act at any threshold it chooses |
+|                                                   | anti-compact (`PreCompact` hook)                                 | cc-vscode-ext (this repo)                                                                               |
+| ------------------------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Context usage signal                              | estimated, `chars / 4` from `transcript_path`                    | exact, from the CLI's own `get_context_usage` control response (`{totalTokens, maxTokens, percentage}`) |
+| Process lifetime                                  | fires once per compaction attempt, then exits                    | owns the `claude` process for the life of the channel                                                   |
+| Can inject a new turn into a _different_ session  | no — a hook has no persistent handle to any process              | yes — `ClaudeProcessManager` already holds live process handles keyed by `channelId`                    |
+| Can act _before_ the CLI ever proposes compaction | no — reactive by construction, only runs when `PreCompact` fires | yes — can watch the exact percentage on every turn and act at any threshold it chooses                  |
 
-Because the threshold can be tuned against the *real* percentage instead of a char-count proxy,
+Because the threshold can be tuned against the _real_ percentage instead of a char-count proxy,
 this design can relay well before the CLI's own compaction logic would ever fire — turning
 context rot from "something to survive when the hook fires" into "something pre-empted before
 it's ever relevant."
@@ -111,15 +111,15 @@ process to talk to), the handoff prompt is injected as a real user turn via the 
 isolated `claude -p` subprocess — cheaper, and avoids a second auth/session-init round-trip.
 
 **Open design question this doc deliberately leaves unresolved: capturing and reseeding the
-handoff response.** Injecting the prompt into the *old* process only produces the handoff
+handoff response.** Injecting the prompt into the _old_ process only produces the handoff
 content as that process's next assistant turn — it does not, by itself, get that content into
-the *new* process `swapChannel` spawns. As written above, the sequence is incomplete: without an
+the _new_ process `swapChannel` spawns. As written above, the sequence is incomplete: without an
 explicit capture-and-reseed step, the new process starts with empty context, which is the exact
 failure mode this design exists to prevent. The `writing-plans` pass must specify this
 explicitly, e.g.: `relay()` sends the handoff prompt via `sendUserMessage()`, awaits the old
 process's next `result` event (the same event the permission-prompt-race section below already
 needs to watch for), extracts the assistant's response text from the stream, calls
-`swapChannel()`, and then makes that captured text the *first* `sendUserMessage()` call against
+`swapChannel()`, and then makes that captured text the _first_ `sendUserMessage()` call against
 the newly spawned process — before forwarding any real user input queued during the swap.
 
 ### `ClaudeProcessManager.swapChannel(channelId, options, cwd)` (new method)
@@ -140,9 +140,9 @@ swap happened underneath it.
 **Known gap the atomic map mutation alone does not close.** `spawnClaude()`'s `close`/`error`
 handlers (`:73-81`) call `this._cleanup(channelId)` unconditionally, and `_cleanup()` (`:132-133`)
 does `this.processes.delete(channelId)` keyed only by `channelId` — not by process identity. If
-`swapChannel` spawns the new process and registers it under `channelId` while the *old* process
+`swapChannel` spawns the new process and registers it under `channelId` while the _old_ process
 is still shutting down, the old process's deferred `close` event fires afterward and its handler
-deletes whatever is currently in `this.processes.get(channelId)` — which is now the *new*
+deletes whatever is currently in `this.processes.get(channelId)` — which is now the _new_
 process. The new process is silently orphaned from the map: `writeToChannel`/`sendUserMessage`
 become no-ops for that channel with no error surfaced, even though the process itself is still
 running. `swapChannel` must close this gap before the `writing-plans` pass treats "one atomic map
@@ -157,7 +157,7 @@ Following the existing patterns next to `ContextUsageMessage` (`:406-410`) and `
 (`:198`):
 
 - A `relay_started` broadcast message: `{ type: 'relay_started', channelId, fromSessionId,
-  toSessionId }` — lets the webview show that a relay happened (e.g. a divider in the transcript)
+toSessionId }` — lets the webview show that a relay happened (e.g. a divider in the transcript)
   rather than silently swapping context out from under the user.
 - A threshold get/set pair (mirroring `SetModelMessage`'s `channelId?`-scoped shape), so the
   relay threshold can be tuned per-channel from the webview rather than hardcoded.
@@ -169,7 +169,7 @@ Tool-use permission prompts travel over the same stdio control channel the CLI u
 via request IDs by `ControlRequestManager` in `src/process/ControlRequest.ts`); see
 `src/process/ProcessArgs.ts` for the current launch-flag contract.
 
-If a relay fires while a `tool_permission_request` is in flight on the *old* process, and
+If a relay fires while a `tool_permission_request` is in flight on the _old_ process, and
 `swapChannel` force-closes that process, the pending control request is orphaned — the CLI is
 waiting on a stdio reply that will never come, and whatever tool call triggered the prompt is
 left in limbo. `SessionRelayManager.relay()` must check `ControlRequestManager` for a pending

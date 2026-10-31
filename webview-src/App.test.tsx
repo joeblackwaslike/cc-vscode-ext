@@ -14,7 +14,7 @@ function sendInitialState(): void {
         thinkingLevel: 'medium',
         focusViewEnabled: false,
       },
-      '*',
+      '*'
     );
   });
 }
@@ -36,7 +36,7 @@ describe('App: new-conversation flow', () => {
     expect(screen.queryByTestId('interrupt-button')).not.toBeInTheDocument();
     expect(screen.getByTestId('message-input')).toHaveAttribute(
       'placeholder',
-      'Message Claude… (@ to mention files)',
+      'Message Claude… (@ to mention files)'
     );
   });
 

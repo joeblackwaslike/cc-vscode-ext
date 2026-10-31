@@ -41,8 +41,18 @@ function truncate(s: string, n: number): string {
 
 /** Build a minimal -old / +new diff from an edit's strings. */
 function diffFromEdit(oldStr: string, newStr: string): string {
-  const del = oldStr ? oldStr.split('\n').map((l) => `- ${l}`).join('\n') : '';
-  const add = newStr ? newStr.split('\n').map((l) => `+ ${l}`).join('\n') : '';
+  const del = oldStr
+    ? oldStr
+        .split('\n')
+        .map((l) => `- ${l}`)
+        .join('\n')
+    : '';
+  const add = newStr
+    ? newStr
+        .split('\n')
+        .map((l) => `+ ${l}`)
+        .join('\n')
+    : '';
   return [del, add].filter(Boolean).join('\n');
 }
 

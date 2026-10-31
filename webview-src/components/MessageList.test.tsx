@@ -24,12 +24,17 @@ describe('MessageList: tool call + inline result', () => {
             type: 'user',
             message: {
               content: [
-                { type: 'tool_result', tool_use_id: 'tu_1', content: '   1\tdef f(): pass', is_error: false },
+                {
+                  type: 'tool_result',
+                  tool_use_id: 'tu_1',
+                  content: '   1\tdef f(): pass',
+                  is_error: false,
+                },
               ],
             },
           }),
         ]}
-      />,
+      />
     );
 
     // Compact header: tool name + primary arg (basename of file_path)
@@ -51,7 +56,7 @@ describe('MessageList: tool call + inline result', () => {
           ev({ type: 'assistant', message: { content: [{ type: 'text', text: 'first reply' }] } }),
           ev({ type: 'user', message: { content: 'second question' } }),
         ]}
-      />,
+      />
     );
 
     expect(screen.getByTestId('chat-loading')).toBeInTheDocument();

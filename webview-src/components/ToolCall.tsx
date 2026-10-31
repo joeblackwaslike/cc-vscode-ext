@@ -24,9 +24,7 @@ export function ToolCall({ tool }: { tool: ToolUseBlock }) {
           </button>
         </div>
       </div>
-      {rendered && rendered.content.trim() !== '' && (
-        <ToolResult result={rendered} />
-      )}
+      {rendered && rendered.content.trim() !== '' && <ToolResult result={rendered} />}
     </div>
   );
 }
