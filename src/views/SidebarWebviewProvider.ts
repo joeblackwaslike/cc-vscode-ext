@@ -34,6 +34,7 @@ export class SidebarWebviewProvider implements vscode.WebviewViewProvider {
     _context: vscode.WebviewViewResolveContext,
     _token: vscode.CancellationToken,
   ): void {
+    const firstResolve = !this.view;
     this.view = webviewView;
 
     webviewView.webview.options = {
@@ -41,10 +42,11 @@ export class SidebarWebviewProvider implements vscode.WebviewViewProvider {
       localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, 'webview')],
     };
 
-    webviewView.webview.html = this.htmlBuilder.build(webviewView.webview, { isSidebar: true });
-
-    this.viewManager.register(webviewView.webview as never);
-    this.makeBroker(adaptWebview(webviewView.webview));
+    if (firstResolve) {
+      webviewView.webview.html = this.htmlBuilder.build(webviewView.webview, { isSidebar: true });
+      this.viewManager.register(webviewView.webview as never);
+      this.makeBroker(adaptWebview(webviewView.webview));
+    }
 
     webviewView.onDidDispose(() => {
       this.viewManager.unregister(webviewView.webview as never);

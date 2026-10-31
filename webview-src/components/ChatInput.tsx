@@ -208,7 +208,7 @@ export function ChatInput({ channelId, onSend, onInterrupt, onCompact, onRefresh
           onKeyDown={handleKeyDown}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
-          placeholder={running ? 'Claude is thinking…' : 'Message Claude… (@ to mention files)'}
+          placeholder="Message Claude… (@ to mention files)"
           disabled={disabled}
           rows={1}
           className="cc-textarea"
@@ -265,7 +265,7 @@ export function ChatInput({ channelId, onSend, onInterrupt, onCompact, onRefresh
           {running ? (
             <button data-testid="interrupt-button" className="cc-stop" onClick={onInterrupt} title="Stop">
               <svg viewBox="0 0 16 16" fill="currentColor" width="14" height="14" aria-hidden="true">
-                <rect x="3" y="3" width="10" height="10" rx="1.5"/>
+                <rect x="2" y="2" width="12" height="12" rx="2"/>
               </svg>
             </button>
           ) : (

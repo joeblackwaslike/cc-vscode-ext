@@ -69,6 +69,13 @@ export function ThinkingSummary({ text, running }: Props) {
         data-testid="thinking-summary-toggle"
       >
         <span className="cc-thinking__chev">{expanded ? '▾' : '▸'}</span>
+        {running && (
+          <span className="cc-thinking__dots" aria-hidden="true">
+            <span className="cc-thinking__dot" />
+            <span className="cc-thinking__dot" />
+            <span className="cc-thinking__dot" />
+          </span>
+        )}
         <span>{summary}</span>
       </button>
       {expanded && <div className="cc-thinking__body">{text}</div>}
