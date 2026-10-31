@@ -262,6 +262,26 @@ export interface ToolPermissionRequestMessage {
   toolInput: Record<string, unknown>;
 }
 
+// ─── Message pins ("chapters") ─────────────────────────────────────────────────
+
+/** Pin or unpin a message as a chapter. Persisted per conversation on the host. */
+export interface SetMessagePinMessage {
+  type: 'set_message_pin';
+  /** Durable conversation identity: a tab's resume id, else its channelId. */
+  conversationKey: string;
+  /** The pinned turn's stable key (event index from the derived conversation). */
+  turnKey: string;
+  pinned: boolean;
+}
+
+/** Request the persisted pins for a conversation; answered with `message_pins`. */
+export interface GetMessagePinsMessage {
+  type: 'get_message_pins';
+  /** Active channel to deliver the answer to. */
+  channelId: string;
+  conversationKey: string;
+}
+
 /** Union of all messages sent from the webview to the extension host. */
 export type FromWebviewMessage =
   | LaunchClaudeMessage
