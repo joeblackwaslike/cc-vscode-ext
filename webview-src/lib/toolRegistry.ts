@@ -19,6 +19,8 @@ export interface ToolRenderer {
   primaryArg(input: Record<string, unknown>): string;
   /** Turn the paired result text (+ the call input) into displayable content. */
   renderResult(resultText: string, input: Record<string, unknown>): RenderedResult;
+  /** Full text to copy when the user clicks the copy button in the tool header. */
+  copyText(input: Record<string, unknown>): string;
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -39,8 +41,18 @@ function truncate(s: string, n: number): string {
 
 /** Build a minimal -old / +new diff from an edit's strings. */
 function diffFromEdit(oldStr: string, newStr: string): string {
-  const del = oldStr ? oldStr.split('\n').map((l) => `- ${l}`).join('\n') : '';
-  const add = newStr ? newStr.split('\n').map((l) => `+ ${l}`).join('\n') : '';
+  const del = oldStr
+    ? oldStr
+        .split('\n')
+        .map((l) => `- ${l}`)
+        .join('\n')
+    : '';
+  const add = newStr
+    ? newStr
+        .split('\n')
+        .map((l) => `+ ${l}`)
+        .join('\n')
+    : '';
   return [del, add].filter(Boolean).join('\n');
 }
 
@@ -51,6 +63,7 @@ const asText = (content: string): RenderedResult => ({ mode: 'text', content });
 const fileTool: ToolRenderer = {
   primaryArg: (input) => basename(str(input, 'file_path')),
   renderResult: (resultText) => ({ mode: 'lines', content: resultText }),
+  copyText: (input) => str(input, 'file_path'),
 };
 
 const editTool: ToolRenderer = {
@@ -59,6 +72,7 @@ const editTool: ToolRenderer = {
     mode: 'diff',
     content: diffFromEdit(str(input, 'old_string'), str(input, 'new_string')),
   }),
+  copyText: (input) => str(input, 'file_path'),
 };
 
 const toolRegistry: Record<string, ToolRenderer> = {
@@ -74,34 +88,42 @@ const toolRegistry: Record<string, ToolRenderer> = {
         .join('\n');
       return { mode: 'diff', content };
     },
+    copyText: (input) => str(input, 'file_path'),
   },
   Write: {
     primaryArg: (input) => basename(str(input, 'file_path')),
     renderResult: (_resultText, input) => asText(str(input, 'content')),
+    copyText: (input) => str(input, 'file_path'),
   },
   Bash: {
     primaryArg: (input) => truncate(str(input, 'command'), 60),
     renderResult: (resultText) => asText(resultText),
+    copyText: (input) => str(input, 'command'),
   },
   Grep: {
     primaryArg: (input) => str(input, 'pattern'),
     renderResult: (resultText) => asText(resultText),
+    copyText: (input) => str(input, 'pattern'),
   },
   Glob: {
     primaryArg: (input) => str(input, 'pattern'),
     renderResult: (resultText) => asText(resultText),
+    copyText: (input) => str(input, 'pattern'),
   },
   Task: {
     primaryArg: (input) => truncate(str(input, 'description'), 60),
     renderResult: (resultText) => asText(resultText),
+    copyText: (input) => str(input, 'description'),
   },
   WebFetch: {
     primaryArg: (input) => str(input, 'url'),
     renderResult: (resultText) => asText(resultText),
+    copyText: (input) => str(input, 'url'),
   },
   WebSearch: {
     primaryArg: (input) => str(input, 'query'),
     renderResult: (resultText) => asText(resultText),
+    copyText: (input) => str(input, 'query'),
   },
 };
 
@@ -111,6 +133,10 @@ const defaultRenderer: ToolRenderer = {
     return typeof firstString === 'string' ? truncate(firstString, 50) : '';
   },
   renderResult: (resultText) => asText(resultText),
+  copyText: (input) => {
+    const firstString = Object.values(input).find((v) => typeof v === 'string');
+    return typeof firstString === 'string' ? firstString : '';
+  },
 };
 
 export function getToolRenderer(name: string): ToolRenderer {

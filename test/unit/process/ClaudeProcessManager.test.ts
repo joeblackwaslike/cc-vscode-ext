@@ -39,9 +39,11 @@ const { mockProcess, mockSpawn } = vi.hoisted(() => {
 
 vi.mock('../../../src/process/ProcessArgs', () => ({
   buildArgs: vi.fn(() => [
-    '--output-format', 'stream-json',
+    '--output-format',
+    'stream-json',
     '--verbose',
-    '--input-format', 'stream-json',
+    '--input-format',
+    'stream-json',
   ]),
 }));
 
@@ -54,6 +56,12 @@ const mockLogger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
 function triggerProcessEvent(event: string, ...args: unknown[]): void {
   for (const call of mockProcess.on.mock.calls as [string, (...a: unknown[]) => void][]) {
     if (call[0] === event) call[1](...args);
+  }
+}
+
+function triggerStderrData(text: string): void {
+  for (const call of mockProcess.stderr.on.mock.calls as [string, (...a: unknown[]) => void][]) {
+    if (call[0] === 'data') call[1](Buffer.from(text));
   }
 }
 
@@ -88,7 +96,7 @@ describe('ClaudeProcessManager', () => {
     expect(mockSpawn).toHaveBeenCalledWith(
       '/usr/local/bin/claude',
       ['--output-format', 'stream-json', '--verbose', '--input-format', 'stream-json'],
-      expect.objectContaining({ stdio: ['pipe', 'pipe', 'pipe'] }),
+      expect.objectContaining({ stdio: ['pipe', 'pipe', 'pipe'] })
     );
   });
 
@@ -160,14 +168,175 @@ describe('ClaudeProcessManager', () => {
     await manager.spawnClaude('ch-1', {});
     manager.sendUserMessage('ch-1', 'hi there');
     expect(mockProcess.stdin.write).toHaveBeenCalledWith(
-      '{"type":"user","message":{"role":"user","content":"hi there"}}\n',
+      '{"type":"user","message":{"role":"user","content":"hi there"}}\n'
     );
   });
 
-  it('writeToChannel() is a no-op for inactive channels', () => {
-    const { manager } = makeManager();
-    expect(() => manager.writeToChannel('nope', {})).not.toThrow();
+  it('sendUserMessage() clears the stale result flag so a crash mid-turn-2 still emits a synthetic error', async () => {
+    const { manager, router } = makeManager();
+    const handler = vi.fn();
+    router.register('ch-1', handler);
+
+    await manager.spawnClaude('ch-1', {});
+    triggerStdoutData(Buffer.from(JSON.stringify({ type: 'result' }) + '\n'));
+    handler.mockClear();
+
+    manager.sendUserMessage('ch-1', 'turn two');
+    triggerProcessEvent('close', 1);
+
+    expect(handler).toHaveBeenCalledWith(expect.objectContaining({ type: 'error' }));
+  });
+
+  it('stale --resume retry replays the user turn the dead process consumed', async () => {
+    const { manager, router } = makeManager();
+    router.register('ch-1', vi.fn());
+    await manager.spawnClaude('ch-1', { resume: 'gone' });
+    manager.sendUserMessage('ch-1', 'hello');
+    mockProcess.stdin.write.mockClear();
+
+    triggerStderrData('No conversation found with session ID: gone');
+    triggerProcessEvent('close', 1);
+
+    await vi.waitFor(() =>
+      expect(mockProcess.stdin.write).toHaveBeenCalledWith(
+        '{"type":"user","message":{"role":"user","content":"hello"}}\n'
+      )
+    );
+  });
+
+  it('stale --resume retry still replays the turn when the CLI emits an error result first', async () => {
+    const { manager, router } = makeManager();
+    router.register('ch-1', vi.fn());
+    await manager.spawnClaude('ch-1', { resume: 'gone' });
+    manager.sendUserMessage('ch-1', 'hello');
+    mockProcess.stdin.write.mockClear();
+
+    triggerStdoutData(
+      Buffer.from(JSON.stringify({ type: 'result', subtype: 'error_during_execution', is_error: true }) + '\n')
+    );
+    triggerStderrData('No conversation found with session ID: gone');
+    triggerProcessEvent('close', 1);
+
+    await vi.waitFor(() =>
+      expect(mockProcess.stdin.write).toHaveBeenCalledWith(
+        '{"type":"user","message":{"role":"user","content":"hello"}}\n'
+      )
+    );
+  });
+
+  it('closeChannel() during a stale --resume retry kills the replacement instead of keeping it', async () => {
+    const { manager, router } = makeManager();
+    router.register('ch-1', vi.fn());
+    await manager.spawnClaude('ch-1', { resume: 'gone' });
+
+    triggerStderrData('No conversation found with session ID: gone');
+    triggerProcessEvent('close', 1);
+    manager.closeChannel('ch-1');
+
+    await vi.waitFor(() => expect(mockProcess.kill).toHaveBeenCalled());
+    expect(manager.hasChannel('ch-1')).toBe(false);
+  });
+
+  it('spawnClaude() is rejected while a stale --resume retry owns the channel', async () => {
+    const { manager, router } = makeManager();
+    router.register('ch-1', vi.fn());
+    await manager.spawnClaude('ch-1', { resume: 'gone' });
+
+    triggerStderrData('No conversation found with session ID: gone');
+    triggerProcessEvent('close', 1);
+
+    await expect(manager.spawnClaude('ch-1', {})).rejects.toThrow('already active');
+  });
+
+  it('includes the CLI stderr diagnostic in the exit error', async () => {
+    const { manager, router } = makeManager();
+    const handler = vi.fn();
+    router.register('ch-1', handler);
+    await manager.spawnClaude('ch-1', {});
+
+    triggerStderrData('error: unknown option --bogus');
+    triggerProcessEvent('close', 1);
+
+    expect(handler).toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.stringContaining('unknown option --bogus') })
+    );
+  });
+
+  it('stale --resume retry failure reports the error and tears the channel down', async () => {
+    const router = new ChannelRouter();
+    let launches = 0;
+    const provider = vi.fn(() =>
+      ++launches === 1 ? Promise.resolve('/bin/claude') : Promise.reject(new Error('no binary'))
+    );
+    const manager = new ClaudeProcessManager(provider, router, mockLogger, mockSpawn as never);
+    const handler = vi.fn();
+    router.register('ch-1', handler);
+    await manager.spawnClaude('ch-1', { resume: 'gone' });
+
+    triggerStderrData('No conversation found with session ID: gone');
+    triggerProcessEvent('close', 1);
+
+    await vi.waitFor(() =>
+      expect(handler).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'error', message: expect.stringContaining('no binary') })
+      )
+    );
+    handler.mockClear();
+    router.route('ch-1', { type: 'late' });
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it('a failed spawn discards the writes buffered for it', async () => {
+    const router = new ChannelRouter();
+    let launches = 0;
+    const provider = vi.fn(() =>
+      ++launches === 1 ? Promise.reject(new Error('no binary')) : Promise.resolve('/bin/claude')
+    );
+    const manager = new ClaudeProcessManager(provider, router, mockLogger, mockSpawn as never);
+    manager.beginLaunch('ch-1');
+    manager.writeToChannel('ch-1', { type: 'stale' });
+
+    await expect(manager.spawnClaude('ch-1', {})).rejects.toThrow('no binary');
+    await manager.spawnClaude('ch-1', {});
+
     expect(mockProcess.stdin.write).not.toHaveBeenCalled();
+  });
+
+  it('writeToChannel() is a no-op for inactive channels and never leaks into a later spawn', async () => {
+    const { manager } = makeManager();
+    expect(() => manager.writeToChannel('nope', { type: 'stale' })).not.toThrow();
+    expect(mockProcess.stdin.write).not.toHaveBeenCalled();
+
+    await manager.spawnClaude('nope', {});
+
+    expect(mockProcess.stdin.write).not.toHaveBeenCalled();
+  });
+
+  it('cancelLaunch() clears launch state so a relaunch of the same channel survives', async () => {
+    const { manager } = makeManager();
+    manager.beginLaunch('ch-1');
+    manager.writeToChannel('ch-1', { type: 'stale' });
+    manager.closeChannel('ch-1');
+    manager.cancelLaunch('ch-1');
+
+    await manager.spawnClaude('ch-1', {});
+
+    expect(manager.hasChannel('ch-1')).toBe(true);
+    expect(mockProcess.kill).not.toHaveBeenCalled();
+    expect(mockProcess.stdin.write).not.toHaveBeenCalled();
+  });
+
+  it('buffers writes made while a launch is in flight and delivers them in order', async () => {
+    const { manager } = makeManager();
+    manager.beginLaunch('ch-1');
+    manager.writeToChannel('ch-1', { n: 1 });
+    manager.writeToChannel('ch-1', { n: 2 });
+    expect(mockProcess.stdin.write).not.toHaveBeenCalled();
+
+    await manager.spawnClaude('ch-1', {});
+
+    expect(mockProcess.stdin.write).toHaveBeenNthCalledWith(1, '{"n":1}\n');
+    expect(mockProcess.stdin.write).toHaveBeenNthCalledWith(2, '{"n":2}\n');
   });
 
   it('writeToChannel() is a no-op when stdin is not writable', async () => {
@@ -233,6 +402,7 @@ describe('ClaudeProcessManager', () => {
     await manager.spawnClaude('ch-1', {});
 
     triggerProcessEvent('close', 1);
+    handler.mockClear();
     router.route('ch-1', { type: 'late' });
 
     expect(handler).not.toHaveBeenCalled();
@@ -247,7 +417,7 @@ describe('ClaudeProcessManager', () => {
     expect(manager.hasChannel('ch-1')).toBe(false);
     expect(mockLogger.error).toHaveBeenCalledWith(
       expect.stringContaining('ch-1'),
-      expect.any(Error),
+      expect.any(Error)
     );
   });
 
@@ -328,7 +498,7 @@ describe('ClaudeProcessManager', () => {
       expect(handler).toHaveBeenCalledWith({ type: 'from-new-proc' });
     });
 
-    it("drops stale stdout output from a superseded process instead of routing it", async () => {
+    it('drops stale stdout output from a superseded process instead of routing it', async () => {
       const { manager, router } = makeManager();
       const handler = vi.fn();
       router.register('ch-1', handler);
@@ -389,7 +559,7 @@ describe('ClaudeProcessManager', () => {
       expect(mockSpawn).toHaveBeenLastCalledWith(
         '/usr/local/bin/claude',
         expect.anything(),
-        expect.objectContaining({ cwd: '/workspace' }),
+        expect.objectContaining({ cwd: '/workspace' })
       );
     });
 
@@ -576,7 +746,7 @@ describe('ClaudeProcessManager', () => {
       expect(handler).toHaveBeenCalledWith({ type: 'still-routed-after-failed-swap' });
     });
 
-    it('cleans up the old process\'s stale registration when it already exited on its own before the subsequent launch also fails (compound failure)', async () => {
+    it("cleans up the old process's stale registration when it already exited on its own before the subsequent launch also fails (compound failure)", async () => {
       const router = new ChannelRouter();
       const handler = vi.fn();
       router.register('ch-1', handler);

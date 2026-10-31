@@ -24,12 +24,17 @@ describe('MessageList: tool call + inline result', () => {
             type: 'user',
             message: {
               content: [
-                { type: 'tool_result', tool_use_id: 'tu_1', content: '   1\tdef f(): pass', is_error: false },
+                {
+                  type: 'tool_result',
+                  tool_use_id: 'tu_1',
+                  content: '   1\tdef f(): pass',
+                  is_error: false,
+                },
               ],
             },
           }),
         ]}
-      />,
+      />
     );
 
     // Compact header: tool name + primary arg (basename of file_path)
@@ -40,5 +45,20 @@ describe('MessageList: tool call + inline result', () => {
     expect(tool).toHaveTextContent('def f(): pass');
     // The tool_result carrier user event must NOT render as a user bubble
     expect(screen.queryByTestId('chat-message-user')).not.toBeInTheDocument();
+  });
+
+  test('shows the thinking spinner while waiting for a second turn, after a prior assistant reply', () => {
+    render(
+      <MessageList
+        channelId="test-channel"
+        running
+        events={[
+          ev({ type: 'assistant', message: { content: [{ type: 'text', text: 'first reply' }] } }),
+          ev({ type: 'user', message: { content: 'second question' } }),
+        ]}
+      />
+    );
+
+    expect(screen.getByTestId('chat-loading')).toBeInTheDocument();
   });
 });

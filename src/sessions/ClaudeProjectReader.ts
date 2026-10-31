@@ -22,6 +22,37 @@ export class ClaudeProjectReader {
     return path.join(os.homedir(), '.claude', 'projects', hash);
   }
 
+  async readSessionEvents(
+    sessionId: string,
+    workspacePath: string
+  ): Promise<Record<string, unknown>[]> {
+    const filePath = path.join(this.getProjectDir(workspacePath), `${sessionId}.jsonl`);
+
+    let content: string;
+    try {
+      content = await fs.promises.readFile(filePath, 'utf8');
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
+      throw err;
+    }
+
+    const events: Record<string, unknown>[] = [];
+    for (const rawLine of content.split('\n')) {
+      const line = rawLine.trim();
+      if (!line) continue;
+
+      try {
+        const parsed = JSON.parse(line) as Record<string, unknown>;
+        if (parsed.type === 'recall-record' || parsed.type === 'ai-title') continue;
+        events.push(parsed);
+      } catch {
+        // skip malformed line
+      }
+    }
+
+    return events;
+  }
+
   async readSessions(workspacePath: string): Promise<DiscoveredSession[]> {
     const projectDir = this.getProjectDir(workspacePath);
 
@@ -50,15 +81,21 @@ export class ClaudeProjectReader {
           await handle.read(tailBuf, 0, tailSize, stat.size - tailSize);
           const lines = tailBuf.toString('utf8').split('\n');
           for (let i = lines.length - 1; i >= 0; i--) {
-            const line = lines[i].trim();
+            const line = lines[i]!.trim();
             if (!line) continue;
             try {
               const parsed = JSON.parse(line) as Record<string, unknown>;
-              if (parsed.type === 'recall-record' && typeof parsed.title === 'string' && parsed.title.trim()) {
+              if (
+                parsed.type === 'recall-record' &&
+                typeof parsed.title === 'string' &&
+                parsed.title.trim()
+              ) {
                 title = parsed.title.trim();
                 break;
               }
-            } catch { /* skip malformed */ }
+            } catch {
+              /* skip malformed */
+            }
           }
         } catch {
           // keep date fallback

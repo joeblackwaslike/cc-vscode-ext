@@ -3,6 +3,9 @@ import { buildArgs, type LaunchOptions } from './ProcessArgs';
 import type { ChannelRouter } from './ChannelRouter';
 import { StreamJsonParser } from './StreamJsonParser';
 
+const MAX_STDERR_TAIL = 4096;
+const MAX_ERROR_DETAIL = 500;
+
 export interface ILogger {
   info(message: string): void;
   warn(message: string): void;
@@ -17,6 +20,7 @@ export interface ProcessLaunchOptions extends LaunchOptions {
 interface ProcessHandle {
   stdin: { write(data: string): unknown; writable: boolean } | null;
   stdout: { on(event: 'data', listener: (chunk: Buffer) => void): unknown };
+  stderr: { on(event: 'data', listener: (chunk: Buffer) => void): unknown };
   on(event: string, listener: (...args: unknown[]) => void): unknown;
   kill(signal?: string): unknown;
 }
@@ -41,12 +45,35 @@ export class ClaudeProcessManager {
   // simply vanish, and swapChannel() deletes an entry itself once it acts on
   // it.
   private readonly exitedProcesses = new WeakSet<ProcessHandle>();
+  // Channels that have received a 'result' or 'error' event from the CLI.
+  // Used to detect unexpected exits so the close handler can emit a synthetic
+  // error and clear the webview's running state instead of leaving it stuck.
+  private readonly resultReceived = new Set<string>();
+  // Messages written to a channel while its process is still spawning are
+  // buffered here and flushed to stdin once the process is registered.
+  private readonly pendingWrites = new Map<string, unknown[]>();
+  // The user turn most recently written to a channel and not yet answered by a
+  // result/error event. Replayed into the replacement process when a stale
+  // --resume forces a retry, since the dead process consumed the original.
+  private readonly outstandingTurns = new Map<string, unknown>();
+  // Channels with a launch in flight (spawn, history replay before spawn, or a
+  // stale-resume retry). Writes are buffered only for these; a write to any
+  // other channel without a process is a no-op, so nothing queued for a dead or
+  // never-launched channel can leak into a later spawn with the same id.
+  private readonly launching = new Set<string>();
+  // Channels whose stale-resume retry is awaiting its replacement process.
+  private readonly retrying = new Set<string>();
+  // Per-channel launch context, used to retry without --resume.
+  private readonly spawnContexts = new Map<
+    string,
+    { options: ProcessLaunchOptions; cwd?: string; env?: NodeJS.ProcessEnv }
+  >();
 
   constructor(
     private readonly binaryProvider: () => Promise<string>,
     private readonly router: ChannelRouter,
     private readonly logger: ILogger,
-    private readonly spawnFn: SpawnFn = spawn as unknown as SpawnFn,
+    private readonly spawnFn: SpawnFn = spawn as unknown as SpawnFn
   ) {}
 
   /**
@@ -58,14 +85,54 @@ export class ClaudeProcessManager {
     channelId: string,
     options: ProcessLaunchOptions,
     cwd?: string,
-    env?: NodeJS.ProcessEnv,
+    env?: NodeJS.ProcessEnv
   ): Promise<void> {
-    if (this.processes.has(channelId)) {
+    if (this.processes.has(channelId) || this.retrying.has(channelId)) {
       throw new Error(`Channel "${channelId}" is already active`);
     }
 
-    const proc = await this._launchProcess(channelId, options, cwd, env);
+    this.launching.add(channelId);
+    this.spawnContexts.set(channelId, {
+      options,
+      ...(cwd !== undefined && { cwd }),
+      ...(env !== undefined && { env }),
+    });
+    let proc: ProcessHandle;
+    try {
+      proc = await this._launchProcess(channelId, options, cwd, env);
+    } catch (err) {
+      this._teardownChannel(channelId);
+      throw err;
+    }
+    if (this.closeRequested.delete(channelId)) {
+      proc.kill();
+      this._teardownChannel(channelId);
+      return;
+    }
     this.processes.set(channelId, proc);
+    this.launching.delete(channelId);
+    this._drainPendingWrites(channelId);
+  }
+
+  /**
+   * Mark a channel as launching before the spawn itself starts (e.g. while the
+   * broker replays history), so writes arriving in that window are buffered
+   * instead of dropped. The following spawnClaude() clears the mark.
+   */
+  beginLaunch(channelId: string): void {
+    this.launching.add(channelId);
+  }
+
+  /**
+   * Abandon a launch that was begun with beginLaunch() but will never reach
+   * spawnClaude() (its tab closed first). Drops the launching mark, any
+   * buffered writes and a pending close request so a later launch of the same
+   * channel id starts clean. No-op once a process exists.
+   */
+  cancelLaunch(channelId: string): void {
+    if (this.processes.has(channelId) || this.retrying.has(channelId)) return;
+    this.closeRequested.delete(channelId);
+    this._teardownChannel(channelId);
   }
 
   /**
@@ -132,7 +199,7 @@ export class ClaudeProcessManager {
     channelId: string,
     options: ProcessLaunchOptions,
     cwd?: string,
-    env?: NodeJS.ProcessEnv,
+    env?: NodeJS.ProcessEnv
   ): Promise<void> {
     const oldProc = this.processes.get(channelId);
     const token = ++this.swapTokenSeq;
@@ -214,7 +281,7 @@ export class ClaudeProcessManager {
     channelId: string,
     options: ProcessLaunchOptions,
     cwd?: string,
-    env?: NodeJS.ProcessEnv,
+    env?: NodeJS.ProcessEnv
   ): Promise<ProcessHandle> {
     const binary = options.wrapper ?? (await this.binaryProvider());
     const args = buildArgs(options);
@@ -226,8 +293,18 @@ export class ClaudeProcessManager {
     });
 
     const parser = new StreamJsonParser(
-      (event) => this.router.route(channelId, event),
-      (line) => this.logger.warn(`[channel:${channelId}] bad JSON: ${line}`),
+      (event) => {
+        this.router.route(channelId, event);
+        const t = (event as { type?: string }).type;
+        if (t === 'result' || t === 'error') {
+          this.resultReceived.add(channelId);
+          // A failed result may be the CLI reporting a stale --resume; keep the
+          // turn so the retry can replay it.
+          const failed = t === 'error' || (event as { is_error?: unknown }).is_error === true;
+          if (!failed) this.outstandingTurns.delete(channelId);
+        }
+      },
+      (line) => this.logger.warn(`[channel:${channelId}] bad JSON: ${line}`)
     );
 
     proc.stdout.on('data', (chunk: Buffer) => {
@@ -240,27 +317,111 @@ export class ClaudeProcessManager {
       parser.feed(chunk.toString());
     });
 
+    let stderrTail = '';
+    proc.stderr.on('data', (chunk: Buffer) => {
+      const text = chunk.toString();
+      this.logger.warn(`[channel:${channelId}] stderr: ${text.trim()}`);
+      stderrTail = (stderrTail + text).slice(-MAX_STDERR_TAIL);
+    });
+
     proc.on('close', (code: unknown) => {
       this.logger.info(`[channel:${channelId}] closed (code=${String(code)})`);
       this.exitedProcesses.add(proc);
+
+      const stderr = stderrTail;
+      const ctx = this.spawnContexts.get(channelId);
+
+      // If --resume failed because the session no longer exists, retry without it.
+      if (
+        code === 1 &&
+        ctx?.options.resume &&
+        stderr.includes('No conversation found') &&
+        this.processes.get(channelId) === proc &&
+        !this.swapping.has(channelId)
+      ) {
+        this.logger.info(`[channel:${channelId}] stale --resume, retrying as new session`);
+        const retryOptions: ProcessLaunchOptions = { ...ctx.options };
+        delete retryOptions.resume;
+        this.spawnContexts.set(channelId, { ...ctx, options: retryOptions });
+        this.processes.delete(channelId);
+        const outstanding = this.outstandingTurns.get(channelId);
+        const queued = this.pendingWrites.get(channelId) ?? [];
+        if (outstanding !== undefined && !queued.includes(outstanding)) {
+          this.pendingWrites.set(channelId, [outstanding, ...queued]);
+          this.resultReceived.delete(channelId);
+        }
+        this.retrying.add(channelId);
+        this.launching.add(channelId);
+        void this._launchProcess(channelId, retryOptions, ctx.cwd, ctx.env)
+          .then((newProc) => {
+            this.retrying.delete(channelId);
+            if (this.closeRequested.delete(channelId)) {
+              newProc.kill();
+              this._teardownChannel(channelId);
+              return;
+            }
+            this.processes.set(channelId, newProc);
+            this.launching.delete(channelId);
+            this._drainPendingWrites(channelId);
+          })
+          .catch((err: unknown) => {
+            this.logger.error(`[channel:${channelId}] stale --resume retry failed`, err);
+            // The failed process was already removed from the map, so the
+            // identity-guarded helpers would no-op; report and tear down directly.
+            this.retrying.delete(channelId);
+            if (this.swapping.has(channelId)) return;
+            if (!this.resultReceived.has(channelId)) {
+              this.router.route(channelId, {
+                type: 'error',
+                message: `Claude process error: ${String(err)}`,
+              });
+            }
+            this._teardownChannel(channelId);
+          });
+        return;
+      }
+
+      const detail = stderr.trim().slice(-MAX_ERROR_DETAIL);
+      this._emitSyntheticErrorIfStuck(
+        channelId,
+        proc,
+        `Claude process exited unexpectedly (code ${String(code)})${detail ? `: ${detail}` : ''}`
+      );
       this._cleanupIfCurrent(channelId, proc);
     });
 
     proc.on('error', (err: unknown) => {
       this.logger.error(`[channel:${channelId}] process error`, err);
       this.exitedProcesses.add(proc);
+      this._emitSyntheticErrorIfStuck(channelId, proc, `Claude process error: ${String(err)}`);
       this._cleanupIfCurrent(channelId, proc);
     });
 
     return proc;
   }
 
-  /** Write a JSON line to the channel's stdin. No-op if channel is inactive or stdin not writable. */
+  /**
+   * Write a JSON line to the channel's stdin. Buffers while a launch is in
+   * flight; a no-op for channels that are neither running nor launching.
+   */
   writeToChannel(channelId: string, data: unknown): void {
     const proc = this.processes.get(channelId);
-    if (proc === undefined) return;
+    if (proc === undefined) {
+      if (!this.launching.has(channelId)) return;
+      const q = this.pendingWrites.get(channelId) ?? [];
+      q.push(data);
+      this.pendingWrites.set(channelId, q);
+      return;
+    }
     if (proc.stdin === null || !proc.stdin.writable) return;
     proc.stdin.write(JSON.stringify(data) + '\n');
+  }
+
+  private _drainPendingWrites(channelId: string): void {
+    const q = this.pendingWrites.get(channelId);
+    this.pendingWrites.delete(channelId);
+    if (!q) return;
+    for (const data of q) this.writeToChannel(channelId, data);
   }
 
   /**
@@ -273,7 +434,10 @@ export class ClaudeProcessManager {
    * response, so this envelope is the contract the whole send path depends on.
    */
   sendUserMessage(channelId: string, text: string): void {
-    this.writeToChannel(channelId, { type: 'user', message: { role: 'user', content: text } });
+    this.resultReceived.delete(channelId);
+    const turn = { type: 'user', message: { role: 'user', content: text } };
+    this.outstandingTurns.set(channelId, turn);
+    this.writeToChannel(channelId, turn);
   }
 
   /** Send SIGINT to interrupt the channel's running command. No-op if inactive. */
@@ -300,12 +464,15 @@ export class ClaudeProcessManager {
    * in that failure path, since only the swap attempt itself failed.
    */
   closeChannel(channelId: string): void {
-    if (this.swapping.has(channelId)) {
+    if (this.swapping.has(channelId) || this.retrying.has(channelId)) {
       this.closeRequested.add(channelId);
       return;
     }
     const proc = this.processes.get(channelId);
-    if (proc === undefined) return;
+    if (proc === undefined) {
+      if (this.launching.has(channelId)) this.closeRequested.add(channelId);
+      return;
+    }
     proc.kill();
     this._cleanupIfCurrent(channelId, proc);
   }
@@ -320,6 +487,18 @@ export class ClaudeProcessManager {
   /** Returns true if a channelId has an active process. */
   hasChannel(channelId: string): boolean {
     return this.processes.has(channelId);
+  }
+
+  /** Emit a synthetic error result if the channel is still running but never received a result event. */
+  private _emitSyntheticErrorIfStuck(
+    channelId: string,
+    proc: ProcessHandle,
+    message: string
+  ): void {
+    if (this.resultReceived.has(channelId)) return;
+    if (this.processes.get(channelId) !== proc) return;
+    if (this.swapping.has(channelId)) return;
+    this.router.route(channelId, { type: 'error', message });
   }
 
   /**
@@ -343,7 +522,18 @@ export class ClaudeProcessManager {
   private _cleanupIfCurrent(channelId: string, proc: ProcessHandle): void {
     if (this.processes.get(channelId) !== proc) return;
     if (this.swapping.has(channelId)) return;
+    this._teardownChannel(channelId);
+  }
+
+  /** Drop every per-channel record and unregister the channel from the router. */
+  private _teardownChannel(channelId: string): void {
     this.processes.delete(channelId);
+    this.resultReceived.delete(channelId);
+    this.pendingWrites.delete(channelId);
+    this.outstandingTurns.delete(channelId);
+    this.launching.delete(channelId);
+    this.retrying.delete(channelId);
+    this.spawnContexts.delete(channelId);
     this.router.unregister(channelId);
   }
 }

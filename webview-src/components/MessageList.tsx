@@ -37,29 +37,43 @@ export function MessageList({
     <RunOutputProvider>
       <div data-testid="messages-list" className="cc-messages">
         {turns.map((turn, i) => {
-        switch (turn.kind) {
-          case 'user':
-            return <UserTurn key={turn.key} text={turn.text} />;
-          case 'assistant':
-            return (
-              <AssistantTurn
-                key={turn.key}
-                blocks={turn.blocks}
-                channelId={channelId}
-                focusView={focusViewEnabled}
-                running={running && i === lastAssistantIndex}
-              />
-            );
-          case 'result':
-            if (turn.isError && !turns.slice(0, i).some((t) => t.kind === 'user')) return null;
-            return <ResultLine key={turn.key} isError={turn.isError} meta={turn.meta} />;
-          case 'error':
-            if (!turns.slice(0, i).some((t) => t.kind === 'user')) return null;
-            return <ErrorLine key={turn.key} message={turn.message} />;
-          case 'handoff_prompt':
-            return <HandoffPromptBlock key={turn.key} content={turn.content} />;
-        }
-      })}
+          switch (turn.kind) {
+            case 'user':
+              return <UserTurn key={turn.key} text={turn.text} />;
+            case 'assistant':
+              return (
+                <AssistantTurn
+                  key={turn.key}
+                  blocks={turn.blocks}
+                  channelId={channelId}
+                  focusView={focusViewEnabled}
+                  running={running && i === lastAssistantIndex}
+                />
+              );
+            case 'result':
+              if (turn.isError && !turns.slice(0, i).some((t) => t.kind === 'user')) return null;
+              return <ResultLine key={turn.key} isError={turn.isError} meta={turn.meta} />;
+            case 'error':
+              if (!turns.slice(0, i).some((t) => t.kind === 'user')) return null;
+              return <ErrorLine key={turn.key} message={turn.message} />;
+            case 'handoff_prompt':
+              return <HandoffPromptBlock key={turn.key} content={turn.content} />;
+          }
+        })}
+        {running && turns[turns.length - 1]?.kind !== 'assistant' && (
+          <div className="cc-assistant" data-testid="chat-loading">
+            <div className="cc-assistant__gutter">
+              <span className="cc-assistant__dot" />
+            </div>
+            <div className="cc-assistant__body">
+              <span className="cc-thinking__dots" aria-label="Claude is thinking">
+                <span className="cc-thinking__dot" />
+                <span className="cc-thinking__dot" />
+                <span className="cc-thinking__dot" />
+              </span>
+            </div>
+          </div>
+        )}
         <div ref={bottomRef} />
       </div>
     </RunOutputProvider>

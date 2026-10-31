@@ -20,7 +20,6 @@ import type {
   ISessionRelayManager,
   IVSCodeBridge,
   IWorktreeManager,
-  MessageBrokerServices,
 } from '../../src/ipc/MessageBroker';
 import type { FromWebviewMessage, ToWebviewMessage } from '../../src/types/ipc';
 
@@ -28,6 +27,8 @@ import type { FromWebviewMessage, ToWebviewMessage } from '../../src/types/ipc';
 
 export interface MockProcessManager {
   spawnClaude: ReturnType<typeof vi.fn>;
+  beginLaunch: ReturnType<typeof vi.fn>;
+  cancelLaunch: ReturnType<typeof vi.fn>;
   writeToChannel: ReturnType<typeof vi.fn>;
   sendUserMessage: ReturnType<typeof vi.fn>;
   interruptClaude: ReturnType<typeof vi.fn>;
@@ -129,13 +130,17 @@ export function createMockServices(): MockMessageBrokerServices {
     },
     worktreeManager: {
       createWorktree: vi.fn(() =>
-        Promise.resolve({ type: 'create_worktree_response' as const, success: true, worktreePath: '/tmp/branch' }),
+        Promise.resolve({
+          type: 'create_worktree_response' as const,
+          success: true,
+          worktreePath: '/tmp/branch',
+        })
       ),
       checkGitStatus: vi.fn(() =>
-        Promise.resolve({ type: 'check_git_status_response' as const, clean: true, branch: 'main' }),
+        Promise.resolve({ type: 'check_git_status_response' as const, clean: true, branch: 'main' })
       ),
       checkoutBranch: vi.fn(() =>
-        Promise.resolve({ type: 'checkout_branch_response' as const, success: true }),
+        Promise.resolve({ type: 'checkout_branch_response' as const, success: true })
       ),
     },
     atMentionHandler: {
@@ -155,6 +160,7 @@ export function createMockServices(): MockMessageBrokerServices {
       openUrl: vi.fn(() => Promise.resolve()),
       openFolder: vi.fn(() => Promise.resolve()),
       openNewConversationTab: vi.fn(() => Promise.resolve()),
+      openContent: vi.fn(() => Promise.resolve()),
     },
     terminalLauncher: {
       openClaudeTerminal: vi.fn(),
@@ -226,6 +232,8 @@ export function createIpcTestHarness(): IpcTestHarness {
 
   const processManager: MockProcessManager = {
     spawnClaude: vi.fn(() => Promise.resolve()),
+    beginLaunch: vi.fn(),
+    cancelLaunch: vi.fn(),
     writeToChannel: vi.fn(),
     sendUserMessage: vi.fn(),
     interruptClaude: vi.fn(),
@@ -293,7 +301,7 @@ export function createIpcTestHarness(): IpcTestHarness {
     dispatch(msg: FromWebviewMessage) {
       if (!messageHandler) {
         throw new Error(
-          'No message handler registered. Ensure MessageBroker called webview.onDidReceiveMessage().',
+          'No message handler registered. Ensure MessageBroker called webview.onDidReceiveMessage().'
         );
       }
       messageHandler(msg);

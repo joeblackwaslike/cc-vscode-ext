@@ -34,14 +34,18 @@ export interface LaunchOptions {
  * Builds the argument array for spawning the claude CLI.
  *
  * The CLI is always started in stream-json mode (bidirectional NDJSON over stdin/stdout).
- * The `--permission-prompt-tool stdio` flag delegates permission prompts back through
- * the IPC channel so the webview can present them to the user.
+ * Default permission mode omits `--permission-mode` entirely and relies on the CLI's own
+ * default prompt handling; `--permission-prompt-tool` is no longer a supported flag.
  */
 export function buildArgs(options: LaunchOptions): string[] {
   const args: string[] = [
-    '--output-format', 'stream-json',
+    '--print',
+    '--output-format',
+    'stream-json',
     '--verbose',
-    '--input-format', 'stream-json',
+    '--include-partial-messages',
+    '--input-format',
+    'stream-json',
   ];
 
   if (options.resume) {
@@ -49,11 +53,7 @@ export function buildArgs(options: LaunchOptions): string[] {
   }
 
   if (options.permissionMode && options.permissionMode !== 'default') {
-    // 'auto' and all other explicit modes pass through as --permission-mode <value>
     args.push('--permission-mode', options.permissionMode);
-  } else {
-    // Default mode: route permission prompts through IPC so the webview handles them
-    args.push('--permission-prompt-tool', 'stdio');
   }
 
   if (options.effort) {

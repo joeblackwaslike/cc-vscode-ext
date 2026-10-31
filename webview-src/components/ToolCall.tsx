@@ -10,17 +10,21 @@ export function ToolCall({ tool }: { tool: ToolUseBlock }) {
   const rendered = result ? renderer.renderResult(result.text, tool.input) : null;
 
   return (
-    <div className="cc-tool" data-testid="tool-call">
+    <div className={`cc-tool${result?.isError ? ' cc-tool--error' : ''}`} data-testid="tool-call">
       <div className="cc-tool__hd">
         <span className="cc-tool__name">{tool.name}</span>
         {arg && <span className="cc-tool__arg">({arg})</span>}
-        <span className={`cc-tool__status${result?.isError ? ' cc-tool__status--error' : ''}`}>
-          {!result ? '…' : result.isError ? '✗' : '✓'}
-        </span>
+        <div className="cc-tool__actions">
+          <button
+            className="cc-tool__copy"
+            title="Copy"
+            onClick={() => navigator.clipboard.writeText(renderer.copyText(tool.input))}
+          >
+            ⎘
+          </button>
+        </div>
       </div>
-      {rendered && rendered.content.trim() !== '' && (
-        <ToolResult result={rendered} isError={result?.isError ?? false} />
-      )}
+      {rendered && rendered.content.trim() !== '' && <ToolResult result={rendered} />}
     </div>
   );
 }

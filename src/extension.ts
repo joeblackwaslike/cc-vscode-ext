@@ -52,24 +52,20 @@ export function activate(context: vscode.ExtensionContext): void {
     withProgress: (title, task) =>
       vscode.window.withProgress(
         { location: vscode.ProgressLocation.Notification, title, cancellable: false },
-        () => task(),
+        () => task()
       ),
   });
 
   const channelRouter = new ChannelRouter();
-  const processManager = new ClaudeProcessManager(
-    binaryProvider,
-    channelRouter,
-    logger,
-  );
+  const processManager = new ClaudeProcessManager(binaryProvider, channelRouter, logger);
 
   // ─── Diff system ────────────────────────────────────────────────────────────
 
   const leftProvider = new TempFileProvider('clawd-vscode-left');
   const rightProvider = new TempFileProvider('clawd-vscode-right');
 
-  const diffTracker = new ProposedDiffTracker(
-    (key, value) => vscode.commands.executeCommand('setContext', key, value),
+  const diffTracker = new ProposedDiffTracker((key, value) =>
+    vscode.commands.executeCommand('setContext', key, value)
   );
 
   const diffManager = new DiffManager(
@@ -78,7 +74,7 @@ export function activate(context: vscode.ExtensionContext): void {
     diffTracker,
     vscode.commands.executeCommand.bind(vscode.commands),
     vscode.workspace.fs.writeFile.bind(vscode.workspace.fs),
-    vscode.Uri.file.bind(vscode.Uri),
+    vscode.Uri.file.bind(vscode.Uri)
   );
 
   // ─── View layer ─────────────────────────────────────────────────────────────
@@ -110,7 +106,7 @@ export function activate(context: vscode.ExtensionContext): void {
       if (e.affectsConfiguration('clawdCode.customModels')) {
         applyCustomModels();
       }
-    }),
+    })
   );
 
   const htmlBuilder = new HtmlBuilder(context.extensionUri);
@@ -122,17 +118,26 @@ export function activate(context: vscode.ExtensionContext): void {
   const vscBridge = {
     openFile: async (filePath: string, line?: number) => {
       const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(filePath));
-      const opts = line !== undefined ? { selection: new vscode.Range(line, 0, line, 0) } : undefined;
+      const opts =
+        line !== undefined ? { selection: new vscode.Range(line, 0, line, 0) } : undefined;
       await vscode.window.showTextDocument(doc, opts);
     },
     openUrl: async (url: string) => {
       await vscode.env.openExternal(vscode.Uri.parse(url));
     },
     openFolder: async (folderPath: string, newWindow = false) => {
-      await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(folderPath), newWindow);
+      await vscode.commands.executeCommand(
+        'vscode.openFolder',
+        vscode.Uri.file(folderPath),
+        newWindow
+      );
     },
     openNewConversationTab: async () => {
       await vscode.commands.executeCommand('clawd-vscode.editor.open');
+    },
+    openContent: async (content: string, language = 'plaintext') => {
+      const doc = await vscode.workspace.openTextDocument({ content, language });
+      await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.Beside });
     },
   };
 
@@ -146,13 +151,21 @@ export function activate(context: vscode.ExtensionContext): void {
       webview,
       logger,
       {
-        authManager, worktreeManager, atMentionHandler, fileListProvider, vscode: vscBridge,
-        terminalLauncher, commandRunner, workspacePath,
+        authManager,
+        worktreeManager,
+        atMentionHandler,
+        fileListProvider,
+        vscode: vscBridge,
+        terminalLauncher,
+        commandRunner,
+        workspacePath,
         getExitPlanModeFallback: () => {
-          const val = vscode.workspace.getConfiguration('clawdCode').get<string>('exitPlanModeFallback') ?? 'auto';
+          const val =
+            vscode.workspace.getConfiguration('clawdCode').get<string>('exitPlanModeFallback') ??
+            'auto';
           return val as import('./process/ProcessArgs').PermissionMode;
         },
-      },
+      }
     );
   };
 
@@ -162,7 +175,7 @@ export function activate(context: vscode.ExtensionContext): void {
     viewManager,
     makeBroker,
     sessionHistory,
-    logger,
+    logger
   );
 
   const sidebarProvider = new SidebarWebviewProvider(
@@ -170,7 +183,7 @@ export function activate(context: vscode.ExtensionContext): void {
     htmlBuilder,
     viewManager,
     makeBroker,
-    logger,
+    logger
   );
 
   const sessionListProvider = new SessionListProvider(
@@ -178,7 +191,7 @@ export function activate(context: vscode.ExtensionContext): void {
     htmlBuilder,
     viewManager,
     makeBroker,
-    logger,
+    logger
   );
 
   // ─── Feature modules ────────────────────────────────────────────────────────
@@ -203,25 +216,28 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.window.onDidChangeActiveTextEditor((editor) => {
       diffTracker.updateContextKey(editor);
-    }),
+    })
   );
 
   // ─── Register text document content providers ───────────────────────────────
 
   context.subscriptions.push(
     vscode.workspace.registerTextDocumentContentProvider('clawd-vscode-left', leftProvider),
-    vscode.workspace.registerTextDocumentContentProvider('clawd-vscode-right', rightProvider),
+    vscode.workspace.registerTextDocumentContentProvider('clawd-vscode-right', rightProvider)
   );
 
   // ─── Register webview view providers ────────────────────────────────────────
 
   context.subscriptions.push(
-    vscode.window.registerWebviewViewProvider(SidebarWebviewProvider.VIEW_ID, sidebarProvider),
+    vscode.window.registerWebviewViewProvider(SidebarWebviewProvider.VIEW_ID, sidebarProvider, {
+      webviewOptions: { retainContextWhenHidden: true },
+    }),
     vscode.window.registerWebviewViewProvider(
       SidebarWebviewProvider.VIEW_ID_SECONDARY,
       sidebarProvider,
+      { webviewOptions: { retainContextWhenHidden: true } }
     ),
-    vscode.window.registerWebviewViewProvider(SessionListProvider.VIEW_ID, sessionListProvider),
+    vscode.window.registerWebviewViewProvider(SessionListProvider.VIEW_ID, sessionListProvider)
   );
 
   // ─── Commands ───────────────────────────────────────────────────────────────
@@ -234,7 +250,7 @@ export function activate(context: vscode.ExtensionContext): void {
     sessionHistory,
     terminalLauncher,
     logger,
-    viewManager,
+    viewManager
   );
 
   context.subscriptions.push(...commandRegistry.register());
@@ -250,12 +266,10 @@ export function activate(context: vscode.ExtensionContext): void {
     { dispose: () => panelProvider.dispose() },
     { dispose: () => leftProvider.dispose() },
     { dispose: () => rightProvider.dispose() },
-    logger,
+    logger
   );
 
   logger.info('Clawd Code extension activated');
-
-
 }
 
 export function deactivate(): void {

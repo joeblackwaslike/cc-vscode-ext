@@ -21,6 +21,12 @@ export class SessionManager {
   ) {
     this.sessionStates = storage.getSessions();
     this.groups = storage.getGroups();
+    // Any session still marked 'running' at startup had its process killed by
+    // the extension host restart — reset them so the webview doesn't show a
+    // permanently stuck stop button.
+    for (const [id, s] of this.sessionStates) {
+      if (s.state === 'running') this.sessionStates.set(id, { ...s, state: 'idle' });
+    }
   }
 
   /** Persist the last-used session ID so panels can auto-resume on reopen. */
@@ -60,11 +66,7 @@ export class SessionManager {
   }
 
   /** Update (or create) a session's state and title, then persist. */
-  async updateSession(
-    id: string,
-    state: SessionState['state'],
-    title?: string
-  ): Promise<void> {
+  async updateSession(id: string, state: SessionState['state'], title?: string): Promise<void> {
     const existing = this.sessionStates.get(id);
     const updated: SessionState = {
       ...existing,
@@ -80,10 +82,12 @@ export class SessionManager {
   /** List sessions, optionally including hidden ones. */
   listSessions(includeHidden = false): SessionInfo[] {
     const hiddenIds = this.history.getHiddenIds();
-    return [...this.sessionStates.values()].map((s) => ({
-      ...s,
-      hidden: hiddenIds.has(s.id),
-    })).filter((s) => includeHidden || !s.hidden);
+    return [...this.sessionStates.values()]
+      .map((s) => ({
+        ...s,
+        hidden: hiddenIds.has(s.id),
+      }))
+      .filter((s) => includeHidden || !s.hidden);
   }
 
   /** Retrieve a single session by ID (null if not found). */
