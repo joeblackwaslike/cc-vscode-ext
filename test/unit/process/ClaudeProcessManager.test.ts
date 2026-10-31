@@ -59,6 +59,12 @@ function triggerProcessEvent(event: string, ...args: unknown[]): void {
   }
 }
 
+function triggerStderrData(text: string): void {
+  for (const call of mockProcess.stderr.on.mock.calls as [string, (...a: unknown[]) => void][]) {
+    if (call[0] === 'data') call[1](Buffer.from(text));
+  }
+}
+
 function triggerStdoutData(chunk: Buffer): void {
   for (const call of mockProcess.stdout.on.mock.calls as [string, (...a: unknown[]) => void][]) {
     if (call[0] === 'data') call[1](chunk);
@@ -179,6 +185,73 @@ describe('ClaudeProcessManager', () => {
     triggerProcessEvent('close', 1);
 
     expect(handler).toHaveBeenCalledWith(expect.objectContaining({ type: 'error' }));
+  });
+
+  it('stale --resume retry replays the user turn the dead process consumed', async () => {
+    const { manager, router } = makeManager();
+    router.register('ch-1', vi.fn());
+    await manager.spawnClaude('ch-1', { resume: 'gone' });
+    manager.sendUserMessage('ch-1', 'hello');
+    mockProcess.stdin.write.mockClear();
+
+    triggerStderrData('No conversation found with session ID: gone');
+    triggerProcessEvent('close', 1);
+
+    await vi.waitFor(() =>
+      expect(mockProcess.stdin.write).toHaveBeenCalledWith(
+        '{"type":"user","message":{"role":"user","content":"hello"}}\n'
+      )
+    );
+  });
+
+  it('stale --resume retry failure reports the error and tears the channel down', async () => {
+    const router = new ChannelRouter();
+    let launches = 0;
+    const provider = vi.fn(() =>
+      ++launches === 1 ? Promise.resolve('/bin/claude') : Promise.reject(new Error('no binary'))
+    );
+    const manager = new ClaudeProcessManager(provider, router, mockLogger, mockSpawn as never);
+    const handler = vi.fn();
+    router.register('ch-1', handler);
+    await manager.spawnClaude('ch-1', { resume: 'gone' });
+
+    triggerStderrData('No conversation found with session ID: gone');
+    triggerProcessEvent('close', 1);
+
+    await vi.waitFor(() =>
+      expect(handler).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'error', message: expect.stringContaining('no binary') })
+      )
+    );
+    handler.mockClear();
+    router.route('ch-1', { type: 'late' });
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it('bounds the pre-spawn write buffer, dropping the oldest entries', async () => {
+    const { manager } = makeManager();
+    for (let i = 0; i < 101; i++) manager.writeToChannel('ch-1', { n: i });
+
+    await manager.spawnClaude('ch-1', {});
+
+    const written = (mockProcess.stdin.write.mock.calls as unknown as string[][]).map((c) => c[0]);
+    expect(written).toHaveLength(100);
+    expect(written[0]).toBe('{"n":1}\n');
+  });
+
+  it('a failed spawn discards the writes buffered for it', async () => {
+    const router = new ChannelRouter();
+    let launches = 0;
+    const provider = vi.fn(() =>
+      ++launches === 1 ? Promise.reject(new Error('no binary')) : Promise.resolve('/bin/claude')
+    );
+    const manager = new ClaudeProcessManager(provider, router, mockLogger, mockSpawn as never);
+    manager.writeToChannel('ch-1', { type: 'stale' });
+
+    await expect(manager.spawnClaude('ch-1', {})).rejects.toThrow('no binary');
+    await manager.spawnClaude('ch-1', {});
+
+    expect(mockProcess.stdin.write).not.toHaveBeenCalled();
   });
 
   it('writeToChannel() is a no-op for inactive channels', () => {

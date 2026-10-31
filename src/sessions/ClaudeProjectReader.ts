@@ -31,8 +31,9 @@ export class ClaudeProjectReader {
     let content: string;
     try {
       content = await fs.promises.readFile(filePath, 'utf8');
-    } catch {
-      return [];
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return [];
+      throw err;
     }
 
     const events: Record<string, unknown>[] = [];

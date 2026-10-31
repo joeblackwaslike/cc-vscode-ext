@@ -40,7 +40,7 @@ type SessionDefaults = Partial<
 >;
 
 type Action =
-  | { type: 'UPDATE_STATE'; payload: Omit<ExtensionState, 'authenticated' | 'loginUrl' | 'lastSessionId'> & { lastSessionId?: string } }
+  | { type: 'UPDATE_STATE'; payload: Omit<ExtensionState, 'authenticated' | 'loginUrl' | 'lastSessionId' | 'initialStateReceived'> & { lastSessionId?: string | undefined } }
   | { type: 'AUTH_STATUS'; authenticated: boolean; loginUrl?: string }
   | { type: 'LIST_SESSIONS'; sessions: SessionInfo[]; groups: SessionGroup[] }
   | { type: 'SET_DEFAULTS'; defaults: SessionDefaults };

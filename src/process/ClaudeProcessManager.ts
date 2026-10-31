@@ -3,6 +3,8 @@ import { buildArgs, type LaunchOptions } from './ProcessArgs';
 import type { ChannelRouter } from './ChannelRouter';
 import { StreamJsonParser } from './StreamJsonParser';
 
+const MAX_PENDING_WRITES = 100;
+
 export interface ILogger {
   info(message: string): void;
   warn(message: string): void;
@@ -49,6 +51,10 @@ export class ClaudeProcessManager {
   // Messages written to a channel while its process is still spawning are
   // buffered here and flushed to stdin once the process is registered.
   private readonly pendingWrites = new Map<string, unknown[]>();
+  // The user turn most recently written to a channel and not yet answered by a
+  // result/error event. Replayed into the replacement process when a stale
+  // --resume forces a retry, since the dead process consumed the original.
+  private readonly outstandingTurns = new Map<string, unknown>();
   // Per-channel stderr accumulator and launch context, used to detect
   // "No conversation found" errors so we can retry without --resume.
   private readonly stderrBuffers = new Map<string, string>();
@@ -84,7 +90,13 @@ export class ClaudeProcessManager {
       ...(cwd !== undefined && { cwd }),
       ...(env !== undefined && { env }),
     });
-    const proc = await this._launchProcess(channelId, options, cwd, env);
+    let proc: ProcessHandle;
+    try {
+      proc = await this._launchProcess(channelId, options, cwd, env);
+    } catch (err) {
+      this._teardownChannel(channelId);
+      throw err;
+    }
     this.processes.set(channelId, proc);
     this._drainPendingWrites(channelId);
   }
@@ -250,7 +262,10 @@ export class ClaudeProcessManager {
       (event) => {
         this.router.route(channelId, event);
         const t = (event as { type?: string }).type;
-        if (t === 'result' || t === 'error') this.resultReceived.add(channelId);
+        if (t === 'result' || t === 'error') {
+          this.resultReceived.add(channelId);
+          this.outstandingTurns.delete(channelId);
+        }
       },
       (line) => this.logger.warn(`[channel:${channelId}] bad JSON: ${line}`)
     );
@@ -292,18 +307,28 @@ export class ClaudeProcessManager {
         delete retryOptions.resume;
         this.spawnContexts.set(channelId, { ...ctx, options: retryOptions });
         this.processes.delete(channelId);
+        const outstanding = this.outstandingTurns.get(channelId);
+        const queued = this.pendingWrites.get(channelId) ?? [];
+        if (outstanding !== undefined && !queued.includes(outstanding)) {
+          this.pendingWrites.set(channelId, [outstanding, ...queued]);
+        }
         void this._launchProcess(channelId, retryOptions, ctx.cwd, ctx.env)
           .then((newProc) => {
             this.processes.set(channelId, newProc);
             this._drainPendingWrites(channelId);
           })
           .catch((err: unknown) => {
-            this._emitSyntheticErrorIfStuck(
-              channelId,
-              proc,
-              `Claude process error: ${String(err)}`
-            );
-            this._cleanupIfCurrent(channelId, proc);
+            this.logger.error(`[channel:${channelId}] stale --resume retry failed`, err);
+            // The failed process was already removed from the map, so the
+            // identity-guarded helpers would no-op; report and tear down directly.
+            if (this.processes.has(channelId) || this.swapping.has(channelId)) return;
+            if (!this.resultReceived.has(channelId)) {
+              this.router.route(channelId, {
+                type: 'error',
+                message: `Claude process error: ${String(err)}`,
+              });
+            }
+            this._teardownChannel(channelId);
           });
         return;
       }
@@ -333,6 +358,10 @@ export class ClaudeProcessManager {
       // Process is still spawning — buffer and flush once it's registered.
       const q = this.pendingWrites.get(channelId) ?? [];
       q.push(data);
+      if (q.length > MAX_PENDING_WRITES) {
+        this.logger.warn(`[channel:${channelId}] pending-write buffer full, dropping oldest`);
+        q.shift();
+      }
       this.pendingWrites.set(channelId, q);
       return;
     }
@@ -358,7 +387,9 @@ export class ClaudeProcessManager {
    */
   sendUserMessage(channelId: string, text: string): void {
     this.resultReceived.delete(channelId);
-    this.writeToChannel(channelId, { type: 'user', message: { role: 'user', content: text } });
+    const turn = { type: 'user', message: { role: 'user', content: text } };
+    this.outstandingTurns.set(channelId, turn);
+    this.writeToChannel(channelId, turn);
   }
 
   /** Send SIGINT to interrupt the channel's running command. No-op if inactive. */
@@ -407,6 +438,18 @@ export class ClaudeProcessManager {
     return this.processes.has(channelId);
   }
 
+  /** Emit a synthetic error result if the channel is still running but never received a result event. */
+  private _emitSyntheticErrorIfStuck(
+    channelId: string,
+    proc: ProcessHandle,
+    message: string
+  ): void {
+    if (this.resultReceived.has(channelId)) return;
+    if (this.processes.get(channelId) !== proc) return;
+    if (this.swapping.has(channelId)) return;
+    this.router.route(channelId, { type: 'error', message });
+  }
+
   /**
    * Cleanup a process's map/router entries, but only if `proc` is still the
    * entry registered for `channelId`. A process's close/error handlers are
@@ -425,24 +468,18 @@ export class ClaudeProcessManager {
    * that entry — see swapChannel's doc comment for why a token, not a plain
    * flag, is needed here.
    */
-  /** Emit a synthetic error result if the channel is still running but never received a result event. */
-  private _emitSyntheticErrorIfStuck(
-    channelId: string,
-    proc: ProcessHandle,
-    message: string
-  ): void {
-    if (this.resultReceived.has(channelId)) return;
-    if (this.processes.get(channelId) !== proc) return;
-    if (this.swapping.has(channelId)) return;
-    this.router.route(channelId, { type: 'error', message });
-  }
-
   private _cleanupIfCurrent(channelId: string, proc: ProcessHandle): void {
     if (this.processes.get(channelId) !== proc) return;
     if (this.swapping.has(channelId)) return;
+    this._teardownChannel(channelId);
+  }
+
+  /** Drop every per-channel record and unregister the channel from the router. */
+  private _teardownChannel(channelId: string): void {
     this.processes.delete(channelId);
     this.resultReceived.delete(channelId);
     this.pendingWrites.delete(channelId);
+    this.outstandingTurns.delete(channelId);
     this.stderrBuffers.delete(channelId);
     this.spawnContexts.delete(channelId);
     this.router.unregister(channelId);
