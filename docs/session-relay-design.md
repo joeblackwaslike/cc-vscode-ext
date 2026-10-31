@@ -164,11 +164,10 @@ Following the existing patterns next to `ContextUsageMessage` (`:406-410`) and `
 
 ### Real risk to design around: the permission-prompt race
 
-This extension launches `claude` with `--permission-prompt-tool stdio` in its default permission
-mode (`src/process/ProcessArgs.ts:37-38, 51-56`), which delegates tool-use permission prompts
-back over the same stdio control channel the CLI uses for `get_context_usage` and friends
-(`tool_permission_request` in `src/types/ipc.ts:272`, correlated via request IDs by
-`ControlRequestManager` in `src/process/ControlRequest.ts`).
+Tool-use permission prompts travel over the same stdio control channel the CLI uses for
+`get_context_usage` and friends (`tool_permission_request` in `src/types/ipc.ts:272`, correlated
+via request IDs by `ControlRequestManager` in `src/process/ControlRequest.ts`); see
+`src/process/ProcessArgs.ts` for the current launch-flag contract.
 
 If a relay fires while a `tool_permission_request` is in flight on the *old* process, and
 `swapChannel` force-closes that process, the pending control request is orphaned — the CLI is
