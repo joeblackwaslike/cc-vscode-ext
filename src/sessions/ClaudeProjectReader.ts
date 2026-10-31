@@ -50,7 +50,7 @@ export class ClaudeProjectReader {
           await handle.read(tailBuf, 0, tailSize, stat.size - tailSize);
           const lines = tailBuf.toString('utf8').split('\n');
           for (let i = lines.length - 1; i >= 0; i--) {
-            const line = lines[i].trim();
+            const line = lines[i]!.trim();
             if (!line) continue;
             try {
               const parsed = JSON.parse(line) as Record<string, unknown>;
