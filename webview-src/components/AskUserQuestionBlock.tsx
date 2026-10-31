@@ -12,12 +12,43 @@ const STATUS_WORD: Record<AskStatus, string | undefined> = {
   pending: 'Waiting for answer',
 };
 
-function splitAnswer(answer: string, question: AskQuestion) {
-  const labels = new Set(question.options.map((o) => o.label));
-  const tokens = answer === '' ? [] : answer.split(', ');
-  const selected = tokens.filter((t) => labels.has(t));
-  const typed = tokens.filter((t) => !labels.has(t)).join(', ');
-  return { selected, typed };
+/**
+ * Splits a flattened answer back into chosen option labels and typed "Other" text.
+ * A single-select answer is one value: either exactly an option label or typed text.
+ * A multi-select answer is `", "`-joined, so known labels are consumed longest first
+ * (labels may themselves contain commas); anything between them is typed text. A typed
+ * answer that spells out `, <option label>` stays ambiguous because only the flattened
+ * string is stored.
+ */
+export function splitAnswer(answer: string, question: AskQuestion) {
+  if (answer === '') return { selected: [] as string[], typed: '' };
+  const labels = question.options.map((o) => o.label);
+  if (!question.multiSelect) {
+    return labels.includes(answer) ? { selected: [answer], typed: '' } : { selected: [] as string[], typed: answer };
+  }
+  const byLength = [...labels].sort((a, b) => b.length - a.length);
+  const startsWithLabel = (s: string) => byLength.find((l) => s === l || s.startsWith(`${l}, `));
+  const selected: string[] = [];
+  const typed: string[] = [];
+  let rest = answer;
+  while (rest !== '') {
+    const hit = startsWithLabel(rest);
+    if (hit) {
+      selected.push(hit);
+      rest = rest === hit ? '' : rest.slice(hit.length + 2);
+      continue;
+    }
+    let cut = -1;
+    for (let i = rest.indexOf(', '); i >= 0; i = rest.indexOf(', ', i + 1)) {
+      if (startsWithLabel(rest.slice(i + 2))) {
+        cut = i;
+        break;
+      }
+    }
+    typed.push(cut < 0 ? rest : rest.slice(0, cut));
+    rest = cut < 0 ? '' : rest.slice(cut + 2);
+  }
+  return { selected, typed: typed.join(', ') };
 }
 
 /** Transcript review of an AskUserQuestion call: the questions, the chosen options and a status. */

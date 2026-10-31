@@ -53,6 +53,22 @@ describe('PermissionRequests', () => {
     });
   });
 
+  it('logs an unknown reply, a dropped reply and a dropped auto-deny', () => {
+    const log = vi.fn();
+    const logged = new PermissionRequests({ write, broadcast, log });
+
+    expect(logged.respond('c', 'nope', allow)).toBe(false);
+    expect(log).toHaveBeenLastCalledWith(expect.stringContaining('no pending request nope'));
+
+    logged.register('c', ask);
+    writeOk = false;
+    expect(logged.respond('c', ask.request_id, allow)).toBe(false);
+    expect(log).toHaveBeenLastCalledWith(expect.stringContaining('was dropped'));
+
+    logged.denyWithoutPrompt('c', ask, 'busy');
+    expect(log).toHaveBeenLastCalledWith(expect.stringContaining('auto-deny'));
+  });
+
   it('respond returns false for an unknown or already-answered request', () => {
     expect(perms.respond('c', 'nope', allow)).toBe(false);
     perms.register('c', ask);

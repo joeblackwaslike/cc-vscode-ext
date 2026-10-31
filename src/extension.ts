@@ -145,6 +145,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const permissionRequests = new PermissionRequests({
     write: (c, d) => processManager.writeToChannel(c, d),
     broadcast: (m) => viewManager.broadcastMessage(m),
+    log: (m) => logger.warn(m),
   });
   context.subscriptions.push({
     dispose: processManager.onChannelExit((id) => permissionRequests.cancelChannel(id)),

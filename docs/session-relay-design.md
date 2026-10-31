@@ -164,28 +164,30 @@ toSessionId }` — lets the webview show that a relay happened (e.g. a divider i
 
 ### Real risk to design around: the permission-prompt race
 
-Tool-use permission prompts travel over the same stdio control channel the CLI uses for
-`get_context_usage` and friends (`PermissionRequestMessage` in `src/types/ipc.ts:615`, correlated
-via request IDs by `ControlRequestManager` in `src/process/ControlRequest.ts`); see
-`src/process/ProcessArgs.ts` for the current launch-flag contract.
+Tool-use permission prompts (`can_use_tool` control requests) travel over the same stdio
+control channel the CLI uses for `get_context_usage` and friends, but they are tracked by
+`PermissionRequests` (`src/process/PermissionRequests.ts`), not `ControlRequestManager`:
+`MessageBroker` routes inbound `can_use_tool` requests straight to it, and it owns the pending
+prompt map and broadcasts prompt state to the webviews. `ControlRequestManager`
+(`src/process/ControlRequest.ts`) only correlates the extension's own outbound control requests.
+See `src/process/ProcessArgs.ts` for the current launch-flag contract.
 
 If a relay fires while a `permission_request` is in flight on the _old_ process, and
-`swapChannel` force-closes that process, the pending control request is orphaned — the CLI is
-waiting on a stdio reply that will never come, and whatever tool call triggered the prompt is
-left in limbo. `SessionRelayManager.relay()` must check `ControlRequestManager` for a pending
-request on that channel before swapping, and if one exists, defer the relay until the next
+`swapChannel` force-closes that process, the pending request is orphaned — the CLI is waiting on
+a stdio reply that will never come, and whatever tool call triggered the prompt is left in
+limbo. While a relay is in progress the broker already auto-denies _new_ prompts
+(`PermissionRequests.denyWithoutPrompt`), and `cancelChannel` clears a channel's prompts when
+its process exits. What is still missing is the guard for a prompt that is _already_ pending when
+the relay starts: `SessionRelayManager.relay()` must check `PermissionRequests` for a pending
+prompt on that channel before swapping, and if one exists, defer the relay until the next
 `result` event (i.e. until the current turn — including any pending permission round-trip —
 actually completes) rather than force-closing mid-prompt.
 
-`ControlRequestManager` does not currently expose a "has pending requests for this channel"
-query — its `pending` map (`src/process/ControlRequest.ts:39`) is private and keyed by
-`requestId`, not `channelId`, so answering "is anything pending for this channel" isn't just a
-missing getter, it needs either a `channelId` added to each `Pending` entry (so the manager can
-filter) or `SessionRelayManager` independently tracking in-flight requests per channel by
-observing the same `control_request`/`control_response` traffic `ControlRequestManager` already
-correlates. Choosing between those two is implementation-plan work, not fixed here — but the
-`writing-plans` pass must pick one explicitly rather than leave it implicit, since the design
-above depends on it existing.
+`PermissionRequests` does not currently expose a "has pending prompts for this channel" query.
+Its `pending` map is keyed by `requestId`, but every entry carries its `channelId`
+(`cancelChannel` already filters on it), so the query is a small addition rather than new
+bookkeeping. The `writing-plans` pass must add it explicitly rather than leave it implicit,
+since the design above depends on it existing.
 
 ### Verification approach
 

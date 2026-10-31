@@ -5,7 +5,7 @@ import type { ToolUseBlock } from '../lib/conversationModel';
 import fixtures from '../lib/__fixtures__/permission-protocol.json';
 import { SessionContext } from '../store/sessionStore';
 import type { SessionStoreState } from '../store/sessionStore';
-import { AskUserQuestionBlock } from './AskUserQuestionBlock';
+import { AskUserQuestionBlock, splitAnswer } from './AskUserQuestionBlock';
 
 const base = fixtures.askToolUse as unknown as { id: string; name: string; input: Record<string, unknown> };
 
@@ -85,5 +85,43 @@ describe('AskUserQuestionBlock', () => {
     expect(screen.getByRole('radio', { name: /Red/ })).toHaveAttribute('aria-checked', 'false');
     expect(screen.getByRole('checkbox', { name: /Fish/ })).toHaveAttribute('aria-checked', 'true');
     expect(screen.queryByText('My custom other answer')).not.toBeInTheDocument();
+  });
+});
+
+describe('splitAnswer', () => {
+  const question = (multiSelect: boolean, labels: string[]) =>
+    ({
+      question: 'Q',
+      header: 'H',
+      multiSelect,
+      options: labels.map((label) => ({ label, description: '' })),
+    }) as never;
+
+  test('a single-select label containing a comma is one selected option', () => {
+    expect(splitAnswer('Yes, always', question(false, ['Yes, always', 'No']))).toEqual({
+      selected: ['Yes, always'],
+      typed: '',
+    });
+  });
+
+  test('single-select typed text that starts with an option label stays typed', () => {
+    expect(splitAnswer('Red, white', question(false, ['Red', 'Blue']))).toEqual({
+      selected: [],
+      typed: 'Red, white',
+    });
+  });
+
+  test('multi-select consumes comma-containing labels longest first', () => {
+    expect(splitAnswer('Yes, always, No', question(true, ['Yes', 'Yes, always', 'No']))).toEqual({
+      selected: ['Yes, always', 'No'],
+      typed: '',
+    });
+  });
+
+  test('multi-select keeps typed text that sits between labels', () => {
+    expect(splitAnswer('Cat, Llama, Dog', question(true, ['Cat', 'Dog']))).toEqual({
+      selected: ['Cat', 'Dog'],
+      typed: 'Llama',
+    });
   });
 });

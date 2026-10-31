@@ -36,8 +36,7 @@ export interface LaunchOptions {
  * The CLI is always started in stream-json mode (bidirectional NDJSON over stdin/stdout).
  * Default permission mode omits `--permission-mode` entirely. `--permission-prompt-tool stdio`
  * is passed in every mode except bypassPermissions so permission prompts and the interactive
- * tools (AskUserQuestion, ExitPlanMode) are delegated back through stdio; the CLI (2.1.x)
- * still accepts it alongside `--permission-prompts`.
+ * tools (AskUserQuestion, ExitPlanMode) are delegated back through stdio; the CLI (2.1.x) accepts it.
  */
 export function buildArgs(options: LaunchOptions): string[] {
   const args: string[] = [

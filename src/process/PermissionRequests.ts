@@ -43,6 +43,7 @@ export function isCanUseToolRequest(event: unknown): event is CanUseToolEvent {
 interface PermissionRequestsDeps {
   write(channelId: string, data: unknown): boolean;
   broadcast(msg: ToWebviewMessage): void;
+  log?(message: string): void;
 }
 
 interface ChannelMode {
@@ -75,9 +76,13 @@ export class PermissionRequests {
 
   respond(channelId: string, requestId: string, decision: PermissionDecision): boolean {
     const req = this.pending.get(requestId);
-    if (!req || req.channelId !== channelId) return false;
+    if (!req || req.channelId !== channelId) {
+      this.deps.log?.(`[permissions] reply ignored: no pending request ${requestId} on ${channelId}`);
+      return false;
+    }
     this.pending.delete(requestId);
     if (!this.writeDecision(channelId, requestId, decision)) {
+      this.deps.log?.(`[permissions] reply to ${requestId} on ${channelId} was dropped (channel not writable); cancelling the prompt`);
       this.deps.broadcast({
         type: 'permission_cancelled',
         channelId,
@@ -97,7 +102,9 @@ export class PermissionRequests {
   }
 
   denyWithoutPrompt(channelId: string, event: CanUseToolEvent, message: string): void {
-    this.writeDecision(channelId, event.request_id, { behavior: 'deny', message });
+    if (!this.writeDecision(channelId, event.request_id, { behavior: 'deny', message })) {
+      this.deps.log?.(`[permissions] auto-deny of ${event.request_id} on ${channelId} was dropped; the CLI stays blocked on it`);
+    }
   }
 
   cancelChannel(channelId: string): void {

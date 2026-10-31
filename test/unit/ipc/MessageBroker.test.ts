@@ -95,9 +95,8 @@ describe('MessageBroker', () => {
       const { h } = makebroker();
       h.dispatch({ type: 'launch_claude', channelId: 'ch-1', resume: 'sess-abc', cwd: '/workspace' });
       h.dispatch({ type: 'close_channel', channelId: 'ch-1' });
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await vi.waitFor(() => expect(h.processManager.cancelLaunch).toHaveBeenCalledWith('ch-1'));
       expect(h.processManager.spawnClaude).not.toHaveBeenCalled();
-      expect(h.processManager.cancelLaunch).toHaveBeenCalledWith('ch-1');
     });
 
     it('updates session state to running', () => {
@@ -899,6 +898,21 @@ describe('permission prompt routing', () => {
     h.dispatch({ type: 'launch_claude', channelId });
     return h.channelRouter.register.mock.calls[index][1] as (event: unknown) => void;
   }
+
+  it("records a channel's own mode transition even when another channel already moved the broker-wide mode", () => {
+    const { h, sessionRelayManager, permissionRequests } = makeBrokerWithPermissions();
+    const noteMode = vi.spyOn(permissionRequests, 'noteMode');
+    const routedA = launch(h, 'a', 0);
+    const routedB = launch(h, 'b', 1);
+    routedA({ type: 'system', permissionMode: 'plan' });
+    sessionRelayManager.updateLaunchOptions.mockClear();
+    noteMode.mockClear();
+
+    routedB({ type: 'system', permissionMode: 'plan' });
+
+    expect(sessionRelayManager.updateLaunchOptions).toHaveBeenCalledWith('b', { permissionMode: 'plan' });
+    expect(noteMode).toHaveBeenCalledWith('b', 'plan');
+  });
 
   it('can_use_tool control_request is registered and never broadcast as a request event', () => {
     const { h } = makeBrokerWithPermissions();

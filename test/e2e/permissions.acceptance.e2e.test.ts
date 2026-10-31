@@ -140,6 +140,12 @@ test.describe('Acceptance: permission prompts round-trip through the real CLI', 
         timeout: 30_000,
       });
       await expect(dock.getByText('Accept this plan?')).toHaveCount(0, { timeout: 10_000 });
+      await expect(frame.getByTestId('mode-selector')).toContainText('Plan mode');
+
+      // The feedback must have reached Claude: its own revised reply mentions the new file name.
+      await expect(
+        frame.getByTestId('chat-message-assistant').filter({ hasText: 'bye.txt' }).first()
+      ).toBeVisible({ timeout: PROMPT_TIMEOUT });
 
       await winddown(frame);
     } finally {

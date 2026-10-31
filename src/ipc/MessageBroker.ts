@@ -191,6 +191,7 @@ export class MessageBroker {
       new PermissionRequests({
         write: (c, d) => this.processManager.writeToChannel(c, d),
         broadcast: (m) => this.viewManager.broadcastMessage(m),
+        log: (m) => this.logger.warn(m),
       });
     webview.onDidReceiveMessage((raw: unknown) => {
       void this.handleMessage(raw as FromWebviewMessage);
@@ -204,6 +205,11 @@ export class MessageBroker {
     this.currentPermissionMode = mode;
     this.viewManager.setPermissionMode(mode);
     this.viewManager.broadcastSessionStates();
+    this.noteChannelMode(channelId, mode);
+  }
+
+  /** Per-channel half of a mode change: relay launch options and the permission coordinator. */
+  private noteChannelMode(channelId: string, mode: PermissionMode): void {
     this.sessionRelayManager.updateLaunchOptions(channelId, { permissionMode: mode });
     this.permissionRequests.noteMode(channelId, mode);
   }
@@ -618,8 +624,12 @@ export class MessageBroker {
       }
       if (typed.type === 'system') {
         const mode = (event as { permissionMode?: unknown }).permissionMode;
-        if (typeof mode === 'string' && mode !== this.currentPermissionMode) {
-          this.adoptPermissionMode(channelId, mode as PermissionMode);
+        if (typeof mode === 'string') {
+          // The picker mode is broker-wide, but relay options and the plan-exit
+          // prior mode are per channel, so a channel's own transition is recorded
+          // even when another channel already moved the broker-wide value.
+          if (mode !== this.currentPermissionMode) this.adoptPermissionMode(channelId, mode as PermissionMode);
+          else this.noteChannelMode(channelId, mode as PermissionMode);
         }
       }
       if (!relaying) {
