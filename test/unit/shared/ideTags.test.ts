@@ -72,7 +72,10 @@ describe('parseIdeBlocks', () => {
     ];
     const { text, chips } = parseIdeBlocks(`hi\n${blocks.join('\n')}`);
     expect(text).toBe('hi');
-    expect(chips.map((c) => c.kind)).toEqual(['selection', 'file']);
+    expect(chips).toEqual([
+      { kind: 'selection', path: '/a.ts', startLine: 1, endLine: 2 },
+      { kind: 'file', path: '/b.ts' },
+    ]);
   });
 
   it('keeps a literal closing tag inside selection text as one chip', () => {
@@ -86,5 +89,55 @@ describe('parseIdeBlocks', () => {
       chips: [{ kind: 'selection', path: '/a.ts', startLine: 1, endLine: 3 }],
     });
     expect(parseIdeBlocks(`p\n${b}\n${file}`).chips).toHaveLength(2);
+  });
+
+  it('handles a literal close tag followed by trailing prompt text', () => {
+    const [b] = formatIdeBlocks({
+      filePath: '/a.ts',
+      selection: { startLine: 1, endLine: 3, text: 'a </ide_selection> b' },
+    });
+    expect(parseIdeBlocks(`${b}\nfix this`)).toEqual({
+      text: 'fix this',
+      chips: [{ kind: 'selection', path: '/a.ts', startLine: 1, endLine: 3 }],
+    });
+  });
+
+  it('handles a tag before prompt text without a literal close', () => {
+    const [b] = formatIdeBlocks({ filePath: '/a.ts', selection: { startLine: 1, endLine: 2, text: 'x' } });
+    expect(parseIdeBlocks(`${b}\nfix this`).text).toBe('fix this');
+  });
+
+  it('handles adjacent tags with no separator', () => {
+    const f = formatIdeBlocks({ filePath: '/f.ts' })[0];
+    const s = formatIdeBlocks({ filePath: '/a.ts', selection: { startLine: 1, endLine: 2, text: 'x' } })[0];
+    expect(parseIdeBlocks(`${f}${s}`)).toEqual({
+      text: '',
+      chips: [
+        { kind: 'file', path: '/f.ts' },
+        { kind: 'selection', path: '/a.ts', startLine: 1, endLine: 2 },
+      ],
+    });
+  });
+
+  it('accepts CRLF after the header colon', () => {
+    const raw = '<ide_selection>The user selected the lines 1 to 2 from /a.ts:\r\nx\r\n</ide_selection>';
+    expect(parseIdeBlocks(raw).chips).toEqual([
+      { kind: 'selection', path: '/a.ts', startLine: 1, endLine: 2 },
+    ]);
+  });
+
+  it('passes unclosed or malformed tags through untouched', () => {
+    const raw = 'hi <ide_selection>The user selected the lines 1 to 2 from /a.ts:\nx and <ide_opened_file>oops';
+    expect(parseIdeBlocks(raw)).toEqual({ text: raw, chips: [] });
+  });
+
+  it('keeps paths containing colons and dots', () => {
+    const path = '/a.b/c:d/e.f.ts';
+    const blocks = [
+      ...formatIdeBlocks({ filePath: path, selection: { startLine: 1, endLine: 2, text: 'x' } }),
+      ...formatIdeBlocks({ filePath: path, selection: { startLine: 1, endLine: 2 } }),
+      ...formatIdeBlocks({ filePath: path }),
+    ];
+    expect(parseIdeBlocks(blocks.join('\n')).chips.map((c) => c.path)).toEqual([path, path, path]);
   });
 });

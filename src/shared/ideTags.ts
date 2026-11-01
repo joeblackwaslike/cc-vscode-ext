@@ -26,7 +26,6 @@ const WITHHELD =
   'The selected text was not included because the file is git-ignored or excluded.';
 
 const SEL_HEAD = /<ide_selection>The user selected the lines (\d+) to (\d+) from /y;
-const FILE_HEAD = new RegExp(`${FILE_OPEN}`, 'y');
 const NEXT_TAG = /\s*<ide_(?:selection|opened_file)>/y;
 
 function formatSelection(path: string, sel: NonNullable<IdeContext['selection']>): string {
@@ -47,19 +46,19 @@ export function formatIdeBlocks(ctx: IdeContext): string[] {
 }
 
 function closeIndex(text: string, from: number): number {
-  let first = -1;
+  let last = -1;
   for (let i = text.indexOf(SEL_CLOSE, from); i !== -1; i = text.indexOf(SEL_CLOSE, i + 1)) {
-    if (first === -1) first = i;
+    last = i;
     const after = i + SEL_CLOSE.length;
     NEXT_TAG.lastIndex = after;
     if (after === text.length || NEXT_TAG.test(text)) return i;
   }
-  return first;
+  return last;
 }
 
 function selectionPath(inner: string): string | undefined {
   if (inner.endsWith(`. ${WITHHELD}`)) return inner.slice(0, -(WITHHELD.length + 2));
-  const colon = inner.indexOf(':\n');
+  const colon = inner.search(/:\r?\n/);
   return colon === -1 ? undefined : inner.slice(0, colon);
 }
 
@@ -75,9 +74,8 @@ function matchAt(text: string, at: number): { chip: IdeChip; end: number } | und
     const chip: IdeChip = { kind: 'selection', path, startLine: Number(sel[1]), endLine: Number(sel[2]) };
     return { chip, end: close + SEL_CLOSE.length };
   }
-  FILE_HEAD.lastIndex = at;
-  if (!FILE_HEAD.test(text)) return undefined;
-  const bodyStart = FILE_HEAD.lastIndex;
+  if (!text.startsWith(FILE_OPEN, at)) return undefined;
+  const bodyStart = at + FILE_OPEN.length;
   const close = text.indexOf(FILE_CLOSE, bodyStart);
   if (close === -1) return undefined;
   const inner = text.slice(bodyStart, close);
