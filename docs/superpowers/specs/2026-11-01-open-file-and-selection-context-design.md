@@ -21,7 +21,7 @@ Selection updates are debounced by 300 ms. The chip has a remove button, and a r
 
 ## Goals
 
-- The composer shows a chip for the open file and one for the selected text, each removable, and the prompt carries exactly what the chips show.
+- The composer shows one removable chip at a time (the selection chip when text is selected, otherwise the file chip), and the prompt carries exactly what the chip shows.
 - `clawdCode.attachOpenFile=false` removes the automatic open-file chip entirely.
 - Past messages that contain these tags (from clawd or from the official extension) render as small chips, not raw tags glued to the prompt text.
 - The behavior of the three official settings is matched: `attachOpenFile`, `attachSelection`, `respectGitIgnore`.
@@ -73,7 +73,7 @@ The git-ignore check runs `git check-ignore -q <path>` with the workspace folder
 
 ### Webview: chips and dismissal
 
-The extension store holds the latest `ide_context`. `ChatInput` renders a chip row above the text area: a file chip (basename, full path in the tooltip) and, when present, a selection chip (`basename:startLine-endLine`). Each chip has a remove button.
+The extension store holds the latest `ide_context`. `ChatInput` renders a chip row above the text area: one chip at a time: the selection chip (`basename:startLine-endLine`) when text is selected, otherwise the file chip (basename, full path in the tooltip). The chip has a remove button.
 
 Removing a chip hides it for that composer until the underlying value changes. A new selection, a different file, or a closed document brings the chip back. This matches the official "remember the dismissed selection" behavior.
 
@@ -81,7 +81,7 @@ Removing a chip hides it for that composer until the underlying value changes. A
 
 `ChatInput.onSend` passes the visible context along with the text. The `control_request` message gains an optional `context` field with `{ filePath, selection? }`. The host formats the tag blocks, so the wording lives in one tested place, and appends them to the user message as extra text blocks after the prompt text. The stream-json content becomes an array of text blocks when there is context and stays the plain string when there is none.
 
-Context is attached to every send while the chips are visible. This mirrors the official extension. A later change could send only when the context changed.
+Text that starts with `/` is sent without context. Context is attached to every other send while the chip is visible. This mirrors the official extension. A later change could send only when the context changed.
 
 The optimistic user turn that the app dispatches before the CLI echoes must carry the same blocks so the chips render at once.
 

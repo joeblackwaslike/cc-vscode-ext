@@ -26,7 +26,8 @@ Aliases for `claude-vscode.*` were last checked at 2.1.181. Re-check against 2.1
 | `initialPermissionMode` (as `defaultPermissionMode`) | have | |
 | `useTerminal`, `environmentVariables` | read from `claudeCode.*`, not declared | 0 |
 | `enableNewConversationShortcut`, `enableReopenClosedSessionShortcut` | have | |
-| `attachOpenFile`, `attachSelection`, `respectGitIgnore`, `autosave` | missing | 1 |
+| `attachOpenFile`, `attachSelection`, `respectGitIgnore` | have (Phase 1A) | |
+| `autosave` | missing | 1 |
 | `useCtrlEnterToSend`, `scrollToBottomOnSend`, `showMessageTimestamps`, `spinnerVerbs`, `hideOnboarding` | missing | 2 |
 | `preferredLocation`, `lockEditorGroups`, `focusView` | missing | 0 |
 | `archiveInactiveSessions`, `continueAfterReload` | missing | 6 |
@@ -59,7 +60,14 @@ Protocol, as implemented in the official `extension.js`:
 - Tools: `getDiagnostics`, `openDiff`, `closeAllDiffTabs`, `getOpenEditors`, `getWorkspaceFolders`, `getCurrentSelection`, `getLatestSelection`, `checkDocumentDirty`, `saveDocument`, `openFile`, `close_tab`, `executeCode` (skip). Notifications: `at_mentioned`, `selection_changed`.
 - The model sees only `getDiagnostics` (and `executeCode`). The rest serve the CLI's own IDE connection.
 
-Status: missing.
+| Feature | Status | Phase |
+|---|---|---|
+| Open file and selection context: composer chip, tags sent with the prompt, chips in history | have (Phase 1A) | |
+| Git-ignored files withhold selection text | have (Phase 1A) | |
+| `getDiagnostics` tool for the model | missing | 1C |
+| WebSocket server, lock file, `CLAUDE_CODE_SSE_PORT` | missing | 1B |
+
+Phase 1A was checked live against the real CLI through `MessageBroker` (`test/unit/process/ide-context.acceptance.test.ts`, `CLAUDE_ACCEPTANCE=1`): selection text, the file path and the withheld-text form all reach the model as expected.
 
 ## UI surfaces
 
