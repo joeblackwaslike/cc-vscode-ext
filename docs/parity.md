@@ -40,7 +40,8 @@ Deliberate divergences:
 - `clawdCode.attachOpenFile=false` removes the automatic open-file attachment entirely, including the file name shown in the footer.
 - `clawdCode.exitPlanModeFallback` sets the mode behind the plan approval button. Upstream has no documented setting for this.
 - `clawdCode.offerDefaultModeAfterPlan` picks which mode the "set as my default" card offers (any permission mode, or `off` to hide the card).
-- `clawdCode.exitPlanModeFallback`, `clawdCode.offerDefaultModeAfterPlan` and `clawdCode.allowDangerouslySkipPermissions` are implemented. A live run against the real CLI (`test/unit/process/plan-approval.acceptance.test.ts`, `CLAUDE_ACCEPTANCE=1`) showed that approving ExitPlanMode with `bypassPermissions` or `acceptEdits` changes the session mode: Write and Bash ran with no further permission request under bypass, and under `acceptEdits` Write ran unprompted while Bash still asked. The CLI emits no mode event after the update, so the permission behavior is the observable.
+- `clawdCode.exitPlanModeFallback`, `clawdCode.offerDefaultModeAfterPlan` and `clawdCode.allowDangerouslySkipPermissions` are implemented, covered by unit tests (`ExtensionSettings`, `PermissionRequests`, plan approval, default-mode offer, `ProcessArgs` launch flag).
+- A live run against the real CLI (`test/unit/process/plan-approval.acceptance.test.ts`, `CLAUDE_ACCEPTANCE=1`) approved ExitPlanMode with `setMode` `bypassPermissions` and `acceptEdits`. The CLI emits no mode event after the update, so the evidence is tool gating: under bypass, Write and Bash ran with no further permission request; under `acceptEdits`, Write ran unprompted while Bash still asked. That is consistent with the session running in that mode. The live run did not exercise the settings or the default-mode card, and did not check what the mode picker offers.
 
 ## Keybindings
 
@@ -79,7 +80,7 @@ Status: missing.
 | Per-hunk accept and reject | missing | 4 |
 | Pending and done tab icons | missing | 4 |
 | API-key login via `ANTHROPIC_API_KEY`; Bedrock, Vertex, Foundry via `~/.claude/settings.json` | partial | 6 |
-| Bypass mode (only offered when `allowDangerouslySkipPermissions` is on) | have | |
+| Bypass mode (only offered when `allowDangerouslySkipPermissions` is on) | missing | 6 |
 
 ## Found in the changelog (approved, assigned to phases)
 
