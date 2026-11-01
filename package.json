@@ -103,6 +103,21 @@
             "default": true,
             "description": "Enable the Cmd+Shift+T (Ctrl+Shift+T) shortcut to reopen closed sessions"
           },
+          "clawdCode.attachOpenFile": {
+            "type": "boolean",
+            "default": true,
+            "description": "Automatically attach the active editor's file to your prompt. When off, no open-file chip appears; Alt+K and @-mentions still work. Falls back to claudeCode.attachOpenFile when unset."
+          },
+          "clawdCode.attachSelection": {
+            "type": "boolean",
+            "default": true,
+            "description": "Automatically attach the text you have selected in the active editor. Falls back to claudeCode.attachSelection when unset."
+          },
+          "clawdCode.respectGitIgnore": {
+            "type": "boolean",
+            "default": true,
+            "description": "Withhold selected text from files that are git-ignored or matched by files.exclude. The line range is still sent. Falls back to claudeCode.respectGitIgnore when unset."
+          },
           "clawdCode.customModels": {
             "type": "array",
             "items": {

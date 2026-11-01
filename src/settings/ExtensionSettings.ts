@@ -45,7 +45,7 @@ export class ExtensionSettings {
       useTerminal: cfg.get<boolean>('useTerminal', false),
       allowDangerouslySkipPermissions: cfg.get<boolean>('allowDangerouslySkipPermissions', false),
       claudeProcessWrapper: cfg.get<string | undefined>('claudeProcessWrapper', undefined),
-      respectGitIgnore: cfg.get<boolean>('respectGitIgnore', true),
+      respectGitIgnore: this.getRespectGitIgnore(),
       initialPermissionMode: cfg.get<PermissionMode>('initialPermissionMode', 'default'),
       disableLoginPrompt: cfg.get<boolean>('disableLoginPrompt', false),
       autosave: cfg.get<boolean>('autosave', true),
@@ -61,6 +61,28 @@ export class ExtensionSettings {
   private getUserLevel<T>(section: string, key: string): T | undefined {
     const inspected = vscode.workspace.getConfiguration(section).inspect<T>(key);
     return inspected?.globalValue ?? inspected?.defaultValue;
+  }
+
+  private getBooleanWithFallback(key: string): boolean {
+    const own = vscode.workspace.getConfiguration('clawdCode').inspect<boolean>(key);
+    const explicit = own?.workspaceFolderValue ?? own?.workspaceValue ?? own?.globalValue;
+    if (explicit !== undefined) return explicit;
+    return vscode.workspace.getConfiguration('claudeCode').get<boolean>(key) ?? true;
+  }
+
+  /** Whether the active editor's file is attached automatically. `clawdCode.attachOpenFile`, then `claudeCode.attachOpenFile`, then true. */
+  getAttachOpenFile(): boolean {
+    return this.getBooleanWithFallback('attachOpenFile');
+  }
+
+  /** Whether selected text is attached automatically. `clawdCode.attachSelection`, then `claudeCode.attachSelection`, then true. */
+  getAttachSelection(): boolean {
+    return this.getBooleanWithFallback('attachSelection');
+  }
+
+  /** Whether selected text from git-ignored or files.exclude files is withheld. `clawdCode.respectGitIgnore`, then `claudeCode.respectGitIgnore`, then true. */
+  getRespectGitIgnore(): boolean {
+    return this.getBooleanWithFallback('respectGitIgnore');
   }
 
   /**
