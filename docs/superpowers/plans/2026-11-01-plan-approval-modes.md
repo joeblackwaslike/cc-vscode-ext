@@ -18,7 +18,7 @@
 - Launch flag `--allow-dangerously-skip-permissions` is passed when `clawdCode.allowDangerouslySkipPermissions` or `claudeCode.allowDangerouslySkipPermissions` is true, or the approve mode, the offer mode, or the resolved default is `bypassPermissions`.
 - Bypass requested but channel launched without the flag: send `acceptEdits` and show a notice.
 - Offer card text: `Set {mode} as your default mode?` with `Yes, set {mode} as my default` and `No, keep {current default}`; Escape counts as No. Shown only after option 1, only when the setting is not `off` and the offered mode differs from the resolved default.
-- Writing the default: to `clawdCode.defaultPermissionMode`, in the narrowest scope that already holds a value (workspace folder, then workspace), else global. Never edit `claudeCode.*` or `~/.claude/settings.json`.
+- Writing the default: to `clawdCode.defaultPermissionMode`, in workspace settings when the workspace already holds a value, else global. Never edit `claudeCode.*` or `~/.claude/settings.json`.
 - `getDefaultPermissionMode()` must honor an explicitly set `clawdCode.defaultPermissionMode`, including `auto`.
 - Commits: conventional style, one per task. Work only in `.worktrees/parity-p0`. Run `pnpm test:unit`, `pnpm test:webview`, `pnpm typecheck`, `pnpm typecheck:webview`, `pnpm lint` before each commit.
 

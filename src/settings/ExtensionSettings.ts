@@ -120,7 +120,7 @@ export class ExtensionSettings {
     );
   }
 
-  /** Writes `clawdCode.defaultPermissionMode` in the narrowest scope that already holds a value, else global. */
+  /** Writes `clawdCode.defaultPermissionMode` to workspace settings when the workspace already holds a value, else to user settings. */
   async setDefaultPermissionMode(mode: PermissionMode): Promise<void> {
     const cfg = vscode.workspace.getConfiguration('clawdCode');
     const inspected = cfg.inspect<string>('defaultPermissionMode');
