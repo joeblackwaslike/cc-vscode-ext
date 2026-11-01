@@ -57,7 +57,7 @@
   - `shouldAllowBypass is true for each trigger in the spec and false when none applies`
   - `setDefaultPermissionMode writes to workspace scope when a workspace value exists, else global` (assert the `update(key, value, target)` target)
 - [ ] **Step 2: Run** `pnpm test:unit -- ExtensionSettings` and see them fail.
-- [ ] **Step 3: Implement** the signatures above in `ExtensionSettings.ts`. Use `inspect('defaultPermissionMode')` to decide "explicitly set" (any of globalValue, workspaceValue, workspaceFolderValue defined). Validate enums against a shared list; invalid values return the documented default. In `package.json` add the two settings with enums and descriptions; the `bypassPermissions` descriptions must say it skips all permission prompts.
+- [ ] **Step 3: Implement** the signatures above in `ExtensionSettings.ts`. Use `inspect('defaultPermissionMode')` to decide "explicitly set" (globalValue or workspaceValue defined; `workspaceFolderValue` is ignored because the writer never targets that scope). Validate enums against a shared list; invalid values return the documented default. In `package.json` add the two settings with enums and descriptions; the `bypassPermissions` descriptions must say it skips all permission prompts.
 - [ ] **Step 4: Replace** the inline fallback in `src/extension.ts` with `settings.getExitPlanApproveMode()`; keep the picker path (`MessageBroker` `set_permission_mode`) working.
 - [ ] **Step 5: Run** unit tests and `pnpm typecheck`; expect PASS.
 - [ ] **Step 6: Commit** `feat: resolve plan-approval and default-mode settings`
