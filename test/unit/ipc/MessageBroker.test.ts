@@ -1175,6 +1175,10 @@ describe('permission prompt routing', () => {
     h.dispatch({ type: 'default_mode_offer_response', channelId: 'ch-1', mode: 'bypassPermissions', accept: true });
     await vi.waitFor(() => expect(setDefaultPermissionMode).toHaveBeenCalledWith('bypassPermissions'));
     await vi.waitFor(() => expect(h.viewManager.setPermissionMode).toHaveBeenCalledWith('bypassPermissions'));
+    await vi.waitFor(() => expect(h.viewManager.broadcastSessionStates).toHaveBeenCalled());
+    expect(h.viewManager.broadcastSessionStates.mock.invocationCallOrder[0]).toBeGreaterThan(
+      h.viewManager.setPermissionMode.mock.invocationCallOrder[0]!,
+    );
   });
 
   it('default_mode_offer_response with accept false writes nothing', async () => {

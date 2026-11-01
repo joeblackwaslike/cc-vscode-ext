@@ -214,6 +214,7 @@ export class MessageBroker {
     try {
       await this.services.setDefaultPermissionMode?.(mode);
       this.viewManager.setPermissionMode(mode);
+      this.viewManager.broadcastSessionStates();
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       this.logger.warn(`[permissions] could not save default mode ${mode}: ${reason}`);
