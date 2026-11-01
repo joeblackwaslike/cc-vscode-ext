@@ -248,6 +248,18 @@ describe('SessionRelayManager', () => {
       expect(sendUserMessage).toHaveBeenNthCalledWith(3, 'ch-1', 'real user message');
     });
 
+    it('flushes queued array content unchanged', async () => {
+      const { relay, sendUserMessage } = makeFakes();
+      relay.registerLaunch('ch-1', {}, '/work');
+      relay.onContextUsage('ch-1', usage(80));
+      const content = [{ type: 'text' as const, text: 'hi' }, { type: 'text' as const, text: '<ide_opened_file>x</ide_opened_file>' }];
+      expect(relay.enqueueIfRelaying('ch-1', content)).toBe(true);
+
+      relay.handleStreamEvent('ch-1', { type: 'result', subtype: 'error' });
+      await vi.waitFor(() => expect(sendUserMessage).toHaveBeenCalledTimes(2));
+      expect(sendUserMessage.mock.calls[1][1]).toBe(content);
+    });
+
     it('flushes a queued message to the original process if the relay fails', async () => {
       const { relay, sendUserMessage, logger } = makeFakes();
       relay.registerLaunch('ch-1', {}, '/work');

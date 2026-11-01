@@ -1,3 +1,4 @@
+import { formatIdeBlocks } from '../../../src/shared/ideTags';
 import { describe, it, expect, vi } from 'vitest';
 
 vi.mock('vscode', () => ({
@@ -223,6 +224,16 @@ describe('MessageBroker', () => {
       const { h } = makebroker();
       h.dispatch({ type: 'control_request', channelId: 'ch-1', requestId: 'req-1', text: 'hello' });
       expect(h.processManager.sendUserMessage).toHaveBeenCalledWith('ch-1', 'hello');
+    });
+
+    it('sends array content with ide blocks when the request carries context', () => {
+      const { h } = makebroker();
+      const context = { filePath: '/w/a.ts' };
+      h.dispatch({ type: 'control_request', channelId: 'ch-1', requestId: 'req-1', text: 'hello', context });
+      expect(h.processManager.sendUserMessage).toHaveBeenCalledWith('ch-1', [
+        { type: 'text', text: 'hello' },
+        { type: 'text', text: formatIdeBlocks(context)[0] },
+      ]);
     });
   });
 

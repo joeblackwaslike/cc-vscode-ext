@@ -1,3 +1,4 @@
+import { buildUserContent, type UserContent } from '../shared/userContent';
 import type {
   FromWebviewMessage,
   ToWebviewMessage,
@@ -35,7 +36,7 @@ export interface IClaudeProcessManager {
   beginLaunch(channelId: string): void;
   cancelLaunch(channelId: string): void;
   writeToChannel(channelId: string, data: unknown): boolean;
-  sendUserMessage(channelId: string, text: string): void;
+  sendUserMessage(channelId: string, content: UserContent): void;
   interruptClaude(channelId: string): void;
   closeChannel(channelId: string): void;
   hasChannel(channelId: string): boolean;
@@ -86,7 +87,7 @@ export interface ISessionRelayManager {
   getThreshold(channelId?: string): number;
   setThreshold(threshold: number, channelId?: string): void;
   isRelaying(channelId: string): boolean;
-  enqueueIfRelaying(channelId: string, text: string): boolean;
+  enqueueIfRelaying(channelId: string, content: UserContent): boolean;
   updateLaunchOptions(channelId: string, patch: Partial<ProcessLaunchOptions>): void;
 }
 
@@ -309,8 +310,11 @@ export class MessageBroker {
             msg.channelId,
             (this.turnGenerations.get(msg.channelId) ?? 0) + 1
           );
-          if (!this.sessionRelayManager.enqueueIfRelaying(msg.channelId, msg.text)) {
-            this.processManager.sendUserMessage(msg.channelId, msg.text);
+          {
+            const content = buildUserContent(msg.text, msg.context);
+            if (!this.sessionRelayManager.enqueueIfRelaying(msg.channelId, content)) {
+              this.processManager.sendUserMessage(msg.channelId, content);
+            }
           }
           return;
 
