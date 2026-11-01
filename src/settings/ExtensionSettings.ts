@@ -69,10 +69,7 @@ export class ExtensionSettings {
     const ownCfg = vscode.workspace.getConfiguration('clawdCode');
     const configured = ownCfg.get<string>('defaultPermissionMode');
     const inspected = ownCfg.inspect<string>('defaultPermissionMode');
-    const isExplicit =
-      inspected?.globalValue !== undefined ||
-      inspected?.workspaceValue !== undefined ||
-      inspected?.workspaceFolderValue !== undefined;
+    const isExplicit = inspected?.globalValue !== undefined || inspected?.workspaceValue !== undefined;
     if (configured && (isExplicit || configured !== 'auto') && PERMISSION_MODES.includes(configured as PermissionMode)) {
       return configured as PermissionMode;
     }

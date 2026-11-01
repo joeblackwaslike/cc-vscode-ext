@@ -107,6 +107,14 @@ describe('ExtensionSettings', () => {
       stubConfig({ 'clawdCode.defaultPermissionMode': 'auto', 'claudeCode.initialPermissionMode': 'plan' });
       expect(new ExtensionSettings().getDefaultPermissionMode()).toBe('plan');
     });
+
+    it('ignores a workspaceFolderValue-only inspect result, since setDefaultPermissionMode never writes there', () => {
+      stubConfig(
+        { 'clawdCode.defaultPermissionMode': 'auto', 'claudeCode.initialPermissionMode': 'plan' },
+        { 'clawdCode.defaultPermissionMode': { workspaceFolderValue: 'auto' } },
+      );
+      expect(new ExtensionSettings().getDefaultPermissionMode()).toBe('plan');
+    });
   });
 
   describe('getExitPlanApproveMode', () => {

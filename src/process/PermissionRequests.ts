@@ -145,9 +145,11 @@ export class PermissionRequests {
     return true;
   }
 
-  /** Forgets a closed channel's outstanding offer and cancels its pending prompts. */
+  /** Forgets a closed channel's outstanding offer, mode, and bypass flag, and cancels its pending prompts. */
   closeChannel(channelId: string): void {
     this.offers.delete(channelId);
+    this.modes.delete(channelId);
+    this.bypassFlags.delete(channelId);
     this.cancelChannel(channelId);
   }
 

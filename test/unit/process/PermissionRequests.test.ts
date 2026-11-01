@@ -251,13 +251,16 @@ describe('PermissionRequests', () => {
         expect(make('acceptEdits', 'plan').takeOffer('c', 'acceptEdits')).toBe(false);
       });
 
-      it('closeChannel drops the outstanding offer and pending prompts', () => {
+      it('closeChannel drops the outstanding offer, mode, bypass flag, and pending prompts', () => {
         const p = make('acceptEdits', 'plan');
+        p.noteBypassAllowed('c', true);
         p.respond('c', exitPlan.request_id, approve('acceptEdits'));
         p.register('c', ask);
         p.closeChannel('c');
         expect(p.takeOffer('c', 'acceptEdits')).toBe(false);
         expect(p.pendingFor('c')).toEqual([]);
+        expect(p.modeOf('c')).toBeUndefined();
+        expect(p.bypassAllowed('c')).toBe(false);
       });
     });
 
