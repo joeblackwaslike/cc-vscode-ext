@@ -39,6 +39,7 @@ Deliberate divergences:
 
 - `clawdCode.attachOpenFile=false` removes the automatic open-file attachment entirely, including the file name shown in the footer.
 - `clawdCode.exitPlanModeFallback` sets the mode behind the plan approval button. Upstream has no documented setting for this.
+- `clawdCode.offerDefaultModeAfterPlan` picks which mode the "set as my default" card offers (any permission mode, or `off` to hide the card).
 
 ## Keybindings
 
@@ -79,20 +80,22 @@ Status: missing.
 | API-key login via `ANTHROPIC_API_KEY`; Bedrock, Vertex, Foundry via `~/.claude/settings.json` | partial | 6 |
 | Bypass mode (only offered when `allowDangerouslySkipPermissions` is on) | missing | 6 |
 
-## Found in the changelog, not yet in the roadmap
+## Found in the changelog (approved, assigned to phases)
 
-Triage each into a phase or mark skip.
+| Feature | Phase |
+|---|---|
+| Plan opens as a Markdown document with inline comments; `/plan`, `/plan <task>`, `/plan open` (2.1.280+) | 0 |
+| Post-approval card "Yes, set auto mode as my default", with the offered mode configurable by `clawdCode.offerDefaultModeAfterPlan` (any permission mode, or `off`) | 0 |
+| Option previews on question cards | 2 |
+| LaTeX and syntax-colored code blocks | 2 |
+| Chat row for files Claude sends you | 2 |
+| Bookmarks side panel; session filters | 6 |
+| Idle compaction | 6 |
+| Continue/Stop prompt when auto mode falls back to billed classifier requests | 6 |
+| "Run in background" for commands and subagents | 6 |
+| `/usage` dialog, `/btw` side questions, `/tasks` agent map | 6 |
+| A user's own `/mcp`, `/config` or `/settings` command must not be shadowed by the extension's dialog | 5 |
 
-- Plan opens as a Markdown document with inline comments; `/plan`, `/plan <task>`, `/plan open` (2.1.280+)
-- "Yes, set auto mode as my default" card after plan approval
-- Option previews on question cards
-- Bookmarks side panel; session filters
-- "Run in background" for commands and subagents
-- `/usage` dialog, `/btw` side questions, `/tasks` agent map
-- LaTeX and syntax-colored code blocks
-- Chat row for files Claude sends you
-- Idle compaction
-- Continue/Stop prompt when auto mode falls back to billed classifier requests
-- A user's own `/mcp`, `/config` or `/settings` command must not be shadowed by the extension's dialog
+Skip: voice dictation (Wispr Flow instead), Web tab and cloud sessions, remote control, teleport, Jupyter `executeCode`.
 
-Skip: voice dictation (Wispr Flow instead), Web tab and cloud sessions, remote control, teleport, `@browser` / Claude in Chrome, Jupyter `executeCode`.
+Pending decision: `@browser` (Claude in Chrome).
