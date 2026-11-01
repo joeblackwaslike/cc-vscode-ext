@@ -3,7 +3,7 @@ import { mockVscode } from '../../helpers/mockVscode';
 
 vi.mock('vscode', () => mockVscode);
 
-import { EditorContextTracker } from '../../../src/context/EditorContextTracker';
+import { EditorContextTracker, execFileCode } from '../../../src/context/EditorContextTracker';
 
 type Listener = (arg: unknown) => void;
 interface FakeSelection {
@@ -314,7 +314,7 @@ describe('EditorContextTracker', () => {
     }
   );
 
-  it('treats a git check that times out as not ignored, still applies the probe, and does not cache it', async () => {
+  it('withholds text when the git check times out, and retries it on the next event', async () => {
     exec.mockReturnValue(new Promise(() => {}));
     const a = makeEditor('/ws/a.ts');
     setActive(a);
@@ -323,15 +323,64 @@ describe('EditorContextTracker', () => {
     expect(onChange).toHaveBeenCalledTimes(0);
     await vi.advanceTimersByTimeAsync(5000);
     await drain();
-    expect(tracker.current()?.selection?.text).toBe('picked text');
+    expect(tracker.current()?.selection).toStrictEqual({ startLine: 1, endLine: 1 });
 
-    mockVscode.workspace.findFiles.mockResolvedValue([]);
+    exec.mockResolvedValue({ code: 1 });
     select(a, sel(0, 0, 0, 5));
     await settle();
-    await vi.advanceTimersByTimeAsync(5000);
-    await drain();
     expect(exec).toHaveBeenCalledTimes(2);
+    expect(tracker.current()?.selection?.text).toBe('picked text');
+  });
+
+  async function selectTwice(): Promise<FakeEditor> {
+    const a = makeEditor('/ws/a.ts');
+    setActive(a);
+    select(a, sel(0, 0, 0, 4));
+    await settle();
+    const first = tracker.current()?.selection;
+    select(a, sel(0, 0, 0, 5));
+    await settle();
+    expect(tracker.current()?.selection?.text).toBe(first?.text);
+    return a;
+  }
+
+  it('withholds text when git was killed, and does not cache it', async () => {
+    exec.mockResolvedValue({ code: -1, killed: true });
+    await selectTwice();
     expect(tracker.current()?.selection).toStrictEqual({ startLine: 1, endLine: 1 });
+    expect(exec).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    ['git is missing', -1, 1],
+    ['the file is tracked', 1, 1],
+    ['the folder is not a repository', 128, 1],
+    ['git exits with an unknown code', 2, 2],
+  ])('sends text when %s, running git %i -> %i time(s)', async (_label, code, calls) => {
+    exec.mockResolvedValue({ code });
+    await selectTwice();
+    expect(tracker.current()?.selection?.text).toBe('picked text');
+    expect(exec).toHaveBeenCalledTimes(calls);
+  });
+
+  it('logs a throwing onChange instead of rejecting', async () => {
+    onChange.mockImplementation(() => {
+      throw new Error('broadcast failed');
+    });
+    setActive(makeEditor('/ws/a.ts'));
+    await settle();
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('broadcast failed'));
+    expect(tracker.current()).toEqual({ filePath: '/ws/a.ts' });
+  });
+
+  it('sends text when respectGitIgnore is off even if findFiles rejects', async () => {
+    flags.gitIgnore = false;
+    mockVscode.workspace.findFiles.mockRejectedValue(new Error('search failed'));
+    const a = makeEditor('/ws/a.ts');
+    setActive(a);
+    select(a, sel(0, 0, 0, 4));
+    await settle();
+    expect(tracker.current()?.selection?.text).toBe('picked text');
   });
 
   it('drops a result that finishes after a newer event arrived', async () => {
@@ -440,5 +489,24 @@ describe('EditorContextTracker', () => {
     create();
     await settle();
     expect(tracker.current()).toEqual({ filePath: '/ws/start.ts' });
+  });
+});
+
+describe('execFileCode', () => {
+  beforeEach(() => vi.useRealTimers());
+
+  it('reports a missing binary as code -1 without killed', async () => {
+    await expect(execFileCode('clawd-no-such-binary', [], '/')).resolves.toStrictEqual({ code: -1 });
+  });
+
+  it('reports a process stopped by a signal as killed', async () => {
+    await expect(execFileCode('sh', ['-c', 'kill -TERM $$'], '/')).resolves.toStrictEqual({
+      code: -1,
+      killed: true,
+    });
+  });
+
+  it('passes the exit code through', async () => {
+    await expect(execFileCode('sh', ['-c', 'exit 1'], '/')).resolves.toStrictEqual({ code: 1 });
   });
 });

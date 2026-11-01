@@ -4,26 +4,39 @@ import * as vscode from 'vscode';
 import type { ExtensionSettings } from '../settings/ExtensionSettings';
 import type { IdeContext, IdeSelection } from '../shared/ideTags';
 
-/** Runs a command and resolves with its exit code. */
-export type ExecFn = (cmd: string, args: string[], cwd: string) => Promise<{ code: number }>;
+/**
+ * Result of running a command: its exit code, -1 when it could not be spawned,
+ * and `killed` when it was stopped by a timeout or a signal before exiting.
+ */
+export interface ExecResult {
+  code: number;
+  killed?: boolean;
+}
+
+/** Runs a command and resolves with how it ended. */
+export type ExecFn = (cmd: string, args: string[], cwd: string) => Promise<ExecResult>;
 
 const DEFAULT_GIT_TIMEOUT_MS = 5000;
 
-/** `ExecFn` over `child_process.execFile`; spawn failures and kills resolve with code -1. */
+/** `ExecFn` over `child_process.execFile`, killing the command after 5 s. */
 export const execFileCode: ExecFn = (cmd, args, cwd) =>
   new Promise((resolve) => {
     execFile(cmd, args, { cwd, timeout: DEFAULT_GIT_TIMEOUT_MS }, (err) => {
       if (!err) return resolve({ code: 0 });
+      if (err.killed || err.signal) return resolve({ code: -1, killed: true });
       resolve({ code: typeof err.code === 'number' ? err.code : -1 });
     });
   });
+
+/** Exit codes whose meaning is settled: 1 = not ignored, 128 = not a repository, -1 = git missing. */
+const SETTLED_NOT_IGNORED = new Set([1, 128, -1]);
 
 export interface EditorContextTrackerOptions {
   settings: Pick<ExtensionSettings, 'getAttachOpenFile' | 'getAttachSelection' | 'getRespectGitIgnore'>;
   exec: ExecFn;
   onChange: (ctx: IdeContext | null) => void;
   debounceMs?: number;
-  /** How long `git check-ignore` may run before the file counts as not git-ignored. */
+  /** How long `git check-ignore` may run before the file counts as ignored for that computation. */
   gitTimeoutMs?: number;
   log?: (message: string) => void;
 }
@@ -131,12 +144,20 @@ export class EditorContextTracker implements vscode.Disposable {
     try {
       next = await this.compute(this.editor);
     } catch (err) {
-      this.opts.log?.(`EditorContextTracker: ${err instanceof Error ? err.message : String(err)}`);
+      this.log(err);
       return;
     }
     if (this.disposed || generation !== this.generation || sameContext(next, this.value)) return;
     this.value = next;
-    this.opts.onChange(next);
+    try {
+      this.opts.onChange(next);
+    } catch (err) {
+      this.log(err);
+    }
+  }
+
+  private log(err: unknown): void {
+    this.opts.log?.(`EditorContextTracker: ${err instanceof Error ? err.message : String(err)}`);
   }
 
   private async compute(editor: vscode.TextEditor | undefined): Promise<IdeContext | null> {
@@ -169,11 +190,15 @@ export class EditorContextTracker implements vscode.Disposable {
 
   private async probeIgnored(uri: vscode.Uri): Promise<boolean> {
     const [git, excluded] = await Promise.all([this.isGitIgnored(uri.fsPath), this.isExcluded(uri)]);
-    if (git.timedOut) this.ignored.delete(uri.fsPath);
+    if (!git.settled) this.ignored.delete(uri.fsPath);
     return git.ignored || excluded;
   }
 
-  private async isGitIgnored(fsPath: string): Promise<{ ignored: boolean; timedOut: boolean }> {
+  /**
+   * Runs `git check-ignore`. A timeout or kill means git is present but did not
+   * answer, so the file counts as ignored. Only settled answers may be cached.
+   */
+  private async isGitIgnored(fsPath: string): Promise<{ ignored: boolean; settled: boolean }> {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const timeout = new Promise<'timeout'>((resolve) => {
       timer = setTimeout(() => resolve('timeout'), this.opts.gitTimeoutMs ?? DEFAULT_GIT_TIMEOUT_MS);
@@ -183,10 +208,11 @@ export class EditorContextTracker implements vscode.Disposable {
         this.opts.exec('git', ['check-ignore', '-q', fsPath], path.dirname(fsPath)),
         timeout,
       ]);
-      if (result === 'timeout') return { ignored: false, timedOut: true };
-      return { ignored: result.code === 0, timedOut: false };
+      if (result === 'timeout' || result.killed) return { ignored: true, settled: false };
+      if (result.code === 0) return { ignored: true, settled: true };
+      return { ignored: false, settled: SETTLED_NOT_IGNORED.has(result.code) };
     } catch {
-      return { ignored: false, timedOut: false };
+      return { ignored: false, settled: false };
     } finally {
       clearTimeout(timer);
     }
