@@ -1093,6 +1093,45 @@ describe('permission prompt routing', () => {
     expect(sessionRelayManager.updateLaunchOptions).toHaveBeenCalledWith('ch-1', { permissionMode: 'default' });
   });
 
+  it('default_mode_offer_response with accept writes the default and updates the new-conversation default', async () => {
+    const setDefaultPermissionMode = vi.fn(async () => {});
+    const h = createIpcTestHarness();
+    new MessageBroker(
+      h.processManager, h.sessionManager, h.diffManager, h.viewManager,
+      h.channelRouter, h.webview, h.logger, { setDefaultPermissionMode },
+    );
+    h.dispatch({ type: 'default_mode_offer_response', channelId: 'ch-1', mode: 'bypassPermissions', accept: true });
+    await vi.waitFor(() => expect(setDefaultPermissionMode).toHaveBeenCalledWith('bypassPermissions'));
+    await vi.waitFor(() => expect(h.viewManager.setPermissionMode).toHaveBeenCalledWith('bypassPermissions'));
+  });
+
+  it('default_mode_offer_response with accept false writes nothing', async () => {
+    const setDefaultPermissionMode = vi.fn(async () => {});
+    const h = createIpcTestHarness();
+    new MessageBroker(
+      h.processManager, h.sessionManager, h.diffManager, h.viewManager,
+      h.channelRouter, h.webview, h.logger, { setDefaultPermissionMode },
+    );
+    h.dispatch({ type: 'default_mode_offer_response', channelId: 'ch-1', mode: 'bypassPermissions', accept: false });
+    await Promise.resolve();
+    expect(setDefaultPermissionMode).not.toHaveBeenCalled();
+    expect(h.viewManager.setPermissionMode).not.toHaveBeenCalled();
+  });
+
+  it('default_mode_offer_response reports a rejected write instead of crashing', async () => {
+    const setDefaultPermissionMode = vi.fn(async () => { throw new Error('read-only'); });
+    const h = createIpcTestHarness();
+    new MessageBroker(
+      h.processManager, h.sessionManager, h.diffManager, h.viewManager,
+      h.channelRouter, h.webview, h.logger, { setDefaultPermissionMode },
+    );
+    h.dispatch({ type: 'default_mode_offer_response', channelId: 'ch-1', mode: 'auto', accept: true });
+    await vi.waitFor(() =>
+      expect(h.channelRouter.route).toHaveBeenCalledWith('ch-1', expect.objectContaining({ type: 'error' })),
+    );
+    expect(h.viewManager.setPermissionMode).not.toHaveBeenCalled();
+  });
+
   it('a system event carrying permissionMode is adopted', () => {
     const { h } = makeBrokerWithPermissions();
     const routed = launch(h);

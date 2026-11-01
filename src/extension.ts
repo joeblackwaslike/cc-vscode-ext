@@ -147,6 +147,8 @@ export function activate(context: vscode.ExtensionContext): void {
     broadcast: (m) => viewManager.broadcastMessage(m),
     log: (m) => logger.warn(m),
     getApproveMode: () => settings.getExitPlanApproveMode(),
+    getOfferMode: () => settings.getOfferDefaultMode(),
+    getResolvedDefault: () => settings.getDefaultPermissionMode(),
     reportError: (c, message) => channelRouter.route(c, { type: 'error', message }),
   });
   context.subscriptions.push({
@@ -173,6 +175,7 @@ export function activate(context: vscode.ExtensionContext): void {
         workspacePath,
         permissionRequests,
         getExitPlanModeFallback: () => settings.getExitPlanApproveMode(),
+        setDefaultPermissionMode: (mode) => settings.setDefaultPermissionMode(mode),
         shouldAllowBypass: () => settings.shouldAllowBypass(),
       }
     );

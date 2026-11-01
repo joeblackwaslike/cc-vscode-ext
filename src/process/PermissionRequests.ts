@@ -47,6 +47,10 @@ interface PermissionRequestsDeps {
   log?(message: string): void;
   /** Mode the ExitPlanMode approve button switches to; defaults to acceptEdits. */
   getApproveMode?: () => ApproveMode;
+  /** Mode offered as the new default after plan approval; `off` disables the offer. */
+  getOfferMode?: () => ApproveMode | 'off';
+  /** The default permission mode currently in effect. */
+  getResolvedDefault?: () => PermissionMode;
   /** Tell the user a decision never reached the CLI (the channel is no longer writable). */
   reportError?(channelId: string, message: string): void;
 }
@@ -114,7 +118,18 @@ export class PermissionRequests {
       toolUseId: req.toolUseId,
       decision,
     });
+    this.offerDefaultMode(req, decision);
     return true;
+  }
+
+  private offerDefaultMode(req: PermissionRequest, decision: PermissionDecision): void {
+    if (req.toolName !== 'ExitPlanMode' || decision.behavior !== 'allow') return;
+    const chosen = decision.updatedPermissions?.find((u) => u.type === 'setMode');
+    if (chosen?.mode !== req.approveMode) return;
+    const mode = this.deps.getOfferMode?.() ?? 'off';
+    const currentDefault = this.deps.getResolvedDefault?.();
+    if (mode === 'off' || currentDefault === undefined || mode === currentDefault) return;
+    this.deps.broadcast({ type: 'default_mode_offer', channelId: req.channelId, mode, currentDefault });
   }
 
   denyWithoutPrompt(channelId: string, event: CanUseToolEvent, message: string): void {

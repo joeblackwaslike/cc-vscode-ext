@@ -142,6 +142,8 @@ export interface MessageBrokerServices {
   workspacePath?: string;
   /** Returns the mode to switch to when the user exits plan mode. */
   getExitPlanModeFallback?: () => ApproveMode;
+  /** Persists the user's accepted default permission mode. */
+  setDefaultPermissionMode?: (mode: PermissionMode) => Promise<void>;
   /** Whether to launch the CLI with the dangerous-skip flag so bypass can be selected mid-session. */
   shouldAllowBypass?: () => boolean;
 }
@@ -206,6 +208,17 @@ export class MessageBroker {
     webview.onDidReceiveMessage((raw: unknown) => {
       void this.handleMessage(raw as FromWebviewMessage);
     });
+  }
+
+  private async persistDefaultMode(channelId: string, mode: PermissionMode): Promise<void> {
+    try {
+      await this.services.setDefaultPermissionMode?.(mode);
+      this.viewManager.setPermissionMode(mode);
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`[permissions] could not save default mode ${mode}: ${reason}`);
+      this.channelRouter.route(channelId, { type: 'error', message: `Could not save your default mode: ${reason}` });
+    }
   }
 
   /** Record a mode change that already happened (or is being requested) and
@@ -286,6 +299,9 @@ export class MessageBroker {
           }
           return;
         }
+        case 'default_mode_offer_response':
+          if (msg.accept) void this.persistDefaultMode(msg.channelId, msg.mode);
+          return;
         case 'control_request':
           this.turnGenerations.set(
             msg.channelId,

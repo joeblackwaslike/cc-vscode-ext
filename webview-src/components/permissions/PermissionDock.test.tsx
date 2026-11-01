@@ -116,4 +116,23 @@ describe('PermissionDock', () => {
       expect.objectContaining({ decision: { behavior: 'deny', message: 'User denied permission' } }),
     );
   });
+
+  test('renders the default-mode offer and posts the answer, clearing it', async () => {
+    const hook = renderHook(() => useSessionReducer());
+    act(() => {
+      hook.result.current.dispatch({ type: 'DEFAULT_MODE_OFFERED', channelId: 'ch', mode: 'bypassPermissions', currentDefault: 'plan' });
+    });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <SessionContext.Provider value={hook.result.current}>{children}</SessionContext.Provider>
+    );
+    const { rerender } = render(<PermissionDock channelId="ch" />, { wrapper });
+    const user = userEvent.setup({ delay: null });
+    expect(screen.getByText('Set bypassPermissions as your default mode?')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Yes, set bypassPermissions as my default/ }));
+    expect(postMessage).toHaveBeenCalledWith({
+      type: 'default_mode_offer_response', channelId: 'ch', mode: 'bypassPermissions', accept: true,
+    });
+    expect(hook.result.current.state.permissions.ch.defaultModeOffer).toBeUndefined();
+    rerender(<PermissionDock channelId="ch" />);
+  });
 });

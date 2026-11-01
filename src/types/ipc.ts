@@ -331,6 +331,13 @@ export interface PermissionResponseMessage {
   decision: PermissionDecision;
 }
 
+export interface DefaultModeOfferResponseMessage {
+  type: 'default_mode_offer_response';
+  channelId: string;
+  mode: PermissionMode;
+  accept: boolean;
+}
+
 export interface ListCommandsRequestMessage {
   type: 'list_commands_request';
   query: string;
@@ -431,6 +438,7 @@ export type FromWebviewMessage =
   | ShowClaudeTerminalSettingMessage
   | AskDebuggerHelpMessage
   | PermissionResponseMessage
+  | DefaultModeOfferResponseMessage
   | ListCommandsRequestMessage;
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -616,6 +624,13 @@ export interface ListCommandsResponseMessage {
   commands: Array<{ name: string; namespace?: string; description?: string }>;
 }
 
+export interface DefaultModeOfferMessage {
+  type: 'default_mode_offer';
+  channelId: string;
+  mode: PermissionMode;
+  currentDefault: PermissionMode;
+}
+
 export interface PermissionRequestMessage { type: 'permission_request'; request: PermissionRequest }
 export interface PermissionResolvedMessage {
   type: 'permission_resolved';
@@ -664,4 +679,5 @@ export type ToWebviewMessage =
   | ListCommandsResponseMessage
   | PermissionRequestMessage
   | PermissionResolvedMessage
-  | PermissionCancelledMessage;
+  | PermissionCancelledMessage
+  | DefaultModeOfferMessage;
