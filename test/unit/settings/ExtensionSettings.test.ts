@@ -1,12 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockGet, mockInspect, mockUpdate, mockOnDidChangeConfiguration } = vi.hoisted(() => {
+const { mockGet, mockInspect, mockUpdate, mockOnDidChangeConfiguration, mockReadFileSync } = vi.hoisted(() => {
   const mockGet = vi.fn();
   const mockInspect = vi.fn();
   const mockUpdate = vi.fn(async () => undefined);
   const mockOnDidChangeConfiguration = vi.fn(() => ({ dispose: vi.fn() }));
-  return { mockGet, mockInspect, mockUpdate, mockOnDidChangeConfiguration };
+  const mockReadFileSync = vi.fn();
+  return { mockGet, mockInspect, mockUpdate, mockOnDidChangeConfiguration, mockReadFileSync };
 });
+
+vi.mock('fs', () => ({ readFileSync: mockReadFileSync }));
 
 vi.mock('vscode', () => ({
   ConfigurationTarget: { Global: 1, Workspace: 2, WorkspaceFolder: 3 },
@@ -26,6 +29,9 @@ import { ExtensionSettings } from '../../../src/settings/ExtensionSettings';
 describe('ExtensionSettings', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockReadFileSync.mockImplementation(() => {
+      throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+    });
     // Default: return the second arg (defaultValue) for every get() call
     mockGet.mockImplementation((_key: string, defaultValue: unknown) => defaultValue);
   });
@@ -140,6 +146,12 @@ describe('ExtensionSettings', () => {
       }
       stubConfig({});
       expect(new ExtensionSettings().shouldAllowBypass()).toBe(false);
+    });
+
+    it('is true when ~/.claude/settings.json defaultMode is bypassPermissions', () => {
+      stubConfig({});
+      mockReadFileSync.mockReturnValue('{"defaultMode":"bypassPermissions"}');
+      expect(new ExtensionSettings().shouldAllowBypass()).toBe(true);
     });
   });
 

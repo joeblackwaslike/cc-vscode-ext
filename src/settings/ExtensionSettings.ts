@@ -66,7 +66,6 @@ export class ExtensionSettings {
    * Priority: clawdCode VS Code setting → claudeCode VS Code setting (official ext) → ~/.claude/settings.json → 'auto'
    */
   getDefaultPermissionMode(): PermissionMode {
-    const validModes = PERMISSION_MODES;
     const ownCfg = vscode.workspace.getConfiguration('clawdCode');
     const configured = ownCfg.get<string>('defaultPermissionMode');
     const inspected = ownCfg.inspect<string>('defaultPermissionMode');
@@ -74,13 +73,13 @@ export class ExtensionSettings {
       inspected?.globalValue !== undefined ||
       inspected?.workspaceValue !== undefined ||
       inspected?.workspaceFolderValue !== undefined;
-    if (configured && (isExplicit || configured !== 'auto') && validModes.includes(configured as PermissionMode)) {
+    if (configured && (isExplicit || configured !== 'auto') && PERMISSION_MODES.includes(configured as PermissionMode)) {
       return configured as PermissionMode;
     }
     // Fallback: official Claude Code extension's VS Code setting
     const officialCfg = vscode.workspace.getConfiguration('claudeCode');
     const officialMode = officialCfg.get<string>('initialPermissionMode');
-    if (officialMode && officialMode !== 'default' && validModes.includes(officialMode as PermissionMode)) {
+    if (officialMode && officialMode !== 'default' && PERMISSION_MODES.includes(officialMode as PermissionMode)) {
       return officialMode as PermissionMode;
     }
     // Fallback: ~/.claude/settings.json → defaultMode (top-level field)
@@ -89,7 +88,7 @@ export class ExtensionSettings {
       const raw = fs.readFileSync(settingsPath, 'utf8');
       const parsed = JSON.parse(raw) as { defaultMode?: string };
       const mode = parsed.defaultMode;
-      if (mode && validModes.includes(mode as PermissionMode)) {
+      if (mode && PERMISSION_MODES.includes(mode as PermissionMode)) {
         return mode as PermissionMode;
       }
     } catch { /* file absent or unreadable */ }
