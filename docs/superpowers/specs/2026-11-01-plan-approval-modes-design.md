@@ -66,9 +66,9 @@ Verified on 2026-11-01 against `claude` 2.1.312, launching with `--permission-mo
 
 This probe used the `set_permission_mode` control request. The plan card uses a different path, `updatedPermissions` inside the permission response, so test 8 still has to cover that path.
 
-Flag computation: recompute from current settings on every spawn, including the `--resume` retry and the session relay relaunch. A settings change takes effect on the next spawn of a session, with no restart notice.
+Flag computation: computed from current settings each time a conversation is launched (`launch_claude`) and stored in the launch options, so the `--resume` retry and the session relay relaunch reuse it. A settings change takes effect on the next launched conversation, with no restart notice.
 
-If the CLI rejects a mode switch from the plan card (bypass without the flag, or `auto` on an account that lacks it), the host falls back to `acceptEdits` and shows a notice with the CLI's error text.
+Fallback: if the configured approve mode is `bypassPermissions` but the channel was launched without the flag, the host sends `acceptEdits` instead and the card says so. This is the only rejection the host can know in advance. If the live test (test 8) shows the CLI also rejects `auto` for some accounts, handling that case is a follow-up, not part of this spec.
 
 ### Default-mode offer
 
