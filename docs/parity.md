@@ -98,4 +98,4 @@ Status: missing.
 
 Skip: voice dictation (Wispr Flow instead), Web tab and cloud sessions, remote control, teleport, Jupyter `executeCode`.
 
-Pending decision: `@browser` (Claude in Chrome).
+Approved, Phase 5: `@browser` (Claude in Chrome). A prompt mention (`@browser`, `@browser:new_tab`) that connects to the Chrome extension for that prompt, plus an optional setting to stay connected in every session. Browser tools ask for permission as in default mode; site permissions come from the Chrome extension. Unavailable on Bedrock, Vertex and Foundry.
