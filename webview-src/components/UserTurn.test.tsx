@@ -25,6 +25,9 @@ describe('UserTurn', () => {
     const sel = screen.getByTestId('history-chip-selection');
     expect(sel).toHaveTextContent('b.ts:3-5');
     expect(sel).toHaveAttribute('title', '/r/src/b.ts');
+    expect(file).toHaveAttribute('aria-label', 'Opened file: /r/src/a.ts');
+    expect(sel).toHaveAttribute('aria-label', 'Selected lines 3-5 of /r/src/b.ts');
+    expect(screen.getAllByRole('listitem')).toHaveLength(2);
   });
 
   test('renders no bubble when text is empty', () => {

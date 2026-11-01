@@ -186,5 +186,29 @@ describe('buildConversation', () => {
     it('still skips tool_result carriers', () => {
       expect(user([{ type: 'tool_result', tool_use_id: 'x', content: FILE }])).toEqual([]);
     });
+
+    it('joins plain multi-block prompts with no separator', () => {
+      expect(user([{ type: 'text', text: 'a' }, { type: 'text', text: 'b' }])).toEqual<Turn[]>([
+        { kind: 'user', key: '0', text: 'ab' },
+      ]);
+    });
+
+    it('preserves leading indentation and trailing newline of plain prompts', () => {
+      expect(user('    indented\n')).toEqual<Turn[]>([{ kind: 'user', key: '0', text: '    indented\n' }]);
+    });
+
+    it('leaves no double gap when a tag sits mid-text', () => {
+      const [turn] = user(`before ${FILE} after`);
+      expect(turn).toMatchObject({ text: 'before after' });
+    });
+
+    it('leaves prose mentioning the tag name untouched', () => {
+      const prose = 'what does <ide_opened_file> mean?';
+      expect(user(prose)).toEqual<Turn[]>([{ kind: 'user', key: '0', text: prose }]);
+    });
+
+    it('strips exact tag text typed into prose (intended: indistinguishable from a real tag)', () => {
+      expect(user(`see ${FILE}`)).toMatchObject([{ text: 'see', ide: [{ kind: 'file' }] }]);
+    });
   });
 });

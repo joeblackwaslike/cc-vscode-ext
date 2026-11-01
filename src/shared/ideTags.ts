@@ -101,6 +101,7 @@ export function parseIdeBlocks(text: string): { text: string; chips: IdeChip[] }
     rest += text.slice(i, lt);
     chips.push(m.chip);
     i = m.end;
+    if (/\s$/.test(rest)) while (i < text.length && /\s/.test(text[i]!)) i++;
   }
   rest += text.slice(i);
   return { text: rest.trim(), chips };

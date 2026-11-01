@@ -107,11 +107,18 @@ function pushUserTurn(turns: Turn[], key: string, event: ClaudeStreamEvent): voi
     return;
   }
 
-  const parts = Array.isArray(content)
-    ? content.filter((b) => isRecord(b) && b.type === 'text').map((b) => parseIdeBlocks(extractText([b])))
-    : [parseIdeBlocks(extractText(content))];
-  const text = parts.map((p) => p.text).filter(Boolean).join('\n');
-  const ide = parts.flatMap((p) => p.chips);
+  const blocks = Array.isArray(content)
+    ? content.filter((b) => isRecord(b) && b.type === 'text').map((b) => extractText([b]))
+    : [extractText(content)];
+  const ide: IdeChip[] = [];
+  const text = blocks
+    .map((block) => {
+      const parsed = parseIdeBlocks(block);
+      if (parsed.chips.length === 0) return block;
+      ide.push(...parsed.chips);
+      return parsed.text;
+    })
+    .join('');
   if (text || ide.length) turns.push({ kind: 'user', key, text, ...(ide.length && { ide }) });
 }
 
