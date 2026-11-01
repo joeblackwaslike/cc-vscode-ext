@@ -237,9 +237,9 @@ describe('MessageBroker', () => {
       ]);
     });
 
-    function brokerWithSanitize(sanitizeIdeContext: (ctx: IdeContext) => Promise<IdeContext>) {
+    function brokerWithSanitizeAndInstance(sanitizeIdeContext: (ctx: IdeContext) => Promise<IdeContext>) {
       const h = createIpcTestHarness();
-      new MessageBroker(
+      const broker = new MessageBroker(
         h.processManager,
         h.sessionManager,
         h.diffManager,
@@ -249,7 +249,11 @@ describe('MessageBroker', () => {
         h.logger,
         { sanitizeIdeContext }
       );
-      return h;
+      return { h, broker };
+    }
+
+    function brokerWithSanitize(sanitizeIdeContext: (ctx: IdeContext) => Promise<IdeContext>) {
+      return brokerWithSanitizeAndInstance(sanitizeIdeContext).h;
     }
 
     const withText = { filePath: '/w/a.ts', selection: { startLine: 1, endLine: 2, text: 'secret' } };
@@ -301,6 +305,50 @@ describe('MessageBroker', () => {
       expect(h.processManager.sendUserMessage).toHaveBeenCalledWith('ch-1', [
         { type: 'text', text: 'hi' },
         { type: 'text', text: formatIdeBlocks(context)[0] },
+      ]);
+    });
+
+    it('drops a turn whose re-check was still pending when the channel was interrupted', async () => {
+      let release!: (ctx: IdeContext) => void;
+      const { h } = brokerWithSanitizeAndInstance(() => new Promise((r) => (release = r)));
+      h.dispatch({ type: 'control_request', channelId: 'ch-1', requestId: 'a', text: 'first', context: withText });
+      await new Promise((r) => setImmediate(r));
+      h.dispatch({ type: 'interrupt_claude', channelId: 'ch-1' });
+      release(withText);
+      await new Promise((r) => setImmediate(r));
+      expect(h.processManager.sendUserMessage).not.toHaveBeenCalled();
+    });
+
+    it('drops a turn whose re-check was still pending when the channel was closed', async () => {
+      let release!: (ctx: IdeContext) => void;
+      const { h } = brokerWithSanitizeAndInstance(() => new Promise((r) => (release = r)));
+      h.dispatch({ type: 'control_request', channelId: 'ch-1', requestId: 'a', text: 'first', context: withText });
+      await new Promise((r) => setImmediate(r));
+      h.dispatch({ type: 'close_channel', channelId: 'ch-1' });
+      release(withText);
+      await new Promise((r) => setImmediate(r));
+      expect(h.processManager.sendUserMessage).not.toHaveBeenCalled();
+    });
+
+    it('drops a turn whose re-check was still pending when the broker was disposed', async () => {
+      let release!: (ctx: IdeContext) => void;
+      const { h, broker } = brokerWithSanitizeAndInstance(() => new Promise((r) => (release = r)));
+      h.dispatch({ type: 'control_request', channelId: 'ch-1', requestId: 'a', text: 'first', context: withText });
+      await new Promise((r) => setImmediate(r));
+      broker.dispose();
+      release(withText);
+      await new Promise((r) => setImmediate(r));
+      expect(h.processManager.sendUserMessage).not.toHaveBeenCalled();
+    });
+
+    it('still delivers a turn submitted after an earlier cancellation on the same channel', async () => {
+      const { h } = brokerWithSanitizeAndInstance(async () => linesOnly);
+      h.dispatch({ type: 'interrupt_claude', channelId: 'ch-1' });
+      h.dispatch({ type: 'control_request', channelId: 'ch-1', requestId: 'a', text: 'after', context: withText });
+      await vi.waitFor(() => expect(h.processManager.sendUserMessage).toHaveBeenCalled());
+      expect(h.processManager.sendUserMessage).toHaveBeenCalledWith('ch-1', [
+        { type: 'text', text: 'after' },
+        { type: 'text', text: formatIdeBlocks(linesOnly)[0] },
       ]);
     });
   });

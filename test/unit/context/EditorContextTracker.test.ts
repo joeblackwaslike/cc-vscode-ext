@@ -217,7 +217,7 @@ describe('EditorContextTracker', () => {
   });
 
   it.each([
-    ['rejects', () => exec.mockRejectedValue(new Error('spawn git ENOENT'))],
+    ['spawn fails without killing', () => exec.mockResolvedValue({ code: -1 })],
     ['exits 128', () => exec.mockResolvedValue({ code: 128 })],
   ])('treats a file as not ignored when git %s', async (_label, arrange) => {
     arrange();
@@ -226,6 +226,18 @@ describe('EditorContextTracker', () => {
     select(a, sel(0, 0, 0, 4));
     await settle();
     expect(tracker.current()?.selection?.text).toBe('picked text');
+  });
+
+  it.each([
+    ['rejects', () => exec.mockRejectedValue(new Error('spawn git ENOENT'))],
+    ['exits with an unrecognized code', () => exec.mockResolvedValue({ code: 2 })],
+  ])('fails closed and withholds text when git %s', async (_label, arrange) => {
+    arrange();
+    const a = makeEditor('/tmp/a.ts');
+    setActive(a);
+    select(a, sel(0, 0, 0, 4));
+    await settle();
+    expect(tracker.current()?.selection?.text).toBeUndefined();
   });
 
   it('treats a file as excluded when the findFiles probe returns nothing', async () => {
@@ -358,12 +370,18 @@ describe('EditorContextTracker', () => {
     ['git is missing', -1, 1],
     ['the file is tracked', 1, 1],
     ['the folder is not a repository', 128, 1],
-    ['git exits with an unknown code', 2, 2],
   ])('sends text when %s, running git %i -> %i time(s)', async (_label, code, calls) => {
     exec.mockResolvedValue({ code });
     await selectTwice();
     expect(tracker.current()?.selection?.text).toBe('picked text');
     expect(exec).toHaveBeenCalledTimes(calls);
+  });
+
+  it('withholds text and does not cache when git exits with an unrecognized code', async () => {
+    exec.mockResolvedValue({ code: 2 });
+    await selectTwice();
+    expect(tracker.current()?.selection).toStrictEqual({ startLine: 1, endLine: 1 });
+    expect(exec).toHaveBeenCalledTimes(2);
   });
 
   it('logs a throwing onChange instead of rejecting', async () => {

@@ -243,9 +243,12 @@ export class EditorContextTracker implements vscode.Disposable {
       ]);
       if (result === 'timeout' || result.killed) return { ignored: true, settled: false };
       if (result.code === 0) return { ignored: true, settled: true };
-      return { ignored: false, settled: SETTLED_NOT_IGNORED.has(result.code) };
-    } catch {
-      return { ignored: false, settled: false };
+      if (SETTLED_NOT_IGNORED.has(result.code)) return { ignored: false, settled: true };
+      // Unrecognized exit code: fail closed rather than guessing it means "not ignored".
+      return { ignored: true, settled: false };
+    } catch (err) {
+      this.log(err);
+      return { ignored: true, settled: false };
     } finally {
       clearTimeout(timer);
     }
@@ -263,7 +266,8 @@ export class EditorContextTracker implements vscode.Disposable {
         1
       );
       return found.length === 0;
-    } catch {
+    } catch (err) {
+      this.log(err);
       return true;
     }
   }

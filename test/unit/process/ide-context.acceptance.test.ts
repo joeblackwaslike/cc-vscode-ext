@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterAll } from 'vitest';
 
 vi.mock('vscode', () => ({
   RelativePattern: vi.fn(),
@@ -70,6 +70,10 @@ describe.skipIf(!RUN)('ide context through the real MessageBroker and CLI (CLAUD
   const cwd = mkdtempSync(join(tmpdir(), 'ide-context-'));
   const filePath = '/tmp/zz-ctx-probe.ts';
 
+  afterAll(() => {
+    rmSync(cwd, { recursive: true, force: true });
+  });
+
   it('selection text reaches the model', async () => {
     const reply = await askThroughBroker(
       'Reply with only the name of the constant in the selection I made.' + NO_TOOLS,
@@ -100,6 +104,5 @@ describe.skipIf(!RUN)('ide context through the real MessageBroker and CLI (CLAUD
     );
     console.log('withheld reply:', JSON.stringify(reply));
     expect(reply).not.toContain('zzNeverSent');
-    rmSync(cwd, { recursive: true, force: true });
   }, 120000);
 });

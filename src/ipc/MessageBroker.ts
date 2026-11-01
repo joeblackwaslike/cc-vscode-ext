@@ -174,6 +174,11 @@ export class MessageBroker {
   private readonly turnGenerations = new Map<string, number>();
   /** Per-channel tail of user turns still waiting on an ide context re-check. */
   private readonly pendingTurns = new Map<string, Promise<void>>();
+  /** Per-channel counter bumped on interrupt/cancel/close/dispose. A pending
+   * turn captures this at submit time and is dropped if it no longer matches
+   * right before delivery, so cancelling a channel drops turns that were
+   * already queued without affecting turns submitted afterward. */
+  private readonly cancelEpoch = new Map<string, number>();
   // Channels this broker launched and has not closed. Their lifetime is tied to the
   // webview that owns the tabs: when that webview goes away (dispose) or is
   // re-created (a second get_auth_status), nothing can show or answer them any more.
@@ -292,18 +297,29 @@ export class MessageBroker {
     const recheck = context?.selection?.text !== undefined ? this.services.sanitizeIdeContext : undefined;
     const pending = this.pendingTurns.get(channelId);
     if (!recheck && !pending) return this.deliverUserTurn(channelId, text, context);
-    const run = (pending ?? Promise.resolve()).then(async () => {
-      const checked = context && recheck ? await this.recheckContext(context, recheck) : context;
-      try {
-        this.deliverUserTurn(channelId, text, checked);
-      } catch (err) {
-        this.logger.error('[MessageBroker] error handling control_request', err);
-      }
-    });
+    const epoch = this.cancelEpoch.get(channelId) ?? 0;
+    const run = (pending ?? Promise.resolve())
+      .then(async () => {
+        const checked = context && recheck ? await this.recheckContext(context, recheck) : context;
+        if ((this.cancelEpoch.get(channelId) ?? 0) !== epoch) return;
+        try {
+          this.deliverUserTurn(channelId, text, checked);
+        } catch (err) {
+          this.logger.error('[MessageBroker] failed to deliver user turn', err);
+        }
+      })
+      .catch((err: unknown) => {
+        this.logger.error('[MessageBroker] ide context re-check failed', err);
+      });
     this.pendingTurns.set(channelId, run);
     void run.then(() => {
       if (this.pendingTurns.get(channelId) === run) this.pendingTurns.delete(channelId);
     });
+  }
+
+  /** Drop any turn still queued on this channel that was submitted before now. */
+  private cancelPendingTurns(channelId: string): void {
+    this.cancelEpoch.set(channelId, (this.cancelEpoch.get(channelId) ?? 0) + 1);
   }
 
   private async recheckContext(
@@ -336,6 +352,7 @@ export class MessageBroker {
           return this.handleCloseChannel(msg);
         case 'interrupt_claude':
         case 'cancel_request':
+          this.cancelPendingTurns(msg.channelId);
           this.processManager.interruptClaude(msg.channelId);
           this.permissionRequests.cancelChannel(msg.channelId);
           return;
@@ -781,6 +798,7 @@ export class MessageBroker {
 
   /** Close every channel this broker launched; call when its webview is disposed. */
   dispose(): void {
+    for (const channelId of this.pendingTurns.keys()) this.cancelPendingTurns(channelId);
     this.closeOwnedChannels();
   }
 
@@ -791,6 +809,7 @@ export class MessageBroker {
   }
 
   private handleCloseChannel(msg: Extract<FromWebviewMessage, { type: 'close_channel' }>): void {
+    this.cancelPendingTurns(msg.channelId);
     this.ownedChannels.delete(msg.channelId);
     if (this.launchesAwaitingReplay.has(msg.channelId)) this.cancelledLaunches.add(msg.channelId);
     this.processManager.closeChannel(msg.channelId);
