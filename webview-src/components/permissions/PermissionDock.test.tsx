@@ -24,6 +24,8 @@ function makeRequest(toolName: string, input: Record<string, unknown> = {}, requ
     suggestions: undefined,
     description: undefined,
     priorMode: undefined,
+    approveMode: 'acceptEdits',
+    approveNotice: undefined,
   };
 }
 

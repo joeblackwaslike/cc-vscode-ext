@@ -62,6 +62,8 @@ describe('sessionStore', () => {
       suggestions: undefined,
       description: undefined,
       priorMode: undefined,
+      approveMode: 'acceptEdits',
+      approveNotice: undefined,
     });
 
     test('PERMISSION_ADDED dedupes on requestId', () => {

@@ -10,6 +10,7 @@ import type {
   ContextUsage,
 } from '../types/ipc';
 import { CommandDiscovery } from '../commands/CommandDiscovery';
+import type { ApproveMode } from '../settings/ExtensionSettings';
 import { EFFORT_THINKING_TOKENS, type PermissionMode } from '../process/ProcessArgs';
 import { parseContextUsage } from '../process/usage';
 import { ControlRequestManager, type ControlResponseEvent } from '../process/ControlRequest';
@@ -140,7 +141,7 @@ export interface MessageBrokerServices {
   permissionRequests?: PermissionRequests;
   workspacePath?: string;
   /** Returns the mode to switch to when the user exits plan mode. */
-  getExitPlanModeFallback?: () => PermissionMode;
+  getExitPlanModeFallback?: () => ApproveMode;
   /** Whether to launch the CLI with the dangerous-skip flag so bypass can be selected mid-session. */
   shouldAllowBypass?: () => boolean;
 }
@@ -199,6 +200,7 @@ export class MessageBroker {
         write: (c, d) => this.processManager.writeToChannel(c, d),
         broadcast: (m) => this.viewManager.broadcastMessage(m),
         log: (m) => this.logger.warn(m),
+        ...(this.services.getExitPlanModeFallback && { getApproveMode: this.services.getExitPlanModeFallback }),
         reportError: (c, message) => this.channelRouter.route(c, { type: 'error', message }),
       });
     webview.onDidReceiveMessage((raw: unknown) => {

@@ -76,8 +76,16 @@ export function buildAskAnswerDecision(
   return { behavior: 'allow', updatedInput: { ...input, answers } };
 }
 
-export function exitPlanAutoLabel(priorMode: PermissionMode | undefined): string {
-  return priorMode === 'auto' ? 'Yes, and use auto mode' : 'Yes, and auto-accept';
+const APPROVE_LABELS: Record<PermissionMode, string> = {
+  auto: 'Yes, and use auto mode',
+  acceptEdits: 'Yes, and auto-accept',
+  default: 'Yes, and manually approve edits',
+  bypassPermissions: 'Yes, and bypass permissions',
+  plan: 'Yes, and auto-accept',
+};
+
+export function exitPlanApproveLabel(mode: PermissionMode): string {
+  return APPROVE_LABELS[mode];
 }
 
 export function buildExitPlanDecision(
@@ -88,12 +96,8 @@ export function buildExitPlanDecision(
   if (choice === 'keep-planning') {
     return { behavior: 'deny', message: feedback ? `${KEEP_PLANNING_MESSAGE}\n\n${feedback}` : KEEP_PLANNING_MESSAGE };
   }
-  const updatedPermissions =
-    choice === 'manual'
-      ? [{ type: 'setMode', mode: 'default' as const, destination: 'session' }]
-      : request.suggestions?.length
-        ? request.suggestions
-        : [{ type: 'setMode', mode: request.priorMode === 'auto' ? ('auto' as const) : ('acceptEdits' as const), destination: 'session' }];
+  const mode = choice === 'manual' ? 'default' : request.approveMode;
+  const updatedPermissions = [{ type: 'setMode', mode, destination: 'session' }];
   return { behavior: 'allow', updatedInput: request.input, updatedPermissions };
 }
 

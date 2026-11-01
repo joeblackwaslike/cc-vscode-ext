@@ -155,6 +155,30 @@ describe('PermissionRequests', () => {
     expect(perms.register('c', ask).priorMode).toBeUndefined();
   });
 
+  describe('approve mode', () => {
+    it('register sets approveMode from getApproveMode for ExitPlanMode', () => {
+      const p = new PermissionRequests({ write, broadcast, getApproveMode: () => 'auto' });
+      const r = p.register('c', exitPlan);
+      expect(r.approveMode).toBe('auto');
+      expect(r.approveNotice).toBeUndefined();
+    });
+
+    it('falls back to acceptEdits with a notice when bypass was not launched', () => {
+      const p = new PermissionRequests({ write, broadcast, getApproveMode: () => 'bypassPermissions' });
+      const r = p.register('c', exitPlan);
+      expect(r.approveMode).toBe('acceptEdits');
+      expect(r.approveNotice).toMatch(/bypass/i);
+    });
+
+    it('keeps bypassPermissions when the channel was launched with the flag', () => {
+      const p = new PermissionRequests({ write, broadcast, getApproveMode: () => 'bypassPermissions' });
+      p.noteBypassAllowed('c', true);
+      const r = p.register('c', exitPlan);
+      expect(r.approveMode).toBe('bypassPermissions');
+      expect(r.approveNotice).toBeUndefined();
+    });
+  });
+
   it('denyWithoutPrompt writes a deny without broadcasting', () => {
     perms.denyWithoutPrompt('c', ask, 'nope');
     expect(write).toHaveBeenCalledWith('c', {

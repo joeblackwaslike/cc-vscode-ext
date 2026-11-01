@@ -17,6 +17,8 @@ function makeRequest(input?: Record<string, unknown>): PermissionRequest {
     suggestions: undefined,
     description: undefined,
     priorMode: undefined,
+    approveMode: 'acceptEdits',
+    approveNotice: undefined,
   };
 }
 

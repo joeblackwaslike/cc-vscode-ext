@@ -9,6 +9,7 @@
  */
 
 import type { PermissionMode } from './ProcessArgs';
+import type { ApproveMode } from '../settings/ExtensionSettings';
 import type {
   PermissionDecision,
   PermissionRequest,
@@ -44,6 +45,8 @@ interface PermissionRequestsDeps {
   write(channelId: string, data: unknown): boolean;
   broadcast(msg: ToWebviewMessage): void;
   log?(message: string): void;
+  /** Mode the ExitPlanMode approve button switches to; defaults to acceptEdits. */
+  getApproveMode?: () => ApproveMode;
   /** Tell the user a decision never reached the CLI (the channel is no longer writable). */
   reportError?(channelId: string, message: string): void;
 }
@@ -62,6 +65,8 @@ export class PermissionRequests {
 
   register(channelId: string, event: CanUseToolEvent): PermissionRequest {
     const { request } = event;
+    const configured = this.deps.getApproveMode?.() ?? 'acceptEdits';
+    const downgraded = configured === 'bypassPermissions' && !this.bypassAllowed(channelId);
     const req: PermissionRequest = {
       channelId,
       requestId: event.request_id,
@@ -71,6 +76,10 @@ export class PermissionRequests {
       suggestions: request.permission_suggestions,
       description: request.description,
       priorMode: request.tool_name === 'ExitPlanMode' ? this.modes.get(channelId)?.beforePlan : undefined,
+      approveMode: downgraded ? 'acceptEdits' : configured,
+      approveNotice: downgraded
+        ? 'Bypass permissions is unavailable because this session was launched without the dangerous-skip flag; using auto-accept.'
+        : undefined,
     };
     this.pending.set(req.requestId, req);
     this.deps.broadcast({ type: 'permission_request', request: req });

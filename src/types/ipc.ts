@@ -318,6 +318,10 @@ export interface PermissionRequest {
   suggestions: PermissionUpdate[] | undefined;
   description: string | undefined;
   priorMode: PermissionMode | undefined;
+  /** Mode the plan-approval button switches to; meaningful for ExitPlanMode only. */
+  approveMode: PermissionMode;
+  /** Explains why approveMode differs from the configured setting. */
+  approveNotice: string | undefined;
 }
 
 export interface PermissionResponseMessage {

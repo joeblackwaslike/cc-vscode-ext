@@ -11,7 +11,7 @@ import {
   buildExitPlanDecision,
   deriveAskStatus,
   deriveExitPlanStatus,
-  exitPlanAutoLabel,
+  exitPlanApproveLabel,
   formatPlanFeedback,
   isQuestionAnswered,
   parseAskAnswers,
@@ -26,6 +26,7 @@ function req(over: Partial<PermissionRequest> = {}): PermissionRequest {
   return {
     channelId: 'c', requestId: 'r', toolName: 'ExitPlanMode', toolUseId: 't',
     input: { plan: 'p' }, suggestions: undefined, description: undefined, priorMode: undefined,
+    approveMode: 'acceptEdits', approveNotice: undefined,
     ...over,
   };
 }
@@ -91,23 +92,22 @@ describe('prototype-key question texts', () => {
 });
 
 describe('exit plan', () => {
-  it('auto labels', () => {
-    expect(exitPlanAutoLabel(undefined)).toBe('Yes, and auto-accept');
-    expect(exitPlanAutoLabel('default')).toBe('Yes, and auto-accept');
-    expect(exitPlanAutoLabel('auto')).toBe('Yes, and use auto mode');
+  it('approve labels', () => {
+    expect(exitPlanApproveLabel('auto')).toBe('Yes, and use auto mode');
+    expect(exitPlanApproveLabel('acceptEdits')).toBe('Yes, and auto-accept');
+    expect(exitPlanApproveLabel('default')).toBe('Yes, and manually approve edits');
+    expect(exitPlanApproveLabel('bypassPermissions')).toBe('Yes, and bypass permissions');
   });
-  it('auto uses suggestions when present', () => {
-    const r = req({ suggestions });
-    expect(buildExitPlanDecision('auto', r, '')).toEqual({
-      behavior: 'allow', updatedInput: r.input, updatedPermissions: suggestions,
-    });
-  });
-  it('auto falls back to acceptEdits, or auto when priorMode is auto', () => {
-    const fb = (mode: string) => [{ type: 'setMode', mode, destination: 'session' }];
-    expect(buildExitPlanDecision('auto', req({ suggestions: [] }), '')).toMatchObject({ updatedPermissions: fb('acceptEdits') });
-    expect(buildExitPlanDecision('auto', req(), '')).toMatchObject({ updatedPermissions: fb('acceptEdits') });
-    expect(buildExitPlanDecision('auto', req({ priorMode: 'auto' }), '')).toMatchObject({ updatedPermissions: fb('auto') });
-  });
+  it.each(['auto', 'acceptEdits', 'default', 'bypassPermissions'] as const)(
+    'auto choice sends setMode %s and ignores suggestions and priorMode',
+    (mode) => {
+      const r = req({ suggestions, priorMode: 'auto', approveMode: mode });
+      expect(buildExitPlanDecision('auto', r, '')).toEqual({
+        behavior: 'allow', updatedInput: r.input,
+        updatedPermissions: [{ type: 'setMode', mode, destination: 'session' }],
+      });
+    },
+  );
   it('manual ignores suggestions', () => {
     const r = req({ suggestions });
     expect(buildExitPlanDecision('manual', r, 'x')).toEqual({
