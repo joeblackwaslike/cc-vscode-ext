@@ -11,6 +11,7 @@ import type {
 import type { ClaudeStreamEvent } from '../../src/types/process';
 import type { SessionInfo, ConversationState, SessionGroup } from '../../src/types/session';
 import type { ApproveMode, PermissionMode } from '../../src/process/ProcessArgs';
+import type { IdeContext } from '../../src/shared/ideTags';
 
 export type {
   FromWebviewMessage,
@@ -27,6 +28,7 @@ export type {
   PermissionRequest,
   PermissionDecision,
   PermissionUpdate,
+  IdeContext,
 };
 
 let _api: ReturnType<typeof acquireVsCodeApi> | null = null;

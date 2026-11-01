@@ -2,14 +2,14 @@ import { MessageList } from './MessageList';
 import { ChatInput } from './ChatInput';
 import { PermissionDock } from './permissions/PermissionDock';
 import { useChannelPermissions } from '../store/sessionStore';
-import type { ClaudeStreamEvent, ContextUsage } from '../lib/ipc';
+import type { ClaudeStreamEvent, ContextUsage, IdeContext } from '../lib/ipc';
 
 interface Props {
   channelId: string;
   events: ClaudeStreamEvent[];
   running: boolean;
   usage?: ContextUsage | undefined;
-  onSend: (text: string) => void;
+  onSend: (text: string, context?: IdeContext) => void;
   onInterrupt: () => void;
   onCompact: () => void;
   onRefreshUsage: () => void;

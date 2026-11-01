@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { postMessage } from '../lib/ipc';
-import type { PermissionMode, ThinkingLevel } from '../lib/ipc';
+import type { PermissionMode, ThinkingLevel, IdeContext } from '../lib/ipc';
 
 interface LaunchOptions {
   resume?: string;
@@ -23,9 +23,9 @@ export function useSession() {
     });
   }, []);
 
-  const sendText = useCallback((channelId: string, text: string, requestId: string): void => {
+  const sendText = useCallback((channelId: string, text: string, requestId: string, context?: IdeContext): void => {
     // Send raw text; the host wraps it in the CLI's stream-json user envelope.
-    postMessage({ type: 'control_request', channelId, requestId, text });
+    postMessage({ type: 'control_request', channelId, requestId, text, ...(context ? { context } : {}) });
   }, []);
 
   const interrupt = useCallback((channelId: string): void => {

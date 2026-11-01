@@ -832,6 +832,42 @@ a {
 .cc-composer--focus {
   border-color: var(--cc-accent);
 }
+.cc-context-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 0 2px 4px;
+}
+.cc-context-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 100%;
+  font-size: 11px;
+  color: var(--cc-muted);
+  border: 1px solid var(--cc-border);
+  border-radius: 6px;
+  padding: 1px 2px 1px 6px;
+}
+.cc-context-chip__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cc-context-chip__remove {
+  font: inherit;
+  line-height: 1;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  padding: 1px 4px;
+  cursor: pointer;
+}
+.cc-context-chip__remove:hover {
+  background: var(--cc-hover);
+  color: var(--cc-fg);
+}
 .cc-textarea {
   display: block;
   width: 100%;

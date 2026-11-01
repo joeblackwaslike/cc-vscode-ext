@@ -1,7 +1,5 @@
 import { createContext, useContext, useReducer, useCallback } from 'react';
-import type { SessionInfo, SessionGroup, PermissionMode, ThinkingLevel, ToWebviewMessage } from '../lib/ipc';
-
-// ─── State ────────────────────────────────────────────────────────────────────
+import type { SessionInfo, SessionGroup, PermissionMode, ThinkingLevel, ToWebviewMessage, IdeContext } from '../lib/ipc';
 
 export interface ExtensionState {
   sessions: SessionInfo[];
@@ -16,6 +14,7 @@ export interface ExtensionState {
   authenticated: boolean;
   loginUrl: string | undefined;
   customModels: string[];
+  ideContext: IdeContext | null;
 }
 
 const initialState: ExtensionState = {
@@ -31,19 +30,19 @@ const initialState: ExtensionState = {
   authenticated: true, // assume authenticated until told otherwise
   loginUrl: undefined,
   customModels: [],
+  ideContext: null,
 };
-
-// ─── Actions ──────────────────────────────────────────────────────────────────
 
 type SessionDefaults = Partial<
   Pick<ExtensionState, 'defaultPermissionMode' | 'thinkingLevel' | 'model' | 'focusViewEnabled'>
 >;
 
 type Action =
-  | { type: 'UPDATE_STATE'; payload: Omit<ExtensionState, 'authenticated' | 'loginUrl' | 'lastSessionId' | 'initialStateReceived'> & { lastSessionId?: string | undefined } }
+  | { type: 'UPDATE_STATE'; payload: Omit<ExtensionState, 'authenticated' | 'loginUrl' | 'lastSessionId' | 'initialStateReceived' | 'ideContext'> & { lastSessionId?: string | undefined } }
   | { type: 'AUTH_STATUS'; authenticated: boolean; loginUrl?: string }
   | { type: 'LIST_SESSIONS'; sessions: SessionInfo[]; groups: SessionGroup[] }
-  | { type: 'SET_DEFAULTS'; defaults: SessionDefaults };
+  | { type: 'SET_DEFAULTS'; defaults: SessionDefaults }
+  | { type: 'IDE_CONTEXT'; context: IdeContext | null };
 
 function reducer(state: ExtensionState, action: Action): ExtensionState {
   switch (action.type) {
@@ -60,12 +59,12 @@ function reducer(state: ExtensionState, action: Action): ExtensionState {
       };
     case 'LIST_SESSIONS':
       return { ...state, sessions: action.sessions, groups: action.groups };
+    case 'IDE_CONTEXT':
+      return { ...state, ideContext: action.context };
     default:
       return state;
   }
 }
-
-// ─── Context ──────────────────────────────────────────────────────────────────
 
 interface ExtensionContextValue {
   state: ExtensionState;
@@ -112,6 +111,9 @@ export function useExtensionReducer() {
           break;
         case 'list_sessions_response':
           dispatch({ type: 'LIST_SESSIONS', sessions: msg.sessions, groups: msg.groups });
+          break;
+        case 'ide_context':
+          dispatch({ type: 'IDE_CONTEXT', context: msg.context });
           break;
         default:
           break;
