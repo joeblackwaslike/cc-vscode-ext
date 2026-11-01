@@ -1,4 +1,5 @@
 import { formatIdeBlocks } from '../../../src/shared/ideTags';
+import type { IdeContext } from '../../../src/shared/ideTags';
 import { describe, it, expect, vi } from 'vitest';
 
 vi.mock('vscode', () => ({
@@ -232,6 +233,73 @@ describe('MessageBroker', () => {
       h.dispatch({ type: 'control_request', channelId: 'ch-1', requestId: 'req-1', text: 'hello', context });
       expect(h.processManager.sendUserMessage).toHaveBeenCalledWith('ch-1', [
         { type: 'text', text: 'hello' },
+        { type: 'text', text: formatIdeBlocks(context)[0] },
+      ]);
+    });
+
+    function brokerWithSanitize(sanitizeIdeContext: (ctx: IdeContext) => Promise<IdeContext>) {
+      const h = createIpcTestHarness();
+      new MessageBroker(
+        h.processManager,
+        h.sessionManager,
+        h.diffManager,
+        h.viewManager,
+        h.channelRouter,
+        h.webview,
+        h.logger,
+        { sanitizeIdeContext }
+      );
+      return h;
+    }
+
+    const withText = { filePath: '/w/a.ts', selection: { startLine: 1, endLine: 2, text: 'secret' } };
+    const linesOnly = { filePath: '/w/a.ts', selection: { startLine: 1, endLine: 2 } };
+
+    it('sends the context the host re-checked, not the text the webview held', async () => {
+      const h = brokerWithSanitize(async () => linesOnly);
+      h.dispatch({ type: 'control_request', channelId: 'ch-1', requestId: 'r', text: 'hi', context: withText });
+      await vi.waitFor(() => expect(h.processManager.sendUserMessage).toHaveBeenCalled());
+      expect(h.processManager.sendUserMessage).toHaveBeenCalledWith('ch-1', [
+        { type: 'text', text: 'hi' },
+        { type: 'text', text: formatIdeBlocks(linesOnly)[0] },
+      ]);
+    });
+
+    it('drops the selected text when the re-check throws', async () => {
+      const h = brokerWithSanitize(async () => {
+        throw new Error('check failed');
+      });
+      h.dispatch({ type: 'control_request', channelId: 'ch-1', requestId: 'r', text: 'hi', context: withText });
+      await vi.waitFor(() => expect(h.processManager.sendUserMessage).toHaveBeenCalled());
+      expect(h.processManager.sendUserMessage).toHaveBeenCalledWith('ch-1', [
+        { type: 'text', text: 'hi' },
+        { type: 'text', text: formatIdeBlocks(linesOnly)[0] },
+      ]);
+    });
+
+    it('keeps two quick sends on a channel in order while the first is re-checked', async () => {
+      let release!: (ctx: IdeContext) => void;
+      const h = brokerWithSanitize(() => new Promise((r) => (release = r)));
+      h.dispatch({ type: 'control_request', channelId: 'ch-1', requestId: 'a', text: 'first', context: withText });
+      h.dispatch({ type: 'control_request', channelId: 'ch-1', requestId: 'b', text: 'second' });
+      await new Promise((r) => setImmediate(r));
+      expect(h.processManager.sendUserMessage).not.toHaveBeenCalled();
+      release(withText);
+      await vi.waitFor(() => expect(h.processManager.sendUserMessage).toHaveBeenCalledTimes(2));
+      expect(h.processManager.sendUserMessage.mock.calls.map(([, c]) => (Array.isArray(c) ? c[0].text : c))).toEqual([
+        'first',
+        'second',
+      ]);
+    });
+
+    it('does not re-check a context without selected text', () => {
+      const sanitize = vi.fn(async (ctx: IdeContext) => ctx);
+      const h = brokerWithSanitize(sanitize);
+      const context = { filePath: '/w/a.ts' };
+      h.dispatch({ type: 'control_request', channelId: 'ch-1', requestId: 'r', text: 'hi', context });
+      expect(sanitize).not.toHaveBeenCalled();
+      expect(h.processManager.sendUserMessage).toHaveBeenCalledWith('ch-1', [
+        { type: 'text', text: 'hi' },
         { type: 'text', text: formatIdeBlocks(context)[0] },
       ]);
     });

@@ -2,6 +2,8 @@ export interface IdeSelection {
   startLine: number;
   endLine: number;
   text?: string;
+  /** Characters already cut from the end of `text` before it reached the formatter. */
+  truncatedChars?: number;
 }
 
 export interface IdeContext {
@@ -28,10 +30,15 @@ const WITHHELD =
 const SEL_HEAD = /<ide_selection>The user selected the lines (\d+) to (\d+) from /y;
 const NEXT_TAG = /\s*<ide_(?:selection|opened_file)>/y;
 
+/** Replaces characters that could close or open a tag inside the block. */
+function safePath(path: string): string {
+  return path.replace(/[<>\r\n]/g, '_');
+}
+
 function formatSelection(path: string, sel: NonNullable<IdeContext['selection']>): string {
   const head = `<ide_selection>The user selected the lines ${sel.startLine} to ${sel.endLine} from ${path}`;
   if (sel.text === undefined) return `${head}. ${WITHHELD}${SEL_CLOSE}`;
-  const over = sel.text.length - MAX_SELECTION_CHARS;
+  const over = Math.max(sel.text.length - MAX_SELECTION_CHARS, 0) + (sel.truncatedChars ?? 0);
   const body =
     over > 0
       ? `${sel.text.slice(0, MAX_SELECTION_CHARS)}\n[truncated ${over} characters]`
@@ -41,8 +48,9 @@ function formatSelection(path: string, sel: NonNullable<IdeContext['selection']>
 
 /** Builds the tag blocks that carry the editor context to the model. */
 export function formatIdeBlocks(ctx: IdeContext): string[] {
-  if (ctx.selection) return [formatSelection(ctx.filePath, ctx.selection)];
-  return [`${FILE_OPEN}${ctx.filePath}${FILE_SUFFIX}${FILE_CLOSE}`];
+  const path = safePath(ctx.filePath);
+  if (ctx.selection) return [formatSelection(path, ctx.selection)];
+  return [`${FILE_OPEN}${path}${FILE_SUFFIX}${FILE_CLOSE}`];
 }
 
 function closeIndex(text: string, from: number): number {

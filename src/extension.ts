@@ -179,6 +179,7 @@ export function activate(context: vscode.ExtensionContext): void {
         setDefaultPermissionMode: (mode) => settings.setDefaultPermissionMode(mode),
         shouldAllowBypass: () => settings.shouldAllowBypass(),
         getIdeContext: () => editorContext.current(),
+        sanitizeIdeContext: (ctx) => editorContext.sanitize(ctx),
       }
     );
 

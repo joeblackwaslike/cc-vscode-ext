@@ -16,7 +16,6 @@ describe('ContextChips', () => {
     render(
       <ContextChips
         context={{ filePath: '/repo/src/app.ts', selection: { startLine: 3, endLine: 9, text: 'x' } }}
-       
         onDismiss={() => {}}
       />,
     );
@@ -42,7 +41,6 @@ describe('ContextChips', () => {
     render(
       <ContextChips
         context={{ filePath: '/repo/a.ts', selection: { startLine: 1, endLine: 2 } }}
-       
         onDismiss={onDismiss}
       />,
     );

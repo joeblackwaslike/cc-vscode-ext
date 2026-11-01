@@ -46,7 +46,7 @@ All three are declared under `clawdCode.*`, with `claudeCode.*` as a fallback wh
 |---|---|---|
 | `clawdCode.attachOpenFile` | `true` | Attach the active editor's file when nothing is selected. When `false`, no bare open-file chip appears. |
 | `clawdCode.attachSelection` | `true` | Attach selected text. When `false`, selected text is never attached, but a selection can still be added with Alt+K. |
-| `clawdCode.respectGitIgnore` | `true` | Withhold selected text from files that are git-ignored or match `files.exclude` or `search.exclude`. The line range is still sent. |
+| `clawdCode.respectGitIgnore` | `true` | Withhold selected text from files that are git-ignored or match `files.exclude`. The line range is still sent. `search.exclude` is not evaluated. |
 
 Joe's settings already hold `claudeCode.attachOpenFile: false`, so the fallback gives him the off-switch with no further change.
 
@@ -69,7 +69,7 @@ Only documents with the `file` scheme produce a context. Output channels, commen
 
 Context value: `null`, or `{ filePath, selection? }` where `filePath` is the absolute path and `selection` is `{ startLine, endLine, text? }` with 1-based lines. `text` is absent when the file is git-ignored or excluded and `respectGitIgnore` is on. The empty selection is `undefined`.
 
-The git-ignore check runs `git check-ignore -q <path>` with the workspace folder as cwd and treats exit code 0 as ignored. It takes an injected exec function, as `WorktreeManager` does. A missing git, a non-repository folder or any error counts as not ignored. Results are cached per path until the document closes or the file system watcher reports a change to `.gitignore`.
+The git-ignore check runs `git check-ignore -q <path>` with the file's own directory as cwd and treats exit code 0 as ignored. It takes an injected exec function, as `WorktreeManager` does. A missing git or a non-repository folder counts as not ignored. A git check that times out or is killed counts as ignored for that computation, because git was present but did not answer. Results are cached per path until the document closes, `files.exclude` changes, or the file system watcher reports a change to `.gitignore`. Timeouts and unknown exit codes are not cached. At send time the host checks the path again, so text the webview still holds is dropped if the file became ignored since the last broadcast.
 
 ### Webview: chips and dismissal
 

@@ -79,7 +79,8 @@ export const mockVscode = {
     onDidChangeVisibleTextEditors: vi.fn(() => ({ dispose: vi.fn() })),
     onDidChangeTextEditorSelection: vi.fn(() => ({ dispose: vi.fn() })),
     tabGroups: {
-      all: [] as unknown[],
+      all: [] as Array<{ tabs: Array<{ input: unknown }> }>,
+      onDidChangeTabs: vi.fn(() => ({ dispose: vi.fn() })),
     },
     createTerminal: vi.fn(() => ({
       show: vi.fn(),

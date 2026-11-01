@@ -2,7 +2,7 @@ import { execFile } from 'child_process';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import type { ExtensionSettings } from '../settings/ExtensionSettings';
-import type { IdeContext, IdeSelection } from '../shared/ideTags';
+import { MAX_SELECTION_CHARS, type IdeContext, type IdeSelection } from '../shared/ideTags';
 
 /**
  * Result of running a command: its exit code, -1 when it could not be spawned,
@@ -58,7 +58,19 @@ function sameContext(a: IdeContext | null, b: IdeContext | null): boolean {
     a.filePath === b.filePath &&
     x?.startLine === y?.startLine &&
     x?.endLine === y?.endLine &&
-    x?.text === y?.text
+    x?.text === y?.text &&
+    x?.truncatedChars === y?.truncatedChars
+  );
+}
+
+/** Whether any tab, including either side of a diff, still shows the document. */
+function isShownInTab(uri: vscode.Uri): boolean {
+  const key = uri.toString();
+  return vscode.window.tabGroups.all.some((group) =>
+    group.tabs.some((tab) => {
+      const input = tab.input as { uri?: vscode.Uri; original?: vscode.Uri; modified?: vscode.Uri } | undefined;
+      return [input?.uri, input?.original, input?.modified].some((u) => u?.toString() === key);
+    })
   );
 }
 
@@ -98,9 +110,10 @@ export class EditorContextTracker implements vscode.Disposable {
       }),
       vscode.workspace.onDidCloseTextDocument((doc) => {
         this.ignored.delete(doc.uri.fsPath);
-        if (this.editor?.document !== doc) return;
-        this.editor = undefined;
-        this.schedule();
+        if (this.editor?.document === doc) this.untrack();
+      }),
+      vscode.window.tabGroups.onDidChangeTabs(() => {
+        if (this.editor && !isShownInTab(this.editor.document.uri)) this.untrack();
       }),
       vscode.workspace.onDidChangeConfiguration((e) => {
         if (e.affectsConfiguration('files.exclude')) resetIgnored();
@@ -120,6 +133,19 @@ export class EditorContextTracker implements vscode.Disposable {
     return this.value;
   }
 
+  /**
+   * Re-checks a context that is about to be sent. With `respectGitIgnore` on,
+   * the ignore answer for the path is refreshed and the selected text is dropped
+   * when the file is ignored or excluded now, or when git does not answer in time.
+   */
+  async sanitize(context: IdeContext): Promise<IdeContext> {
+    const sel = context.selection;
+    if (sel?.text === undefined || !this.opts.settings.getRespectGitIgnore()) return context;
+    this.ignored.delete(context.filePath);
+    if (!(await this.isIgnored(vscode.Uri.file(context.filePath)))) return context;
+    return { filePath: context.filePath, selection: { startLine: sel.startLine, endLine: sel.endLine } };
+  }
+
   dispose(): void {
     this.disposed = true;
     this.generation++;
@@ -129,6 +155,11 @@ export class EditorContextTracker implements vscode.Disposable {
 
   private track(editor: vscode.TextEditor): void {
     this.editor = editor;
+    this.schedule();
+  }
+
+  private untrack(): void {
+    this.editor = undefined;
     this.schedule();
   }
 
@@ -174,7 +205,9 @@ export class EditorContextTracker implements vscode.Disposable {
       endLine: endsAtLineStart ? sel.end.line : sel.end.line + 1,
     };
     if (!(settings.getRespectGitIgnore() && (await this.isIgnored(editor.document.uri)))) {
-      selection.text = editor.document.getText(sel);
+      const text = editor.document.getText(sel);
+      selection.text = text.slice(0, MAX_SELECTION_CHARS);
+      if (text.length > MAX_SELECTION_CHARS) selection.truncatedChars = text.length - MAX_SELECTION_CHARS;
     }
     return { filePath, selection };
   }

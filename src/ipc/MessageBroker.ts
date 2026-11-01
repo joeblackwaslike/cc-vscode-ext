@@ -150,6 +150,8 @@ export interface MessageBrokerServices {
   shouldAllowBypass?: () => boolean;
   /** The editor context currently offered to the composer. */
   getIdeContext?: () => IdeContext | null;
+  /** Re-checks a context at send time; drops selected text the host may not send now. */
+  sanitizeIdeContext?: (context: IdeContext) => Promise<IdeContext>;
 }
 
 /**
@@ -170,6 +172,8 @@ export class MessageBroker {
    * relay notification instead of racing that new turn (see
    * `refreshContextUsage`). */
   private readonly turnGenerations = new Map<string, number>();
+  /** Per-channel tail of user turns still waiting on an ide context re-check. */
+  private readonly pendingTurns = new Map<string, Promise<void>>();
   // Channels this broker launched and has not closed. Their lifetime is tied to the
   // webview that owns the tabs: when that webview goes away (dispose) or is
   // re-created (a second get_auth_status), nothing can show or answer them any more.
@@ -280,6 +284,48 @@ export class MessageBroker {
     }
   }
 
+  /**
+   * Sends a user turn. Selected text is re-checked by the host first, and turns
+   * on one channel are delivered in submit order while a re-check is pending.
+   */
+  private submitUserTurn(channelId: string, text: string, context: IdeContext | undefined): void {
+    const recheck = context?.selection?.text !== undefined ? this.services.sanitizeIdeContext : undefined;
+    const pending = this.pendingTurns.get(channelId);
+    if (!recheck && !pending) return this.deliverUserTurn(channelId, text, context);
+    const run = (pending ?? Promise.resolve()).then(async () => {
+      const checked = context && recheck ? await this.recheckContext(context, recheck) : context;
+      try {
+        this.deliverUserTurn(channelId, text, checked);
+      } catch (err) {
+        this.logger.error('[MessageBroker] error handling control_request', err);
+      }
+    });
+    this.pendingTurns.set(channelId, run);
+    void run.then(() => {
+      if (this.pendingTurns.get(channelId) === run) this.pendingTurns.delete(channelId);
+    });
+  }
+
+  private async recheckContext(
+    context: IdeContext,
+    recheck: (ctx: IdeContext) => Promise<IdeContext>
+  ): Promise<IdeContext> {
+    try {
+      return await recheck(context);
+    } catch (err) {
+      this.logger.warn(`[MessageBroker] ide context re-check failed, sending lines only: ${String(err)}`);
+      const sel = context.selection;
+      return sel ? { filePath: context.filePath, selection: { startLine: sel.startLine, endLine: sel.endLine } } : context;
+    }
+  }
+
+  private deliverUserTurn(channelId: string, text: string, context: IdeContext | undefined): void {
+    const content = buildUserContent(text, context);
+    if (!this.sessionRelayManager.enqueueIfRelaying(channelId, content)) {
+      this.processManager.sendUserMessage(channelId, content);
+    }
+  }
+
   private async handleMessage(msg: FromWebviewMessage): Promise<void> {
     try {
       switch (msg.type) {
@@ -313,12 +359,7 @@ export class MessageBroker {
             msg.channelId,
             (this.turnGenerations.get(msg.channelId) ?? 0) + 1
           );
-          {
-            const content = buildUserContent(msg.text, msg.context);
-            if (!this.sessionRelayManager.enqueueIfRelaying(msg.channelId, content)) {
-              this.processManager.sendUserMessage(msg.channelId, content);
-            }
-          }
+          this.submitUserTurn(msg.channelId, msg.text, msg.context);
           return;
 
         // ─── Live session controls (applied to the running process now, and

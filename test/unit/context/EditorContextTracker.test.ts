@@ -4,6 +4,7 @@ import { mockVscode } from '../../helpers/mockVscode';
 vi.mock('vscode', () => mockVscode);
 
 import { EditorContextTracker, execFileCode } from '../../../src/context/EditorContextTracker';
+import { MAX_SELECTION_CHARS } from '../../../src/shared/ideTags';
 
 type Listener = (arg: unknown) => void;
 interface FakeSelection {
@@ -12,7 +13,7 @@ interface FakeSelection {
   isEmpty: boolean;
 }
 interface FakeEditor {
-  document: { uri: { scheme: string; fsPath: string }; getText: ReturnType<typeof vi.fn> };
+  document: { uri: { scheme: string; fsPath: string; toString(): string }; getText: ReturnType<typeof vi.fn> };
   selection: FakeSelection;
 }
 
@@ -28,12 +29,12 @@ const EMPTY = sel(0, 0, 0, 0);
 
 function makeEditor(fsPath: string, scheme = 'file', text = 'picked text'): FakeEditor {
   return {
-    document: { uri: { scheme, fsPath }, getText: vi.fn(() => text) },
+    document: { uri: { scheme, fsPath, toString: () => `${scheme}://${fsPath}` }, getText: vi.fn(() => text) },
     selection: EMPTY,
   };
 }
 
-type ListenerKey = 'active' | 'selection' | 'close' | 'config' | 'gitChange' | 'gitCreate' | 'gitDelete';
+type ListenerKey = 'active' | 'selection' | 'close' | 'tabs' | 'config' | 'gitChange' | 'gitCreate' | 'gitDelete';
 let listeners: Record<ListenerKey, Listener>;
 let disposers: ReturnType<typeof vi.fn>[];
 let flags: { openFile: boolean; selection: boolean; gitIgnore: boolean };
@@ -105,6 +106,8 @@ beforeEach(() => {
   window.onDidChangeActiveTextEditor.mockImplementation(capture('active') as never);
   window.onDidChangeTextEditorSelection.mockImplementation(capture('selection') as never);
   workspace.onDidCloseTextDocument.mockImplementation(capture('close') as never);
+  window.tabGroups.onDidChangeTabs.mockImplementation(capture('tabs') as never);
+  window.tabGroups.all = [];
   workspace.onDidChangeConfiguration.mockImplementation(capture('config') as never);
   watcherDispose = vi.fn();
   workspace.createFileSystemWatcher.mockImplementation(
@@ -405,9 +408,101 @@ describe('EditorContextTracker', () => {
     tracker.dispose();
     await settle();
     expect(onChange).not.toHaveBeenCalled();
-    expect(disposers.length).toBe(7);
+    expect(disposers.length).toBe(8);
     for (const d of disposers) expect(d).toHaveBeenCalled();
     expect(watcherDispose).toHaveBeenCalled();
+  });
+
+  function showTabs(...inputs: unknown[]): void {
+    mockVscode.window.tabGroups.all = [{ tabs: inputs.map((input) => ({ input })) }];
+    listeners.tabs({});
+  }
+
+  it('keeps the context while a tab still shows the tracked file, even as a diff side', async () => {
+    const a = makeEditor('/ws/a.ts');
+    setActive(a);
+    await settle();
+    showTabs({ uri: a.document.uri }, {});
+    setActive(makeEditor('output:1', 'output'));
+    await settle();
+    showTabs({ original: { toString: () => 'git:///ws/a.ts' }, modified: a.document.uri });
+    await settle();
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(tracker.current()).toEqual({ filePath: '/ws/a.ts' });
+  });
+
+  it('clears the context when no tab shows the tracked file any more', async () => {
+    const a = makeEditor('/ws/a.ts');
+    setActive(a);
+    await settle();
+    showTabs({ uri: makeEditor('/ws/b.ts').document.uri });
+    await settle();
+    expect(onChange).toHaveBeenLastCalledWith(null);
+    expect(tracker.current()).toBeNull();
+  });
+
+  it('caps selected text and records how much was cut', async () => {
+    const a = makeEditor('/ws/a.ts', 'file', 'x'.repeat(MAX_SELECTION_CHARS + 70));
+    setActive(a);
+    select(a, sel(0, 0, 9, 1));
+    await settle();
+    const selection = tracker.current()?.selection;
+    expect(selection?.text?.length).toBe(MAX_SELECTION_CHARS);
+    expect(selection?.truncatedChars).toBe(70);
+  });
+
+  it('re-runs the ignore check when files.exclude changes', async () => {
+    const a = makeEditor('/ws/a.ts');
+    setActive(a);
+    select(a, sel(0, 0, 0, 4));
+    await settle();
+    expect(exec).toHaveBeenCalledTimes(1);
+    mockVscode.workspace.findFiles.mockResolvedValue([]);
+    listeners.config({ affectsConfiguration: (s: string) => s === 'files.exclude' });
+    await settle();
+    expect(exec).toHaveBeenCalledTimes(2);
+    expect(tracker.current()?.selection).toStrictEqual({ startLine: 1, endLine: 1 });
+  });
+
+  describe('sanitize', () => {
+    const sent = { filePath: '/ws/a.ts', selection: { startLine: 1, endLine: 1, text: 'held text' } };
+
+    it('drops stale text for a file that became ignored since the last broadcast', async () => {
+      const a = makeEditor('/ws/a.ts');
+      setActive(a);
+      select(a, sel(0, 0, 0, 4));
+      await settle();
+      expect(tracker.current()?.selection?.text).toBe('picked text');
+      exec.mockResolvedValue({ code: 0 });
+      await expect(tracker.sanitize(sent)).resolves.toStrictEqual({
+        filePath: '/ws/a.ts',
+        selection: { startLine: 1, endLine: 1 },
+      });
+    });
+
+    it('passes unchanged text through for a file that is not ignored', async () => {
+      await expect(tracker.sanitize(sent)).resolves.toBe(sent);
+    });
+
+    it('fails closed when git does not answer in time', async () => {
+      exec.mockReturnValue(new Promise(() => {}));
+      const result = tracker.sanitize(sent);
+      await vi.advanceTimersByTimeAsync(5000);
+      await expect(result).resolves.toStrictEqual({ filePath: '/ws/a.ts', selection: { startLine: 1, endLine: 1 } });
+    });
+
+    it('passes a context without selected text through untouched', async () => {
+      const ctx = { filePath: '/ws/a.ts', selection: { startLine: 1, endLine: 1 } };
+      await expect(tracker.sanitize(ctx)).resolves.toBe(ctx);
+      await expect(tracker.sanitize({ filePath: '/ws/a.ts' })).resolves.toStrictEqual({ filePath: '/ws/a.ts' });
+      expect(exec).not.toHaveBeenCalled();
+    });
+
+    it('passes text through when respectGitIgnore is off', async () => {
+      flags.gitIgnore = false;
+      exec.mockResolvedValue({ code: 0 });
+      await expect(tracker.sanitize(sent)).resolves.toBe(sent);
+    });
   });
 
   it('logs a failed compute and keeps the previous value', async () => {
