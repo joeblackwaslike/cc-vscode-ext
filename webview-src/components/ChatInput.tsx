@@ -76,8 +76,7 @@ export function ChatInput({ channelId, onSend, onInterrupt, onCompact, onRefresh
   const ideContext = state?.ideContext ?? null;
   const chipId = chipIdentity(ideContext);
   const [dismissedId, setDismissedId] = useState<string | null>(null);
-  const chipDismissed = chipId !== null && chipId === dismissedId;
-  const visibleContext = ideContext && !chipDismissed ? ideContext : undefined;
+  const visibleContext = ideContext && chipId !== dismissedId ? ideContext : undefined;
 
   useEffect(() => {
     setDismissedId((prev) => (prev === chipId ? prev : null));
@@ -95,7 +94,9 @@ export function ChatInput({ channelId, onSend, onInterrupt, onCompact, onRefresh
   const submit = useCallback(() => {
     const trimmed = text.trim();
     if (trimmed && !running) {
-      onSend(trimmed, visibleContext);
+      const context = trimmed.startsWith('/') ? undefined : visibleContext;
+      if (context) onSend(trimmed, context);
+      else onSend(trimmed);
       setText('');
     }
   }, [text, running, onSend, visibleContext]);
@@ -220,11 +221,7 @@ export function ChatInput({ channelId, onSend, onInterrupt, onCompact, onRefresh
         />
       )}
       <div className={`cc-composer${focused ? ' cc-composer--focus' : ''}`}>
-        <ContextChips
-          context={ideContext}
-          dismissed={{ file: chipDismissed && !ideContext?.selection, selection: chipDismissed && !!ideContext?.selection }}
-          onDismiss={() => setDismissedId(chipId)}
-        />
+        <ContextChips context={visibleContext ?? null} onDismiss={() => setDismissedId(chipId)} />
         <textarea
           data-testid="message-input"
           ref={textareaRef}

@@ -87,6 +87,27 @@ describe('App: editor context on send', () => {
     expect(bubble).toHaveTextContent('hello there');
     expect(bubble).toHaveTextContent('<ide_opened_file>The user opened the file /repo/src/app.ts');
   });
+
+  test('a slash command with a visible chip posts no context and renders a plain-text turn', async () => {
+    const user = userEvent.setup();
+    posted.length = 0;
+    render(<App />);
+    sendInitialState();
+    await screen.findByTestId('conversation-view');
+    act(() => {
+      window.postMessage({ type: 'ide_context', context: { filePath: '/repo/src/app.ts' } }, '*');
+    });
+    await screen.findByTestId('context-chip-file');
+
+    await user.type(screen.getByTestId('message-input'), '/clear');
+    await user.click(screen.getByTestId('send-button'));
+
+    const request = posted.find((m) => m.type === 'control_request')!;
+    expect(request).not.toHaveProperty('context');
+    const bubble = await screen.findByTestId('chat-message-user');
+    expect(bubble).toHaveTextContent('/clear');
+    expect(bubble).not.toHaveTextContent('ide_opened_file');
+  });
 });
 
 describe('App: per-channel permission mode', () => {

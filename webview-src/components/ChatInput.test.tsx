@@ -46,7 +46,7 @@ describe('ChatInput context chips', () => {
     expect(screen.queryByTestId('context-chip-file')).not.toBeInTheDocument();
     expect(screen.queryByTestId('context-chip-selection')).not.toBeInTheDocument();
     await send('hi');
-    expect(onSend).toHaveBeenCalledWith('hi', undefined);
+    expect(onSend.mock.calls[0]).toEqual(['hi']);
   });
 
   test('send carries the visible file chip', async () => {
@@ -76,7 +76,7 @@ describe('ChatInput context chips', () => {
     fireEvent.click(removeButton('a.ts'));
     expect(screen.queryByTestId('context-chip-file')).not.toBeInTheDocument();
     await send('hi');
-    expect(onSend).toHaveBeenCalledWith('hi', undefined);
+    expect(onSend.mock.calls[0]).toEqual(['hi']);
   });
 
   test('removing the selection chip drops the selection from the send', async () => {
@@ -87,7 +87,7 @@ describe('ChatInput context chips', () => {
     fireEvent.click(removeButton('a.ts:2-4'));
     expect(screen.queryByTestId('context-chip-selection')).not.toBeInTheDocument();
     await send('hi');
-    expect(onSend).toHaveBeenCalledWith('hi', undefined);
+    expect(onSend.mock.calls[0]).toEqual(['hi']);
   });
 
   test('a text-only change to the selection keeps it dismissed', () => {
@@ -117,6 +117,36 @@ describe('ChatInput context chips', () => {
     expect(screen.getByTestId('context-chip-file')).toHaveTextContent('b.ts');
     setContext({ filePath: '/repo/a.ts' });
     expect(screen.getByTestId('context-chip-file')).toHaveTextContent('a.ts');
+  });
+
+  test('a slash command with a visible file chip sends only the text and keeps the chip', async () => {
+    const onSend = vi.fn();
+    const { setContext } = renderWithContext(onSend);
+    setContext({ filePath: '/repo/a.ts' });
+
+    await send('/clear');
+    expect(onSend.mock.calls[0]).toEqual(['/clear']);
+    expect(screen.getByTestId('context-chip-file')).toBeInTheDocument();
+  });
+
+  test('a slash command with a visible selection chip sends only the text', async () => {
+    const onSend = vi.fn();
+    const { setContext } = renderWithContext(onSend);
+    setContext({ filePath: '/repo/a.ts', selection: { startLine: 2, endLine: 4, text: 'x' } });
+
+    await send('/model foo');
+    expect(onSend.mock.calls[0]).toEqual(['/model foo']);
+  });
+
+  test('ordinary text after a slash command still carries the selection', async () => {
+    const onSend = vi.fn();
+    const { setContext } = renderWithContext(onSend);
+    const context = { filePath: '/repo/a.ts', selection: { startLine: 2, endLine: 4, text: 'x' } };
+    setContext(context);
+
+    await send('/clear');
+    await send('explain this');
+    expect(onSend.mock.calls[1]).toEqual(['explain this', context]);
   });
 
   test('closing the file then reopening it restores the chip', () => {
@@ -162,7 +192,7 @@ describe('ChatInput', () => {
     await user.click(screen.getByTestId('send-button'));
 
     expect(onSend).toHaveBeenCalledOnce();
-    expect(onSend).toHaveBeenCalledWith('hi', undefined);
+    expect(onSend.mock.calls[0]).toEqual(['hi']);
   });
 
   test('clicking stop fires onInterrupt', () => {

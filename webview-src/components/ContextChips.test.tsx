@@ -2,11 +2,9 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import { ContextChips } from './ContextChips';
 
-const none = { file: false, selection: false };
-
 describe('ContextChips', () => {
   test('a file context renders the basename with the full path as the tooltip', () => {
-    render(<ContextChips context={{ filePath: '/repo/src/app.ts' }} dismissed={none} onDismiss={() => {}} />);
+    render(<ContextChips context={{ filePath: '/repo/src/app.ts' }} onDismiss={() => {}} />);
 
     const chip = screen.getByTestId('context-chip-file');
     expect(chip).toHaveTextContent('app.ts');
@@ -18,7 +16,7 @@ describe('ContextChips', () => {
     render(
       <ContextChips
         context={{ filePath: '/repo/src/app.ts', selection: { startLine: 3, endLine: 9, text: 'x' } }}
-        dismissed={none}
+       
         onDismiss={() => {}}
       />,
     );
@@ -30,33 +28,26 @@ describe('ContextChips', () => {
   });
 
   test('a Windows path shows its basename', () => {
-    render(<ContextChips context={{ filePath: 'C:\\repo\\src\\app.ts' }} dismissed={none} onDismiss={() => {}} />);
+    render(<ContextChips context={{ filePath: 'C:\\repo\\src\\app.ts' }} onDismiss={() => {}} />);
     expect(screen.getByTestId('context-chip-file')).toHaveTextContent('app.ts');
   });
 
   test('a null context renders nothing', () => {
-    const { container } = render(<ContextChips context={null} dismissed={none} onDismiss={() => {}} />);
+    const { container } = render(<ContextChips context={null} onDismiss={() => {}} />);
     expect(container).toBeEmptyDOMElement();
   });
 
-  test('a dismissed chip is not rendered', () => {
-    const { container } = render(
-      <ContextChips context={{ filePath: '/repo/a.ts' }} dismissed={{ file: true, selection: false }} onDismiss={() => {}} />,
-    );
-    expect(container).toBeEmptyDOMElement();
-  });
-
-  test('the remove button reports which chip was dismissed', () => {
+  test('the remove button calls onDismiss', () => {
     const onDismiss = vi.fn();
     render(
       <ContextChips
         context={{ filePath: '/repo/a.ts', selection: { startLine: 1, endLine: 2 } }}
-        dismissed={none}
+       
         onDismiss={onDismiss}
       />,
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Remove a.ts:1-2 from context' }));
-    expect(onDismiss).toHaveBeenCalledWith('selection');
+    expect(onDismiss).toHaveBeenCalledOnce();
   });
 });
