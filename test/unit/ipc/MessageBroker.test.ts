@@ -13,10 +13,11 @@ vi.mock('vscode', () => ({
 }));
 import { createIpcTestHarness, createMockServices } from '../../helpers/ipcTestHarness';
 import { MessageBroker } from '../../../src/ipc/MessageBroker';
-import { PermissionRequests } from '../../../src/process/PermissionRequests';
+import { PermissionRequests, BYPASS_DOWNGRADE_NOTICE } from '../../../src/process/PermissionRequests';
 import type { PermissionMode } from '../../../src/process/ProcessArgs';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { buildArgs } from '../../../src/process/ProcessArgs';
 
 function makebroker() {
   const h = createIpcTestHarness();
@@ -83,6 +84,45 @@ describe('MessageBroker', () => {
           '/workspace'
         )
       );
+    });
+
+    function brokerWithBypass(shouldAllowBypass: () => boolean) {
+      const h = createIpcTestHarness();
+      const permissionRequests = new PermissionRequests({ write: vi.fn(() => true), broadcast: vi.fn() });
+      new MessageBroker(
+        h.processManager, h.sessionManager, h.diffManager, h.viewManager,
+        h.channelRouter, h.webview, h.logger,
+        { ...createMockServices(), permissionRequests, shouldAllowBypass },
+      );
+      return { h, permissionRequests };
+    }
+
+    it('passes allowDangerouslySkipPermissions to spawn options when shouldAllowBypass is true', () => {
+      const { h, permissionRequests } = brokerWithBypass(() => true);
+      h.dispatch({ type: 'launch_claude', channelId: 'ch-1' });
+      expect(h.processManager.spawnClaude).toHaveBeenCalledWith(
+        'ch-1',
+        expect.objectContaining({ allowDangerouslySkipPermissions: true }),
+        undefined,
+      );
+      expect(permissionRequests.bypassAllowed('ch-1')).toBe(true);
+    });
+
+    it('omits allowDangerouslySkipPermissions when shouldAllowBypass is false', () => {
+      const { h, permissionRequests } = brokerWithBypass(() => false);
+      h.dispatch({ type: 'launch_claude', channelId: 'ch-1' });
+      const options = h.processManager.spawnClaude.mock.calls[0][1];
+      expect(options).not.toHaveProperty('allowDangerouslySkipPermissions');
+      expect(permissionRequests.bypassAllowed('ch-1')).toBe(false);
+    });
+
+    it('keeps the prompt tool and plan mode when the flag is set', () => {
+      const { h } = brokerWithBypass(() => true);
+      h.dispatch({ type: 'launch_claude', channelId: 'ch-1', permissionMode: 'plan' });
+      const args = buildArgs(h.processManager.spawnClaude.mock.calls[0][1]);
+      expect(args).toContain('--allow-dangerously-skip-permissions');
+      expect(args).toContain('--permission-prompt-tool');
+      expect(args).toContain('plan');
     });
 
     it('marks the channel as launching before history replay so early writes are buffered', () => {
@@ -868,7 +908,7 @@ describe('permission prompt routing', () => {
 
   function makeBrokerWithPermissions(
     h = createIpcTestHarness(),
-    opts: { isRelaying?: boolean; fallback?: () => PermissionMode } = {},
+    opts: { isRelaying?: boolean; fallback?: () => PermissionMode; allowBypass?: boolean } = {},
   ) {
     const sessionRelayManager = {
       registerLaunch: vi.fn(),
@@ -889,7 +929,10 @@ describe('permission prompt routing', () => {
     const broker = new MessageBroker(
       h.processManager, h.sessionManager, h.diffManager, h.viewManager,
       h.channelRouter, h.webview, h.logger,
-      { sessionRelayManager, permissionRequests, getExitPlanModeFallback: opts.fallback },
+      {
+        sessionRelayManager, permissionRequests, getExitPlanModeFallback: opts.fallback,
+        shouldAllowBypass: () => opts.allowBypass ?? false,
+      },
     );
     return { h, broker, sessionRelayManager, permissionRequests };
   }
@@ -1044,13 +1087,246 @@ describe('permission prompt routing', () => {
         updatedPermissions: [{ type: 'setMode', mode: 'default', destination: 'session' }],
       },
     });
-    expect(h.viewManager.setPermissionMode).toHaveBeenLastCalledWith('default');
+    expect(h.viewManager.setPermissionMode).not.toHaveBeenCalledWith('default');
     expect(h.viewManager.setPermissionMode).not.toHaveBeenCalledWith('auto');
     const sentSetMode = h.processManager.writeToChannel.mock.calls.some(
       ([, data]) => (data as { request?: { subtype?: string } }).request?.subtype === 'set_permission_mode',
     );
     expect(sentSetMode).toBe(false);
     expect(sessionRelayManager.updateLaunchOptions).toHaveBeenCalledWith('ch-1', { permissionMode: 'default' });
+  });
+
+  it('approving a plan with bypassPermissions leaves the new-conversation default unchanged', () => {
+    const { h, sessionRelayManager } = makeBrokerWithPermissions(undefined, { fallback: () => 'bypassPermissions' });
+    const routed = launch(h);
+    routed({ ...fixtures.statusEvent, permissionMode: 'plan' });
+    routed(canUseTool('req-3', 'ExitPlanMode'));
+    h.viewManager.setPermissionMode.mockClear();
+    h.dispatch({
+      type: 'permission_response', channelId: 'ch-1', requestId: 'req-3',
+      decision: {
+        behavior: 'allow', updatedInput: {},
+        updatedPermissions: [{ type: 'setMode', mode: 'bypassPermissions', destination: 'session' }],
+      },
+    });
+    expect(h.viewManager.setPermissionMode).not.toHaveBeenCalled();
+    expect(sessionRelayManager.updateLaunchOptions).toHaveBeenCalledWith('ch-1', { permissionMode: 'bypassPermissions' });
+  });
+
+  describe('per-channel plan exit through the mode picker', () => {
+    const sentModes = (h: ReturnType<typeof createIpcTestHarness>, channelId: string) =>
+      h.processManager.writeToChannel.mock.calls
+        .filter(([c, data]) => c === channelId && (data as { request?: { subtype?: string } }).request?.subtype === 'set_permission_mode')
+        .map(([, data]) => (data as { request: { mode: string } }).request.mode);
+
+    function twoTabs(fallback: () => PermissionMode, allowBypass = false) {
+      const ctx = makeBrokerWithPermissions(undefined, { fallback, allowBypass });
+      ctx.h.dispatch({ type: 'launch_claude', channelId: 'a', permissionMode: 'plan' });
+      ctx.h.dispatch({ type: 'launch_claude', channelId: 'b', permissionMode: 'auto' });
+      const routedA = ctx.h.channelRouter.register.mock.calls[0][1] as (event: unknown) => void;
+      const routedB = ctx.h.channelRouter.register.mock.calls[1][1] as (event: unknown) => void;
+      routedA({ ...fixtures.statusEvent, permissionMode: 'plan' });
+      return { ...ctx, routedA, routedB };
+    }
+
+    it('a picker change in tab B does not apply the fallback while tab A is in plan', () => {
+      const { h } = twoTabs(() => 'acceptEdits');
+      h.dispatch({ type: 'set_permission_mode', channelId: 'b', mode: 'default' });
+      expect(sentModes(h, 'b')).toEqual(['default']);
+    });
+
+    it('leaving plan in tab A applies the fallback', () => {
+      const { h } = twoTabs(() => 'acceptEdits');
+      h.dispatch({ type: 'set_permission_mode', channelId: 'a', mode: 'auto' });
+      expect(sentModes(h, 'a')).toEqual(['acceptEdits']);
+    });
+
+    it('downgrades a bypass fallback to acceptEdits when the channel was launched without the flag', () => {
+      const { h } = twoTabs(() => 'bypassPermissions');
+      h.dispatch({ type: 'set_permission_mode', channelId: 'a', mode: 'auto' });
+      expect(sentModes(h, 'a')).toEqual(['acceptEdits']);
+    });
+
+    it('keeps a bypass fallback when the channel was launched with the flag', () => {
+      const { h } = twoTabs(() => 'bypassPermissions', true);
+      h.dispatch({ type: 'set_permission_mode', channelId: 'a', mode: 'auto' });
+      expect(sentModes(h, 'a')).toEqual(['bypassPermissions']);
+    });
+
+    it('logs and notifies the channel when the picker downgrades a bypass fallback', () => {
+      const { h } = twoTabs(() => 'bypassPermissions');
+      h.dispatch({ type: 'set_permission_mode', channelId: 'a', mode: 'auto' });
+      expect(h.logger.warn).toHaveBeenCalledWith(expect.stringMatching(/bypass/i));
+      expect(h.channelRouter.route).toHaveBeenCalledWith('a', { type: 'error', message: BYPASS_DOWNGRADE_NOTICE });
+    });
+
+    it('sends no downgrade notice when the channel was launched with the flag', () => {
+      const { h } = twoTabs(() => 'bypassPermissions', true);
+      h.dispatch({ type: 'set_permission_mode', channelId: 'a', mode: 'auto' });
+      expect(h.channelRouter.route).not.toHaveBeenCalledWith('a', expect.objectContaining({ type: 'error' }));
+    });
+
+    it("tab B reporting its own unchanged mode does not overwrite the default set by tab A's report", () => {
+      const { h, routedB } = twoTabs(() => 'acceptEdits');
+      h.viewManager.setPermissionMode.mockClear();
+      routedB({ ...fixtures.statusEvent, permissionMode: 'auto' });
+      expect(h.viewManager.setPermissionMode).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('channel mode announcements', () => {
+    const channelModes = (h: ReturnType<typeof createIpcTestHarness>) =>
+      h.viewManager.broadcastMessage.mock.calls
+        .map(([m]) => m as { type: string })
+        .filter((m) => m.type === 'channel_mode');
+
+    it('launch announces the mode the channel starts in', () => {
+      const { h } = makeBrokerWithPermissions();
+      h.dispatch({ type: 'launch_claude', channelId: 'ch-1', permissionMode: 'plan' });
+      expect(channelModes(h)).toEqual([{ type: 'channel_mode', channelId: 'ch-1', mode: 'plan' }]);
+    });
+
+    it('approving a plan into bypass announces bypass for that channel only', () => {
+      const { h } = makeBrokerWithPermissions(undefined, { fallback: () => 'bypassPermissions' });
+      h.dispatch({ type: 'launch_claude', channelId: 'ch-1', permissionMode: 'plan' });
+      const routed = h.channelRouter.register.mock.calls[0][1] as (event: unknown) => void;
+      routed(canUseTool('req-5', 'ExitPlanMode'));
+      h.viewManager.broadcastMessage.mockClear();
+      h.dispatch({
+        type: 'permission_response', channelId: 'ch-1', requestId: 'req-5',
+        decision: {
+          behavior: 'allow', updatedInput: {},
+          updatedPermissions: [{ type: 'setMode', mode: 'bypassPermissions', destination: 'session' }],
+        },
+      });
+      expect(channelModes(h)).toEqual([{ type: 'channel_mode', channelId: 'ch-1', mode: 'bypassPermissions' }]);
+      expect(h.viewManager.setPermissionMode).not.toHaveBeenCalledWith('bypassPermissions');
+    });
+
+    it('a CLI mode report announces the channel mode', () => {
+      const { h } = makeBrokerWithPermissions();
+      const routed = launch(h);
+      h.viewManager.broadcastMessage.mockClear();
+      routed({ ...fixtures.statusEvent, permissionMode: 'acceptEdits' });
+      expect(channelModes(h)).toEqual([{ type: 'channel_mode', channelId: 'ch-1', mode: 'acceptEdits' }]);
+    });
+  });
+
+  it('a CLI status echo of the approved mode does not change the default either', () => {
+    const { h } = makeBrokerWithPermissions(undefined, { fallback: () => 'bypassPermissions' });
+    const routed = launch(h);
+    routed({ ...fixtures.statusEvent, permissionMode: 'plan' });
+    routed(canUseTool('req-4', 'ExitPlanMode'));
+    h.dispatch({
+      type: 'permission_response', channelId: 'ch-1', requestId: 'req-4',
+      decision: {
+        behavior: 'allow', updatedInput: {},
+        updatedPermissions: [{ type: 'setMode', mode: 'bypassPermissions', destination: 'session' }],
+      },
+    });
+    h.viewManager.setPermissionMode.mockClear();
+    routed({ ...fixtures.statusEvent, permissionMode: 'bypassPermissions' });
+    expect(h.viewManager.setPermissionMode).not.toHaveBeenCalled();
+  });
+
+  describe('default_mode_offer_response', () => {
+    function brokerWithOffer(setDefaultPermissionMode: (mode: PermissionMode) => Promise<void>) {
+      const h = createIpcTestHarness();
+      h.processManager.writeToChannel.mockReturnValue(true);
+      const permissionRequests = new PermissionRequests({
+        write: (c, d) => h.processManager.writeToChannel(c, d) as boolean,
+        broadcast: (m) => h.viewManager.broadcastMessage(m),
+        getApproveMode: () => 'acceptEdits',
+        getOfferMode: () => 'bypassPermissions',
+        getResolvedDefault: () => 'plan',
+      });
+      new MessageBroker(
+        h.processManager, h.sessionManager, h.diffManager, h.viewManager,
+        h.channelRouter, h.webview, h.logger, { permissionRequests, setDefaultPermissionMode },
+      );
+      h.dispatch({ type: 'launch_claude', channelId: 'ch-1', permissionMode: 'plan' });
+      const routed = h.channelRouter.register.mock.calls[0][1] as (event: unknown) => void;
+      routed(canUseTool('req-9', 'ExitPlanMode'));
+      h.dispatch({
+        type: 'permission_response', channelId: 'ch-1', requestId: 'req-9',
+        decision: {
+          behavior: 'allow', updatedInput: {},
+          updatedPermissions: [{ type: 'setMode', mode: 'acceptEdits', destination: 'session' }],
+        },
+      });
+      expect(h.viewManager.broadcastMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'default_mode_offer' }));
+      vi.clearAllMocks();
+      return h;
+    }
+
+    it('with accept writes the default and updates the new-conversation default', async () => {
+      const setDefaultPermissionMode = vi.fn(async () => {});
+      const h = brokerWithOffer(setDefaultPermissionMode);
+      h.dispatch({ type: 'default_mode_offer_response', channelId: 'ch-1', mode: 'bypassPermissions', accept: true });
+      await vi.waitFor(() => expect(setDefaultPermissionMode).toHaveBeenCalledWith('bypassPermissions'));
+      await vi.waitFor(() => expect(h.viewManager.setPermissionMode).toHaveBeenCalledWith('bypassPermissions'));
+      await vi.waitFor(() => expect(h.viewManager.broadcastSessionStates).toHaveBeenCalled());
+      expect(h.viewManager.broadcastSessionStates.mock.invocationCallOrder[0]).toBeGreaterThan(
+        h.viewManager.setPermissionMode.mock.invocationCallOrder[0]!,
+      );
+    });
+
+    it('with accept false writes nothing', async () => {
+      const setDefaultPermissionMode = vi.fn(async () => {});
+      const h = brokerWithOffer(setDefaultPermissionMode);
+      h.dispatch({ type: 'default_mode_offer_response', channelId: 'ch-1', mode: 'bypassPermissions', accept: false });
+      await Promise.resolve();
+      expect(setDefaultPermissionMode).not.toHaveBeenCalled();
+      expect(h.viewManager.setPermissionMode).not.toHaveBeenCalled();
+    });
+
+    it('ignores a mode that does not match the outstanding offer', async () => {
+      const setDefaultPermissionMode = vi.fn(async () => {});
+      const h = brokerWithOffer(setDefaultPermissionMode);
+      h.dispatch({ type: 'default_mode_offer_response', channelId: 'ch-1', mode: 'auto', accept: true });
+      await Promise.resolve();
+      expect(setDefaultPermissionMode).not.toHaveBeenCalled();
+    });
+
+    it('accepts only the first answer', async () => {
+      const setDefaultPermissionMode = vi.fn(async () => {});
+      const h = brokerWithOffer(setDefaultPermissionMode);
+      h.dispatch({ type: 'default_mode_offer_response', channelId: 'ch-1', mode: 'bypassPermissions', accept: false });
+      h.dispatch({ type: 'default_mode_offer_response', channelId: 'ch-1', mode: 'bypassPermissions', accept: true });
+      await Promise.resolve();
+      expect(setDefaultPermissionMode).not.toHaveBeenCalled();
+    });
+
+    it('ignores an answer after the channel closed', async () => {
+      const setDefaultPermissionMode = vi.fn(async () => {});
+      const h = brokerWithOffer(setDefaultPermissionMode);
+      h.dispatch({ type: 'close_channel', channelId: 'ch-1' });
+      h.dispatch({ type: 'default_mode_offer_response', channelId: 'ch-1', mode: 'bypassPermissions', accept: true });
+      await Promise.resolve();
+      expect(setDefaultPermissionMode).not.toHaveBeenCalled();
+    });
+
+    it('ignores an answer when no offer was made', async () => {
+      const setDefaultPermissionMode = vi.fn(async () => {});
+      const h = createIpcTestHarness();
+      new MessageBroker(
+        h.processManager, h.sessionManager, h.diffManager, h.viewManager,
+        h.channelRouter, h.webview, h.logger, { setDefaultPermissionMode },
+      );
+      h.dispatch({ type: 'default_mode_offer_response', channelId: 'ch-1', mode: 'bypassPermissions', accept: true });
+      await Promise.resolve();
+      expect(setDefaultPermissionMode).not.toHaveBeenCalled();
+    });
+
+    it('reports a rejected write instead of crashing', async () => {
+      const setDefaultPermissionMode = vi.fn(async () => { throw new Error('read-only'); });
+      const h = brokerWithOffer(setDefaultPermissionMode);
+      h.dispatch({ type: 'default_mode_offer_response', channelId: 'ch-1', mode: 'bypassPermissions', accept: true });
+      await vi.waitFor(() =>
+        expect(h.channelRouter.route).toHaveBeenCalledWith('ch-1', expect.objectContaining({ type: 'error' })),
+      );
+      expect(h.viewManager.setPermissionMode).not.toHaveBeenCalled();
+    });
   });
 
   it('a system event carrying permissionMode is adopted', () => {

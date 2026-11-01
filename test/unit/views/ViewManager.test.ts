@@ -137,6 +137,11 @@ describe('ViewManager', () => {
       expect(msg).toMatchObject({ defaultPermissionMode: 'acceptEdits' });
     });
 
+    it('getPermissionMode() returns the in-memory new-tab default', () => {
+      manager.setPermissionMode('plan');
+      expect(manager.getPermissionMode()).toBe('plan');
+    });
+
     it('reflects setThinkingLevel()', () => {
       const wv = makeWebview();
       manager.register(wv);

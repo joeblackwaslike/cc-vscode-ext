@@ -21,6 +21,18 @@ describe('sessionStore', () => {
     expect(result.current.state.channels.c1.running).toBe(false);
   });
 
+  test('channel_mode records the mode per channel and keeps it across stream events', () => {
+    const { result } = renderHook(() => useSessionReducer());
+
+    act(() => {
+      result.current.handleMessage({ type: 'channel_mode', channelId: 'c1', mode: 'bypassPermissions' });
+      result.current.handleMessage(requestMsg('c1', { type: 'system' }));
+    });
+
+    expect(result.current.state.channels.c1.mode).toBe('bypassPermissions');
+    expect(result.current.state.channels.c2).toBeUndefined();
+  });
+
   test('running flips true on send and clears when a result event arrives', () => {
     const { result } = renderHook(() => useSessionReducer());
 
@@ -62,6 +74,8 @@ describe('sessionStore', () => {
       suggestions: undefined,
       description: undefined,
       priorMode: undefined,
+      approveMode: 'acceptEdits',
+      approveNotice: undefined,
     });
 
     test('PERMISSION_ADDED dedupes on requestId', () => {

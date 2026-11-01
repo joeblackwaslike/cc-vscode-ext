@@ -146,6 +146,9 @@ export function activate(context: vscode.ExtensionContext): void {
     write: (c, d) => processManager.writeToChannel(c, d),
     broadcast: (m) => viewManager.broadcastMessage(m),
     log: (m) => logger.warn(m),
+    getApproveMode: () => settings.getExitPlanApproveMode(),
+    getOfferMode: () => settings.getOfferDefaultMode(),
+    getResolvedDefault: () => viewManager.getPermissionMode(),
     reportError: (c, message) => channelRouter.route(c, { type: 'error', message }),
   });
   context.subscriptions.push({
@@ -171,12 +174,9 @@ export function activate(context: vscode.ExtensionContext): void {
         commandRunner,
         workspacePath,
         permissionRequests,
-        getExitPlanModeFallback: () => {
-          const val =
-            vscode.workspace.getConfiguration('clawdCode').get<string>('exitPlanModeFallback') ??
-            'auto';
-          return val as import('./process/ProcessArgs').PermissionMode;
-        },
+        getExitPlanModeFallback: () => settings.getExitPlanApproveMode(),
+        setDefaultPermissionMode: (mode) => settings.setDefaultPermissionMode(mode),
+        shouldAllowBypass: () => settings.shouldAllowBypass(),
       }
     );
 

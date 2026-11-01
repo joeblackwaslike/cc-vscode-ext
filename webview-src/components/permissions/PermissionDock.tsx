@@ -6,6 +6,7 @@ import { ASK_DECLINE_MESSAGE, buildExitPlanDecision, formatPlanFeedback } from '
 import { useChannelPermissions } from '../../store/sessionStore';
 import { AskUserQuestionForm } from './AskUserQuestionForm';
 import { DENY_MESSAGE, GenericPermission } from './GenericPermission';
+import { DefaultModeOffer } from './DefaultModeOffer';
 import { PlanApproval } from './PlanApproval';
 
 /** Shows the oldest pending permission prompt for a channel and posts the user's decision. */
@@ -13,7 +14,23 @@ export function PermissionDock({ channelId }: { channelId: string }) {
   const { permissions, dispatch } = useChannelPermissions(channelId);
   const dockRef = useRef<HTMLDivElement>(null);
   const pending = permissions.pending[0];
-  if (!dispatch || !pending) return null;
+  if (!dispatch) return null;
+  const offer = permissions.defaultModeOffer;
+  if (!pending && offer) {
+    return (
+      <div className="cc-permission-dock" data-testid="permission-dock">
+        <DefaultModeOffer
+          mode={offer.mode}
+          currentDefault={offer.currentDefault}
+          onAnswer={(accept) => {
+            postMessage({ type: 'default_mode_offer_response', channelId, mode: offer.mode, accept });
+            dispatch({ type: 'DEFAULT_MODE_OFFER_CLEARED', channelId });
+          }}
+        />
+      </div>
+    );
+  }
+  if (!pending) return null;
   const request: PermissionRequest = pending;
 
   const comments = permissions.planComments[request.toolUseId ?? ''] ?? [];

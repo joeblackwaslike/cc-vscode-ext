@@ -155,6 +155,153 @@ describe('PermissionRequests', () => {
     expect(perms.register('c', ask).priorMode).toBeUndefined();
   });
 
+  describe('approve mode', () => {
+    it('register sets approveMode from getApproveMode for ExitPlanMode', () => {
+      const p = new PermissionRequests({ write, broadcast, getApproveMode: () => 'auto' });
+      const r = p.register('c', exitPlan);
+      expect(r.approveMode).toBe('auto');
+      expect(r.approveNotice).toBeUndefined();
+    });
+
+    it('falls back to acceptEdits with a notice when bypass was not launched', () => {
+      const p = new PermissionRequests({ write, broadcast, getApproveMode: () => 'bypassPermissions' });
+      const r = p.register('c', exitPlan);
+      expect(r.approveMode).toBe('acceptEdits');
+      expect(r.approveNotice).toMatch(/bypass/i);
+    });
+
+    it('keeps bypassPermissions when the channel was launched with the flag', () => {
+      const p = new PermissionRequests({ write, broadcast, getApproveMode: () => 'bypassPermissions' });
+      p.noteBypassAllowed('c', true);
+      const r = p.register('c', exitPlan);
+      expect(r.approveMode).toBe('bypassPermissions');
+      expect(r.approveNotice).toBeUndefined();
+    });
+  });
+
+  describe('default-mode offer', () => {
+    const approve = (mode: string): PermissionDecision => ({
+      behavior: 'allow',
+      updatedInput: {},
+      updatedPermissions: [{ type: 'setMode', mode, destination: 'session' }] as PermissionDecision extends { updatedPermissions?: infer U } ? U : never,
+    });
+    const offers = () => broadcast.mock.calls.map((c) => c[0]).filter((m) => m.type === 'default_mode_offer');
+    const make = (offer: 'off' | 'acceptEdits' | 'auto' | 'bypassPermissions', resolved: 'plan' | 'acceptEdits' | 'auto', approveMode: 'acceptEdits' | 'bypassPermissions' | 'default' = 'acceptEdits') => {
+      const p = new PermissionRequests({
+        write,
+        broadcast,
+        getApproveMode: () => (approveMode === 'default' ? 'default' : approveMode) as never,
+        getOfferMode: () => offer,
+        getResolvedDefault: () => resolved,
+      });
+      p.noteBypassAllowed('c', true);
+      p.register('c', exitPlan);
+      return p;
+    };
+
+    it('offers the configured mode after option 1 when it differs from the resolved default', () => {
+      const p = make('acceptEdits', 'plan');
+      p.respond('c', exitPlan.request_id, approve('acceptEdits'));
+      expect(offers()).toEqual([{ type: 'default_mode_offer', channelId: 'c', mode: 'acceptEdits', currentDefault: 'plan' }]);
+    });
+
+    it('offers auto with currentDefault plan when the effective default is plan', () => {
+      const p = make('auto', 'plan', 'default');
+      p.respond('c', exitPlan.request_id, approve('default'));
+      expect(offers()).toEqual([{ type: 'default_mode_offer', channelId: 'c', mode: 'auto', currentDefault: 'plan' }]);
+    });
+
+    it('suppresses the auto offer when the effective default is already auto', () => {
+      const p = make('auto', 'auto', 'default');
+      p.respond('c', exitPlan.request_id, approve('default'));
+      expect(offers()).toEqual([]);
+    });
+
+    it('offers exactly once for the bypass/bypass/plan settings', () => {
+      const p = make('bypassPermissions', 'plan', 'bypassPermissions');
+      p.respond('c', exitPlan.request_id, approve('bypassPermissions'));
+      expect(offers()).toEqual([{ type: 'default_mode_offer', channelId: 'c', mode: 'bypassPermissions', currentDefault: 'plan' }]);
+    });
+
+    it('emits no offer when the approval was downgraded', () => {
+      const p = new PermissionRequests({
+        write, broadcast,
+        getApproveMode: () => 'bypassPermissions',
+        getOfferMode: () => 'bypassPermissions',
+        getResolvedDefault: () => 'plan',
+      });
+      p.register('c', exitPlan);
+      p.respond('c', exitPlan.request_id, approve('acceptEdits'));
+      expect(offers()).toEqual([]);
+    });
+
+    describe('takeOffer', () => {
+      it('accepts one answer matching the outstanding offer', () => {
+        const p = make('acceptEdits', 'plan');
+        p.respond('c', exitPlan.request_id, approve('acceptEdits'));
+        expect(p.takeOffer('c', 'acceptEdits')).toBe(true);
+        expect(p.takeOffer('c', 'acceptEdits')).toBe(false);
+      });
+
+      it('rejects a mismatched mode and keeps the offer outstanding', () => {
+        const log = vi.fn();
+        const p = new PermissionRequests({
+          write, broadcast, log,
+          getApproveMode: () => 'acceptEdits',
+          getOfferMode: () => 'acceptEdits',
+          getResolvedDefault: () => 'plan',
+        });
+        p.register('c', exitPlan);
+        p.respond('c', exitPlan.request_id, approve('acceptEdits'));
+        expect(p.takeOffer('c', 'bypassPermissions')).toBe(false);
+        expect(log).toHaveBeenCalledWith(expect.stringMatching(/offer/));
+        expect(p.takeOffer('d', 'acceptEdits')).toBe(false);
+        expect(p.takeOffer('c', 'acceptEdits')).toBe(true);
+      });
+
+      it('rejects an answer when no offer was made', () => {
+        expect(make('acceptEdits', 'plan').takeOffer('c', 'acceptEdits')).toBe(false);
+      });
+
+      it('closeChannel drops the outstanding offer, mode, bypass flag, and pending prompts', () => {
+        const p = make('acceptEdits', 'plan');
+        p.noteBypassAllowed('c', true);
+        p.respond('c', exitPlan.request_id, approve('acceptEdits'));
+        p.register('c', ask);
+        p.closeChannel('c');
+        expect(p.takeOffer('c', 'acceptEdits')).toBe(false);
+        expect(p.pendingFor('c')).toEqual([]);
+        expect(p.modeOf('c')).toBeUndefined();
+        expect(p.bypassAllowed('c')).toBe(false);
+      });
+    });
+
+    it('treats a default setMode as option 1 when approveMode is default', () => {
+      const p = make('acceptEdits', 'plan', 'default');
+      p.respond('c', exitPlan.request_id, approve('default'));
+      expect(offers()).toHaveLength(1);
+    });
+
+    it.each([
+      ['the setting is off', () => make('off', 'plan'), approve('acceptEdits')],
+      ['modes match', () => make('acceptEdits', 'acceptEdits'), approve('acceptEdits')],
+      ['option 2 (manual) was chosen', () => make('acceptEdits', 'plan'), approve('default')],
+      ['keep-planning was chosen', () => make('acceptEdits', 'plan'), { behavior: 'deny', message: 'keep' } as PermissionDecision],
+    ])('emits no offer when %s', (_name, build, decision) => {
+      build().respond('c', exitPlan.request_id, decision);
+      expect(offers()).toEqual([]);
+    });
+
+    it('emits no offer for non-ExitPlanMode tools or a failed write', () => {
+      const p = make('acceptEdits', 'plan');
+      p.register('c', ask);
+      p.respond('c', ask.request_id, approve('acceptEdits'));
+      writeOk = false;
+      p.respond('c', exitPlan.request_id, approve('acceptEdits'));
+      expect(offers()).toEqual([]);
+    });
+  });
+
   it('denyWithoutPrompt writes a deny without broadcasting', () => {
     perms.denyWithoutPrompt('c', ask, 'nope');
     expect(write).toHaveBeenCalledWith('c', {
@@ -166,6 +313,22 @@ describe('PermissionRequests', () => {
       },
     });
     expect(broadcast).not.toHaveBeenCalled();
+  });
+
+  it('modeOf returns the last noted mode per channel', () => {
+    expect(perms.modeOf('a')).toBeUndefined();
+    perms.noteMode('a', 'plan');
+    perms.noteMode('b', 'auto');
+    expect(perms.modeOf('a')).toBe('plan');
+    expect(perms.modeOf('b')).toBe('auto');
+  });
+
+  it('bypassAllowed reflects the last noteBypassAllowed', () => {
+    expect(perms.bypassAllowed('ch-1')).toBe(false);
+    perms.noteBypassAllowed('ch-1', true);
+    expect(perms.bypassAllowed('ch-1')).toBe(true);
+    perms.noteBypassAllowed('ch-1', false);
+    expect(perms.bypassAllowed('ch-1')).toBe(false);
   });
 
   it('isCanUseToolRequest rejects control_response and other subtypes', () => {

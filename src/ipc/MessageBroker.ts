@@ -10,6 +10,7 @@ import type {
   ContextUsage,
 } from '../types/ipc';
 import { CommandDiscovery } from '../commands/CommandDiscovery';
+import type { ApproveMode } from '../process/ProcessArgs';
 import { EFFORT_THINKING_TOKENS, type PermissionMode } from '../process/ProcessArgs';
 import { parseContextUsage } from '../process/usage';
 import { ControlRequestManager, type ControlResponseEvent } from '../process/ControlRequest';
@@ -19,7 +20,7 @@ import type { ILogger } from '../process/ClaudeProcessManager';
 import { SessionRelayManager } from '../relay/SessionRelayManager';
 import { HandoffWatcher } from '../process/HandoffWatcher';
 import { ClaudeProjectReader } from '../sessions/ClaudeProjectReader';
-import { PermissionRequests, isCanUseToolRequest } from '../process/PermissionRequests';
+import { PermissionRequests, BYPASS_DOWNGRADE_NOTICE, isCanUseToolRequest } from '../process/PermissionRequests';
 
 // ─── Dependency interfaces ─────────────────────────────────────────────────────
 
@@ -140,7 +141,11 @@ export interface MessageBrokerServices {
   permissionRequests?: PermissionRequests;
   workspacePath?: string;
   /** Returns the mode to switch to when the user exits plan mode. */
-  getExitPlanModeFallback?: () => PermissionMode;
+  getExitPlanModeFallback?: () => ApproveMode;
+  /** Persists the user's accepted default permission mode. */
+  setDefaultPermissionMode?: (mode: PermissionMode) => Promise<void>;
+  /** Whether to launch the CLI with the dangerous-skip flag so bypass can be selected mid-session. */
+  shouldAllowBypass?: () => boolean;
 }
 
 /**
@@ -170,8 +175,6 @@ export class MessageBroker {
   private readonly launchesAwaitingReplay = new Set<string>();
   private readonly cancelledLaunches = new Set<string>();
   private readonly handoffWatchers = new Map<string, HandoffWatcher>();
-  /** Tracks the last permission mode applied, used to detect plan-mode exits. */
-  private currentPermissionMode: PermissionMode = 'auto';
   private readonly commandDiscovery = new CommandDiscovery();
   private readonly projectReader = new ClaudeProjectReader();
 
@@ -197,6 +200,7 @@ export class MessageBroker {
         write: (c, d) => this.processManager.writeToChannel(c, d),
         broadcast: (m) => this.viewManager.broadcastMessage(m),
         log: (m) => this.logger.warn(m),
+        ...(this.services.getExitPlanModeFallback && { getApproveMode: this.services.getExitPlanModeFallback }),
         reportError: (c, message) => this.channelRouter.route(c, { type: 'error', message }),
       });
     webview.onDidReceiveMessage((raw: unknown) => {
@@ -204,20 +208,33 @@ export class MessageBroker {
     });
   }
 
+  private async persistDefaultMode(channelId: string, mode: PermissionMode): Promise<void> {
+    try {
+      await this.services.setDefaultPermissionMode?.(mode);
+      this.viewManager.setPermissionMode(mode);
+      this.viewManager.broadcastSessionStates();
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`[permissions] could not save default mode ${mode}: ${reason}`);
+      this.channelRouter.route(channelId, { type: 'error', message: `Could not save your default mode: ${reason}` });
+    }
+  }
+
   /** Record a mode change that already happened (or is being requested) and
    * propagate it to the views, relay launch options and permission coordinator.
+   * `updateDefault` false keeps the mode new conversations launch with unchanged.
    * Sends no control request. */
-  private adoptPermissionMode(channelId: string, mode: PermissionMode): void {
-    this.currentPermissionMode = mode;
-    this.viewManager.setPermissionMode(mode);
+  private adoptPermissionMode(channelId: string, mode: PermissionMode, updateDefault = true): void {
+    if (updateDefault) this.viewManager.setPermissionMode(mode);
     this.viewManager.broadcastSessionStates();
     this.noteChannelMode(channelId, mode);
   }
 
-  /** Per-channel half of a mode change: relay launch options and the permission coordinator. */
+  /** Per-channel half of a mode change: relay launch options, the permission coordinator and the channel's picker. */
   private noteChannelMode(channelId: string, mode: PermissionMode): void {
     this.sessionRelayManager.updateLaunchOptions(channelId, { permissionMode: mode });
     this.permissionRequests.noteMode(channelId, mode);
+    this.viewManager.broadcastMessage({ type: 'channel_mode', channelId, mode });
   }
 
   /** Fire a control request, swallowing failures into the log (live set_*). */
@@ -278,10 +295,15 @@ export class MessageBroker {
             const setMode = msg.decision.updatedPermissions?.find(
               (u) => u.type === 'setMode' && u.destination === 'session' && u.mode !== undefined,
             );
-            if (setMode?.mode) this.adoptPermissionMode(msg.channelId, setMode.mode);
+            if (setMode?.mode) this.adoptPermissionMode(msg.channelId, setMode.mode, false);
           }
           return;
         }
+        case 'default_mode_offer_response':
+          if (this.permissionRequests.takeOffer(msg.channelId, msg.mode) && msg.accept) {
+            void this.persistDefaultMode(msg.channelId, msg.mode);
+          }
+          return;
         case 'control_request':
           this.turnGenerations.set(
             msg.channelId,
@@ -295,11 +317,16 @@ export class MessageBroker {
         // ─── Live session controls (applied to the running process now, and
         //     stored as defaults for subsequent launches) ──────────────────
         case 'set_permission_mode': {
-          const prev = this.currentPermissionMode;
+          const prev = this.permissionRequests.modeOf(msg.channelId);
           let targetMode = msg.mode;
           // When the user explicitly exits plan mode, apply the configured fallback.
           if (msg.mode !== 'plan' && prev === 'plan' && this.services.getExitPlanModeFallback) {
             targetMode = this.services.getExitPlanModeFallback();
+            if (targetMode === 'bypassPermissions' && !this.permissionRequests.bypassAllowed(msg.channelId)) {
+              targetMode = 'acceptEdits';
+              this.logger.warn(`[permissions] bypass plan-exit fallback downgraded to acceptEdits on ${msg.channelId}: session launched without the skip-permissions flag`);
+              this.channelRouter.route(msg.channelId, { type: 'error', message: BYPASS_DOWNGRADE_NOTICE });
+            }
           }
           this.adoptPermissionMode(msg.channelId, targetMode);
           this.sendControl(msg.channelId, 'set_permission_mode', {
@@ -571,7 +598,9 @@ export class MessageBroker {
     msg: Extract<FromWebviewMessage, { type: 'launch_claude' }>
   ): Promise<void> {
     const { channelId } = msg;
+    const allowBypass = this.services.shouldAllowBypass?.() === true;
     const options: ProcessLaunchOptions = {
+      ...(allowBypass ? { allowDangerouslySkipPermissions: true } : {}),
       ...(msg.resume !== undefined ? { resume: msg.resume } : {}),
       ...(msg.permissionMode !== undefined ? { permissionMode: msg.permissionMode } : {}),
       ...(msg.thinkingLevel !== undefined ? { effort: msg.thinkingLevel } : {}),
@@ -583,6 +612,10 @@ export class MessageBroker {
     this.processManager.beginLaunch(channelId);
     this.sessionRelayManager.registerLaunch(channelId, options, msg.cwd);
     this.permissionRequests.noteMode(channelId, options.permissionMode ?? 'default');
+    if (options.permissionMode !== undefined) {
+      this.viewManager.broadcastMessage({ type: 'channel_mode', channelId, mode: options.permissionMode });
+    }
+    this.permissionRequests.noteBypassAllowed(channelId, allowBypass);
     if (options.resume) {
       this.startHandoffWatcher(channelId, options.resume);
       this.launchesAwaitingReplay.add(channelId);
@@ -635,10 +668,7 @@ export class MessageBroker {
       if (typed.type === 'system') {
         const mode = (event as { permissionMode?: unknown }).permissionMode;
         if (typeof mode === 'string') {
-          // The picker mode is broker-wide, but relay options and the plan-exit
-          // prior mode are per channel, so a channel's own transition is recorded
-          // even when another channel already moved the broker-wide value.
-          if (mode !== this.currentPermissionMode) this.adoptPermissionMode(channelId, mode as PermissionMode);
+          if (mode !== this.permissionRequests.modeOf(channelId)) this.adoptPermissionMode(channelId, mode as PermissionMode);
           else this.noteChannelMode(channelId, mode as PermissionMode);
         }
       }
@@ -715,7 +745,7 @@ export class MessageBroker {
     // Reject any in-flight control requests immediately instead of letting them
     // hang until their 10s timeout after the channel is gone.
     this.control.dispose();
-    this.permissionRequests.cancelChannel(msg.channelId);
+    this.permissionRequests.closeChannel(msg.channelId);
     this.turnGenerations.delete(msg.channelId);
     this.handoffWatchers.get(msg.channelId)?.dispose();
     this.handoffWatchers.delete(msg.channelId);

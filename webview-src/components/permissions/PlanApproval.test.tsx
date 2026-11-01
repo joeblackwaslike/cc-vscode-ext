@@ -6,7 +6,7 @@ import { KEEP_PLANNING_MESSAGE } from '../../lib/permissions';
 import type { PlanComment } from '../../lib/permissions';
 import { PlanApproval } from './PlanApproval';
 
-function makeRequest(priorMode?: PermissionMode): PermissionRequest {
+function makeRequest(approveMode: PermissionMode = 'acceptEdits', approveNotice?: string): PermissionRequest {
   return {
     channelId: 'ch',
     requestId: 'req',
@@ -15,16 +15,18 @@ function makeRequest(priorMode?: PermissionMode): PermissionRequest {
     toolUseId: 'tu1',
     suggestions: undefined,
     description: undefined,
-    priorMode,
+    priorMode: undefined,
+    approveMode,
+    approveNotice,
   };
 }
 
-function setup(comments: PlanComment[] = [], priorMode?: PermissionMode) {
+function setup(comments: PlanComment[] = [], approveMode?: PermissionMode, approveNotice?: string) {
   const onDecision = vi.fn();
   const onRemoveComment = vi.fn();
   const user = userEvent.setup({ delay: null });
   render(
-    <PlanApproval request={makeRequest(priorMode)} comments={comments} onRemoveComment={onRemoveComment} onDecision={onDecision} />,
+    <PlanApproval request={makeRequest(approveMode, approveNotice)} comments={comments} onRemoveComment={onRemoveComment} onDecision={onDecision} />,
   );
   return { onDecision, onRemoveComment, user };
 }
@@ -104,7 +106,24 @@ describe('PlanApproval', () => {
     expect(onDecision).not.toHaveBeenCalled();
   });
 
-  test('first button reads auto mode when priorMode is auto', () => {
+  test('hides option 2 when approveMode is default; key 1 approves and key 2 keeps planning', async () => {
+    const { onDecision, user } = setup([], 'default');
+    expect(screen.getAllByRole('button').filter((b) => /^\d /.test(b.textContent ?? '')).map((b) => b.textContent)).toEqual([
+      '1 Yes, and manually approve edits',
+      '2 No, keep planning',
+    ]);
+    await user.keyboard('3');
+    expect(onDecision).not.toHaveBeenCalled();
+    await user.keyboard('1');
+    expect(onDecision.mock.calls[0][0].updatedPermissions[0].mode).toBe('default');
+  });
+
+  test('shows approveNotice when present', () => {
+    setup([], 'acceptEdits', 'Bypass unavailable; using auto-accept');
+    expect(screen.getByText('Bypass unavailable; using auto-accept')).toBeInTheDocument();
+  });
+
+  test('first button reads auto mode when approveMode is auto', () => {
     setup([], 'auto');
     expect(screen.getByRole('button', { name: /Yes, and use auto mode/ })).toBeInTheDocument();
   });

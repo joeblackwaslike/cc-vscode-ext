@@ -3,6 +3,9 @@ import type { ThinkingLevel } from '../types/ipc';
 /** Permission modes that map to the `--permission-mode` CLI flag. */
 export type PermissionMode = 'auto' | 'default' | 'acceptEdits' | 'plan' | 'bypassPermissions';
 
+/** Permission modes a plan approval can switch into. */
+export type ApproveMode = Exclude<PermissionMode, 'plan'>;
+
 /**
  * Live effort changes go through the `set_max_thinking_tokens` control request
  * (the CLI has no live `--effort` equivalent), so each effort level maps to a

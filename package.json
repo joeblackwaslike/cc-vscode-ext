@@ -124,15 +124,37 @@
             "description": "Default permission mode for new conversations. Set to 'plan' to always start in plan mode."
           },
           "clawdCode.exitPlanModeFallback": {
+            "scope": "application",
             "type": "string",
-            "enum": [
-              "auto",
-              "default",
-              "acceptEdits",
-              "bypassPermissions"
+            "enum": ["auto", "default", "acceptEdits", "bypassPermissions"],
+            "enumDescriptions": [
+              "Approving a plan switches to auto mode.",
+              "Approving a plan switches to default mode; each edit asks for approval.",
+              "Approving a plan switches to accept-edits mode; file edits are auto-accepted.",
+              "Approving a plan switches to bypass-permissions mode, which skips all permission prompts."
             ],
             "default": "auto",
-            "description": "Permission mode to switch to when exiting plan mode."
+            "description": "Permission mode a plan exit switches to, both from the approve button on the plan card and when leaving plan mode through the mode picker. 'bypassPermissions' skips all permission prompts."
+          },
+          "clawdCode.offerDefaultModeAfterPlan": {
+            "scope": "application",
+            "type": "string",
+            "enum": ["auto", "default", "acceptEdits", "bypassPermissions", "off"],
+            "enumDescriptions": [
+              "After approving a plan, offer to make auto mode your default.",
+              "After approving a plan, offer to make default mode your default.",
+              "After approving a plan, offer to make accept-edits mode your default.",
+              "After approving a plan, offer to make bypass-permissions mode your default; it skips all permission prompts.",
+              "Never offer to change the default mode."
+            ],
+            "default": "auto",
+            "description": "Mode to offer as your new default after you approve a plan. 'off' disables the offer. 'bypassPermissions' skips all permission prompts."
+          },
+          "clawdCode.allowDangerouslySkipPermissions": {
+            "scope": "application",
+            "type": "boolean",
+            "default": false,
+            "description": "Launch Claude with --allow-dangerously-skip-permissions so bypassPermissions mode can be selected. Also enabled automatically when a plan-approval or default mode is bypassPermissions."
           }
         }
       }

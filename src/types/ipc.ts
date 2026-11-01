@@ -1,4 +1,4 @@
-import type { PermissionMode } from '../process/ProcessArgs';
+import type { ApproveMode, PermissionMode } from '../process/ProcessArgs';
 import type { ClaudeStreamEvent } from './process';
 import type { DiffFile } from './diff';
 import type { ConversationState, SessionInfo, SessionGroup } from './session';
@@ -318,6 +318,10 @@ export interface PermissionRequest {
   suggestions: PermissionUpdate[] | undefined;
   description: string | undefined;
   priorMode: PermissionMode | undefined;
+  /** Mode the plan-approval button switches to; meaningful for ExitPlanMode only. */
+  approveMode: ApproveMode;
+  /** Explains why approveMode differs from the configured setting. */
+  approveNotice: string | undefined;
 }
 
 export interface PermissionResponseMessage {
@@ -325,6 +329,13 @@ export interface PermissionResponseMessage {
   channelId: string;
   requestId: string;
   decision: PermissionDecision;
+}
+
+export interface DefaultModeOfferResponseMessage {
+  type: 'default_mode_offer_response';
+  channelId: string;
+  mode: PermissionMode;
+  accept: boolean;
 }
 
 export interface ListCommandsRequestMessage {
@@ -427,6 +438,7 @@ export type FromWebviewMessage =
   | ShowClaudeTerminalSettingMessage
   | AskDebuggerHelpMessage
   | PermissionResponseMessage
+  | DefaultModeOfferResponseMessage
   | ListCommandsRequestMessage;
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -612,6 +624,20 @@ export interface ListCommandsResponseMessage {
   commands: Array<{ name: string; namespace?: string; description?: string }>;
 }
 
+export interface DefaultModeOfferMessage {
+  type: 'default_mode_offer';
+  channelId: string;
+  mode: PermissionMode;
+  currentDefault: PermissionMode;
+}
+
+/** The permission mode one channel is running in, distinct from the new-conversation default. */
+export interface ChannelModeMessage {
+  type: 'channel_mode';
+  channelId: string;
+  mode: PermissionMode;
+}
+
 export interface PermissionRequestMessage { type: 'permission_request'; request: PermissionRequest }
 export interface PermissionResolvedMessage {
   type: 'permission_resolved';
@@ -660,4 +686,6 @@ export type ToWebviewMessage =
   | ListCommandsResponseMessage
   | PermissionRequestMessage
   | PermissionResolvedMessage
-  | PermissionCancelledMessage;
+  | PermissionCancelledMessage
+  | DefaultModeOfferMessage
+  | ChannelModeMessage;

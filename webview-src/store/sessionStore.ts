@@ -3,6 +3,7 @@ import type {
   ClaudeStreamEvent,
   ContextUsage,
   PermissionDecision,
+  PermissionMode,
   PermissionRequest,
   ToWebviewMessage,
 } from '../lib/ipc';
@@ -14,6 +15,8 @@ export interface ChannelState {
   events: ClaudeStreamEvent[];
   running: boolean;
   usage?: ContextUsage;
+  /** Mode this channel's session runs in; the picker falls back to the default when unset. */
+  mode?: PermissionMode;
 }
 
 export interface ChannelPermissions {
@@ -21,6 +24,7 @@ export interface ChannelPermissions {
   answers: Record<string, Record<string, string>>;
   decisions: Record<string, 'allowed' | 'denied' | 'cancelled'>;
   planComments: Record<string, PlanComment[]>;
+  defaultModeOffer?: { mode: PermissionMode; currentDefault: PermissionMode };
 }
 
 export interface SessionStoreState {
@@ -56,8 +60,11 @@ export type Action =
   | { type: 'STREAM_EVENT'; channelId: string; event: ClaudeStreamEvent }
   | { type: 'SET_RUNNING'; channelId: string; running: boolean }
   | { type: 'SET_USAGE'; channelId: string; usage: ContextUsage }
+  | { type: 'SET_CHANNEL_MODE'; channelId: string; mode: PermissionMode }
   | { type: 'CLEAR_CHANNEL'; channelId: string }
   | { type: 'PERMISSION_ADDED'; request: PermissionRequest }
+  | { type: 'DEFAULT_MODE_OFFERED'; channelId: string; mode: PermissionMode; currentDefault: PermissionMode }
+  | { type: 'DEFAULT_MODE_OFFER_CLEARED'; channelId: string }
   | {
       type: 'PERMISSION_RESOLVED';
       channelId: string;
@@ -101,6 +108,16 @@ function reducer(state: SessionStoreState, action: Action): SessionStoreState {
         },
       };
     }
+    case 'SET_CHANNEL_MODE': {
+      const prev = state.channels[action.channelId] ?? { events: [], running: false };
+      return {
+        ...state,
+        channels: {
+          ...state.channels,
+          [action.channelId]: { ...prev, mode: action.mode },
+        },
+      };
+    }
     case 'CLEAR_CHANNEL': {
       const { [action.channelId]: _removed, ...rest } = state.channels;
       void _removed;
@@ -108,6 +125,16 @@ function reducer(state: SessionStoreState, action: Action): SessionStoreState {
       void _removedPermissions;
       return { ...state, channels: rest, permissions: restPermissions };
     }
+    case 'DEFAULT_MODE_OFFERED':
+      return withPermissions(state, action.channelId, (prev) => ({
+        ...prev,
+        defaultModeOffer: { mode: action.mode, currentDefault: action.currentDefault },
+      }));
+    case 'DEFAULT_MODE_OFFER_CLEARED':
+      return withPermissions(state, action.channelId, ({ defaultModeOffer: _cleared, ...rest }) => {
+        void _cleared;
+        return rest;
+      });
     case 'PERMISSION_ADDED':
       return withPermissions(state, action.request.channelId, (prev) =>
         prev.pending.some((r) => r.requestId === action.request.requestId)
@@ -196,6 +223,10 @@ export function useSessionReducer() {
         dispatch({ type: 'SET_USAGE', channelId: msg.channelId, usage: msg.usage });
         return;
       }
+      if (msg.type === 'channel_mode') {
+        dispatch({ type: 'SET_CHANNEL_MODE', channelId: msg.channelId, mode: msg.mode });
+        return;
+      }
       if (msg.type === 'handoff_prompt') {
         dispatch({
           type: 'STREAM_EVENT',
@@ -206,6 +237,15 @@ export function useSessionReducer() {
       }
       if (msg.type === 'permission_request') {
         dispatch({ type: 'PERMISSION_ADDED', request: msg.request });
+        return;
+      }
+      if (msg.type === 'default_mode_offer') {
+        dispatch({
+          type: 'DEFAULT_MODE_OFFERED',
+          channelId: msg.channelId,
+          mode: msg.mode,
+          currentDefault: msg.currentDefault,
+        });
         return;
       }
       if (msg.type === 'permission_resolved') {

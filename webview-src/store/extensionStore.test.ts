@@ -33,6 +33,24 @@ describe('extensionStore', () => {
     expect(result.current.state.groups).toEqual(fakeGroups);
   });
 
+  test('UPDATE_STATE replaces the new-conversation default after an accepted offer', () => {
+    const { result } = renderHook(() => useExtensionReducer());
+
+    act(() => {
+      result.current.handleMessage({
+        type: 'update_state',
+        sessions: fakeSessions,
+        groups: fakeGroups,
+        activeSessionId: undefined,
+        defaultPermissionMode: 'bypassPermissions',
+        thinkingLevel: 'medium',
+        focusViewEnabled: false,
+      });
+    });
+
+    expect(result.current.state.defaultPermissionMode).toBe('bypassPermissions');
+  });
+
   test('focusViewEnabled defaults to false', () => {
     const { result } = renderHook(() => useExtensionReducer());
     expect(result.current.state.focusViewEnabled).toBe(false);

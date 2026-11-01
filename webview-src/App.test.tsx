@@ -1,16 +1,24 @@
-import { act, render, screen } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
+import type { FromWebviewMessage } from './lib/ipc';
+
+const posted = vi.hoisted((): Array<{ type: string; channelId?: string; permissionMode?: string }> => []);
+vi.mock('./lib/ipc', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./lib/ipc')>()),
+  postMessage: (m: FromWebviewMessage) => { posted.push(m as (typeof posted)[number]); },
+}));
+
 import { App } from './App';
 
-function sendInitialState(): void {
+function sendInitialState(defaultPermissionMode = 'default'): void {
   act(() => {
     window.postMessage(
       {
         type: 'update_state',
         sessions: [],
         groups: [],
-        defaultPermissionMode: 'default',
+        defaultPermissionMode,
         thinkingLevel: 'medium',
         focusViewEnabled: false,
       },
@@ -55,5 +63,29 @@ describe('App: new-conversation flow', () => {
     expect(userBubble).toHaveTextContent('hello there');
     expect(screen.getByTestId('interrupt-button')).toBeInTheDocument();
     expect(screen.queryByTestId('send-button')).not.toBeInTheDocument();
+  });
+});
+
+describe('App: per-channel permission mode', () => {
+  test('a channel approved into bypass shows bypass while a new tab still launches in the default', async () => {
+    const user = userEvent.setup();
+    posted.length = 0;
+    render(<App />);
+    sendInitialState('plan');
+    await screen.findByTestId('conversation-view');
+    const launches = () => posted.filter((m) => m.type === 'launch_claude');
+    const first = launches()[0]!;
+    expect(first.permissionMode).toBe('plan');
+
+    act(() => {
+      window.postMessage({ type: 'channel_mode', channelId: first.channelId, mode: 'bypassPermissions' }, '*');
+    });
+    await waitFor(() => expect(screen.getByTestId('mode-selector')).toHaveTextContent('Bypass permissions'));
+
+    await user.click(screen.getByTestId('new-tab-button'));
+
+    expect(launches()).toHaveLength(2);
+    expect(launches()[1]!.permissionMode).toBe('plan');
+    expect(screen.getByTestId('mode-selector')).toHaveTextContent('Plan mode');
   });
 });
