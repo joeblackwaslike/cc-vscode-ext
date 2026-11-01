@@ -9,6 +9,7 @@
  */
 import type { ClaudeStreamEvent } from './ipc';
 import { extractText, isRecord } from './blocks';
+import { parseIdeBlocks, type IdeChip } from '../../src/shared/ideTags';
 
 export interface ToolResult {
   text: string;
@@ -42,7 +43,7 @@ export interface ResultMeta {
 }
 
 export type Turn =
-  | { kind: 'user'; key: string; text: string }
+  | { kind: 'user'; key: string; text: string; ide?: IdeChip[] }
   | { kind: 'assistant'; key: string; blocks: AssistantBlock[] }
   | { kind: 'result'; key: string; isError: boolean; meta: ResultMeta }
   | { kind: 'error'; key: string; message: string }
@@ -106,8 +107,12 @@ function pushUserTurn(turns: Turn[], key: string, event: ClaudeStreamEvent): voi
     return;
   }
 
-  const text = extractText(content);
-  if (text) turns.push({ kind: 'user', key, text });
+  const parts = Array.isArray(content)
+    ? content.filter((b) => isRecord(b) && b.type === 'text').map((b) => parseIdeBlocks(extractText([b])))
+    : [parseIdeBlocks(extractText(content))];
+  const text = parts.map((p) => p.text).filter(Boolean).join('\n');
+  const ide = parts.flatMap((p) => p.chips);
+  if (text || ide.length) turns.push({ kind: 'user', key, text, ...(ide.length && { ide }) });
 }
 
 function pushAssistantTurn(

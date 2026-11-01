@@ -67,7 +67,7 @@ describe('App: new-conversation flow', () => {
 });
 
 describe('App: editor context on send', () => {
-  test('a send with a visible chip posts the context and renders the tag in the optimistic turn', async () => {
+  test('a send with a visible chip posts the context and renders a history chip in the optimistic turn', async () => {
     const user = userEvent.setup();
     posted.length = 0;
     render(<App />);
@@ -85,7 +85,8 @@ describe('App: editor context on send', () => {
     expect(request.context).toEqual({ filePath: '/repo/src/app.ts' });
     const bubble = await screen.findByTestId('chat-message-user');
     expect(bubble).toHaveTextContent('hello there');
-    expect(bubble).toHaveTextContent('<ide_opened_file>The user opened the file /repo/src/app.ts');
+    expect(bubble).not.toHaveTextContent('ide_opened_file');
+    expect(await screen.findByTestId('history-chip-file')).toHaveTextContent('app.ts');
   });
 
   test('a slash command with a visible chip posts no context and renders a plain-text turn', async () => {

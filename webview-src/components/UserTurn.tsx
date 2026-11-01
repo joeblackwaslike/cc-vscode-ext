@@ -1,8 +1,31 @@
-/** A user message turn — right-aligned bubble. */
-export function UserTurn({ text }: { text: string }) {
+import type { IdeChip } from '../../src/shared/ideTags';
+
+const basename = (path: string): string => path.split(/[\\/]/).pop() || path;
+
+const chipLabel = (chip: IdeChip): string =>
+  chip.kind === 'selection'
+    ? `${basename(chip.path)}:${chip.startLine}-${chip.endLine}`
+    : basename(chip.path);
+
+/** A user message turn: right-aligned bubble plus muted chips for any editor context it carried. */
+export function UserTurn({ text, ide }: { text: string; ide?: IdeChip[] | undefined }) {
   return (
     <div className="cc-user" data-testid="chat-message-user">
-      <div className="cc-user__bubble">{text}</div>
+      {text && <div className="cc-user__bubble">{text}</div>}
+      {ide && ide.length > 0 && (
+        <div className="cc-context-chips cc-context-chips--history">
+          {ide.map((chip, i) => (
+            <span
+              key={i}
+              className="cc-context-chip cc-context-chip--history"
+              data-testid={`history-chip-${chip.kind}`}
+              title={chip.path}
+            >
+              <span className="cc-context-chip__label">{chipLabel(chip)}</span>
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -39,7 +39,7 @@ export function MessageList({
         {turns.map((turn, i) => {
           switch (turn.kind) {
             case 'user':
-              return <UserTurn key={turn.key} text={turn.text} />;
+              return <UserTurn key={turn.key} text={turn.text} ide={turn.ide} />;
             case 'assistant':
               return (
                 <AssistantTurn
