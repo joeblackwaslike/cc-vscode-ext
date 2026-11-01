@@ -63,7 +63,7 @@ With `attachOpenFile=false`, upstream still adds the open file when text is sele
 
 ### Host: `EditorContextTracker`
 
-A new class in `src/context/` listens to the active editor, selection changes (active editor only), document close, and configuration changes. It computes the context to offer and posts it to every webview as a global message `ide_context`, debounced 300 ms and only when the value changed. The host applies the settings and the git-ignore rule, so the webview never needs the settings.
+A new class in `src/context/` listens to the active editor, selection changes (active editor only), document close and tab close (so the chip clears when no tab shows the file), and configuration changes. It computes the context to offer and posts it to every webview as a global message `ide_context`, debounced 300 ms and only when the value changed. The host applies the settings and the git-ignore rule, so the webview never needs the settings.
 
 Only documents with the `file` scheme produce a context. Output channels, comment widgets, diff documents and untitled buffers produce none.
 
