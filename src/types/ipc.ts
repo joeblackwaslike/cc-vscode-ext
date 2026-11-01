@@ -656,6 +656,12 @@ export interface PermissionCancelledMessage {
   toolUseIds: string[];
 }
 
+/** The editor context the composer should offer, or null when there is none. */
+export interface IdeContextMessage {
+  type: 'ide_context';
+  context: IdeContext | null;
+}
+
 /** Union of all messages sent from the extension host to the webview. */
 export type ToWebviewMessage =
   | StreamRequestMessage
@@ -691,4 +697,5 @@ export type ToWebviewMessage =
   | PermissionResolvedMessage
   | PermissionCancelledMessage
   | DefaultModeOfferMessage
-  | ChannelModeMessage;
+  | ChannelModeMessage
+  | IdeContextMessage;

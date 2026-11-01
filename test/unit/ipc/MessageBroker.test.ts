@@ -252,6 +252,27 @@ describe('MessageBroker', () => {
       });
     });
 
+    it('replays the current ide_context, or null when there is none', () => {
+      const ctx = { filePath: '/ws/a.ts', selection: { startLine: 1, endLine: 2, text: 'x' } };
+      const h = createIpcTestHarness();
+      new MessageBroker(
+        h.processManager,
+        h.sessionManager,
+        h.diffManager,
+        h.viewManager,
+        h.channelRouter,
+        h.webview,
+        h.logger,
+        { getIdeContext: () => ctx }
+      );
+      h.dispatch({ type: 'list_sessions_request' });
+      expect(h.postedMessages).toContainEqual({ type: 'ide_context', context: ctx });
+
+      const bare = makebroker();
+      bare.h.dispatch({ type: 'list_sessions_request' });
+      expect(bare.h.postedMessages).toContainEqual({ type: 'ide_context', context: null });
+    });
+
     it('passes includeHidden to listSessions', () => {
       const { h } = makebroker();
       h.dispatch({ type: 'list_sessions_request', includeHidden: true });

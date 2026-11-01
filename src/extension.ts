@@ -27,6 +27,7 @@ import { AuthManager } from './auth/AuthManager';
 import { AuthChecker } from './auth/AuthChecker';
 import { WorktreeManager } from './worktree/WorktreeManager';
 import { FileListProvider } from './mentions/FileListProvider';
+import { EditorContextTracker, execFileCode } from './context/EditorContextTracker';
 import { adaptWebview } from './utils/webviewAdapter';
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -177,6 +178,7 @@ export function activate(context: vscode.ExtensionContext): void {
         getExitPlanModeFallback: () => settings.getExitPlanApproveMode(),
         setDefaultPermissionMode: (mode) => settings.setDefaultPermissionMode(mode),
         shouldAllowBypass: () => settings.shouldAllowBypass(),
+        getIdeContext: () => editorContext.current(),
       }
     );
 
@@ -229,6 +231,13 @@ export function activate(context: vscode.ExtensionContext): void {
       diffTracker.updateContextKey(editor);
     })
   );
+
+  const editorContext = new EditorContextTracker({
+    settings,
+    exec: execFileCode,
+    onChange: (ctx) => viewManager.broadcastMessage({ type: 'ide_context', context: ctx }),
+  });
+  context.subscriptions.push(editorContext);
 
   // ─── Register text document content providers ───────────────────────────────
 

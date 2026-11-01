@@ -1,4 +1,5 @@
 import { buildUserContent, type UserContent } from '../shared/userContent';
+import type { IdeContext } from '../shared/ideTags';
 import type {
   FromWebviewMessage,
   ToWebviewMessage,
@@ -147,6 +148,8 @@ export interface MessageBrokerServices {
   setDefaultPermissionMode?: (mode: PermissionMode) => Promise<void>;
   /** Whether to launch the CLI with the dangerous-skip flag so bypass can be selected mid-session. */
   shouldAllowBypass?: () => boolean;
+  /** The editor context currently offered to the composer. */
+  getIdeContext?: () => IdeContext | null;
 }
 
 /**
@@ -400,6 +403,10 @@ export class MessageBroker {
           // Also broadcast full state so the webview's initialStateReceived flag is
           // set on startup (the webview sends list_sessions_request on mount).
           this.viewManager.broadcastSessionStates();
+          void this.webview.postMessage({
+            type: 'ide_context',
+            context: this.services.getIdeContext?.() ?? null,
+          });
           return;
         }
         case 'get_session_request': {
