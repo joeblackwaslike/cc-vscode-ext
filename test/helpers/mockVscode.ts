@@ -110,6 +110,12 @@ export const mockVscode = {
     getWorkspaceFolder: vi.fn(() => undefined as undefined | { uri: ReturnType<typeof makeUri>; name: string }),
     onDidChangeConfiguration: vi.fn(() => ({ dispose: vi.fn() })),
     onDidCloseTextDocument: vi.fn(() => ({ dispose: vi.fn() })),
+    createFileSystemWatcher: vi.fn((_glob: string) => ({
+      onDidChange: vi.fn(() => ({ dispose: vi.fn() })),
+      onDidCreate: vi.fn(() => ({ dispose: vi.fn() })),
+      onDidDelete: vi.fn(() => ({ dispose: vi.fn() })),
+      dispose: vi.fn(),
+    })),
     fs: {
       readFile: vi.fn(() => Promise.resolve(new Uint8Array())),
       writeFile: vi.fn(() => Promise.resolve()),

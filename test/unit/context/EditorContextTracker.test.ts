@@ -33,11 +33,16 @@ function makeEditor(fsPath: string, scheme = 'file', text = 'picked text'): Fake
   };
 }
 
-let listeners: Record<'active' | 'selection' | 'close' | 'config', Listener>;
+type ListenerKey = 'active' | 'selection' | 'close' | 'config' | 'gitChange' | 'gitCreate' | 'gitDelete';
+let listeners: Record<ListenerKey, Listener>;
+let disposers: ReturnType<typeof vi.fn>[];
 let flags: { openFile: boolean; selection: boolean; gitIgnore: boolean };
 let exec: ReturnType<typeof vi.fn>;
 let onChange: ReturnType<typeof vi.fn>;
+let log: ReturnType<typeof vi.fn>;
 let tracker: EditorContextTracker;
+
+const WS = { uri: { fsPath: '/ws' }, name: 'ws' };
 
 const settings = {
   getAttachOpenFile: () => flags.openFile,
@@ -45,11 +50,23 @@ const settings = {
   getRespectGitIgnore: () => flags.gitIgnore,
 };
 
-function capture(key: keyof typeof listeners) {
+function capture(key: ListenerKey) {
   return (fn: Listener) => {
     listeners[key] = fn;
-    return { dispose: vi.fn() };
+    const dispose = vi.fn();
+    disposers.push(dispose);
+    return { dispose };
   };
+}
+
+function deferred<T>() {
+  let resolve!: (v: T) => void;
+  const promise = new Promise<T>((r) => (resolve = r));
+  return { promise, resolve };
+}
+
+async function drain(): Promise<void> {
+  for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
 }
 
 function setActive(editor: FakeEditor | undefined): void {
@@ -64,29 +81,44 @@ function select(editor: FakeEditor, selection: FakeSelection): void {
 
 async function settle(): Promise<void> {
   await vi.advanceTimersByTimeAsync(300);
-  for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
+  await drain();
 }
 
 function create(): EditorContextTracker {
-  tracker = new EditorContextTracker({ settings, exec: exec as never, onChange });
+  tracker = new EditorContextTracker({ settings, exec: exec as never, onChange, log });
   return tracker;
 }
+
+let watcherDispose: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
   vi.clearAllMocks();
   listeners = {} as typeof listeners;
+  disposers = [];
   flags = { openFile: true, selection: true, gitIgnore: true };
   exec = vi.fn(async () => ({ code: 1 }));
   onChange = vi.fn();
+  log = vi.fn();
   mockVscode.window.activeTextEditor = undefined;
   const { window, workspace } = mockVscode;
   window.onDidChangeActiveTextEditor.mockImplementation(capture('active') as never);
   window.onDidChangeTextEditorSelection.mockImplementation(capture('selection') as never);
   workspace.onDidCloseTextDocument.mockImplementation(capture('close') as never);
   workspace.onDidChangeConfiguration.mockImplementation(capture('config') as never);
+  watcherDispose = vi.fn();
+  workspace.createFileSystemWatcher.mockImplementation(
+    () =>
+      ({
+        onDidChange: vi.fn(capture('gitChange')),
+        onDidCreate: vi.fn(capture('gitCreate')),
+        onDidDelete: vi.fn(capture('gitDelete')),
+        dispose: watcherDispose,
+      }) as never
+  );
   workspace.findFiles.mockResolvedValue([{ fsPath: 'found' }]);
-  workspace.getWorkspaceFolder.mockReturnValue({ uri: { fsPath: '/ws' }, name: 'ws' } as never);
+  workspace.getWorkspaceFolder.mockImplementation(((uri: { fsPath: string }) =>
+    uri.fsPath.startsWith('/ws/') ? WS : undefined) as never);
   create();
 });
 
@@ -201,10 +233,145 @@ describe('EditorContextTracker', () => {
     await settle();
     expect(tracker.current()?.selection).toStrictEqual({ startLine: 1, endLine: 1 });
     expect(mockVscode.workspace.findFiles).toHaveBeenCalledWith(
-      expect.objectContaining({ pattern: 'a.ts' }),
+      { base: WS, pattern: 'hidden/a.ts' },
       undefined,
       1
     );
+  });
+
+  it('detects a file under an excluded directory by anchoring the probe at the workspace folder', async () => {
+    const excludeNodeModules = (p: { base: unknown; pattern: string }) =>
+      p.base === WS && p.pattern.split('/').includes('node_modules') ? [] : [{ fsPath: 'found' }];
+    mockVscode.workspace.findFiles.mockImplementation((async (p: { base: unknown; pattern: string }) =>
+      excludeNodeModules(p)) as never);
+    const a = makeEditor('/ws/node_modules/pkg/index.js');
+    setActive(a);
+    select(a, sel(0, 0, 0, 4));
+    await settle();
+    expect(tracker.current()?.selection).toStrictEqual({ startLine: 1, endLine: 1 });
+    expect(mockVscode.workspace.findFiles).toHaveBeenCalledWith(
+      { base: WS, pattern: 'node_modules/pkg/index.js' },
+      undefined,
+      1
+    );
+  });
+
+  it('escapes glob characters in the probe path', async () => {
+    const a = makeEditor('/ws/src/a[1]{x}*?.ts');
+    setActive(a);
+    select(a, sel(0, 0, 0, 4));
+    await settle();
+    expect(mockVscode.workspace.findFiles).toHaveBeenCalledWith(
+      { base: WS, pattern: 'src/a[[]1[]][{]x[}][*][?].ts' },
+      undefined,
+      1
+    );
+  });
+
+  it('skips the exclude probe outside the workspace but still runs git', async () => {
+    const a = makeEditor('/elsewhere/a.ts');
+    setActive(a);
+    select(a, sel(0, 0, 0, 4));
+    await settle();
+    expect(mockVscode.workspace.findFiles).not.toHaveBeenCalled();
+    expect(exec).toHaveBeenCalledWith('git', ['check-ignore', '-q', '/elsewhere/a.ts'], '/elsewhere');
+    expect(tracker.current()?.selection?.text).toBe('picked text');
+  });
+
+  it.each([
+    ['rejects', 0],
+    ['rejects', 1],
+    ['throws', 0],
+    ['throws', 1],
+  ])('withholds text when findFiles %s and git exits %i', async (how, gitCode) => {
+    exec.mockResolvedValue({ code: gitCode });
+    if (how === 'rejects') mockVscode.workspace.findFiles.mockRejectedValue(new Error('search failed'));
+    else
+      mockVscode.workspace.findFiles.mockImplementation(() => {
+        throw new Error('search failed');
+      });
+    const a = makeEditor('/ws/a.ts');
+    setActive(a);
+    select(a, sel(0, 0, 0, 4));
+    await settle();
+    expect(tracker.current()?.selection).toStrictEqual({ startLine: 1, endLine: 1 });
+  });
+
+  it.each(['gitChange', 'gitCreate', 'gitDelete'] as const)(
+    'clears the ignore cache and recomputes on a .gitignore %s',
+    async (key) => {
+      expect(mockVscode.workspace.createFileSystemWatcher).toHaveBeenCalledWith('**/.gitignore');
+      const a = makeEditor('/ws/a.ts');
+      setActive(a);
+      select(a, sel(0, 0, 0, 4));
+      await settle();
+      expect(tracker.current()?.selection?.text).toBe('picked text');
+      exec.mockResolvedValue({ code: 0 });
+      listeners[key]({});
+      await settle();
+      expect(exec).toHaveBeenCalledTimes(2);
+      expect(tracker.current()?.selection).toStrictEqual({ startLine: 1, endLine: 1 });
+    }
+  );
+
+  it('treats a git check that times out as not ignored, still applies the probe, and does not cache it', async () => {
+    exec.mockReturnValue(new Promise(() => {}));
+    const a = makeEditor('/ws/a.ts');
+    setActive(a);
+    select(a, sel(0, 0, 0, 4));
+    await settle();
+    expect(onChange).toHaveBeenCalledTimes(0);
+    await vi.advanceTimersByTimeAsync(5000);
+    await drain();
+    expect(tracker.current()?.selection?.text).toBe('picked text');
+
+    mockVscode.workspace.findFiles.mockResolvedValue([]);
+    select(a, sel(0, 0, 0, 5));
+    await settle();
+    await vi.advanceTimersByTimeAsync(5000);
+    await drain();
+    expect(exec).toHaveBeenCalledTimes(2);
+    expect(tracker.current()?.selection).toStrictEqual({ startLine: 1, endLine: 1 });
+  });
+
+  it('drops a result that finishes after a newer event arrived', async () => {
+    const a = makeEditor('/ws/a.ts');
+    setActive(a);
+    await settle();
+    const git = deferred<{ code: number }>();
+    exec.mockReturnValue(git.promise);
+    select(a, sel(0, 0, 0, 4));
+    await settle();
+    listeners.close(a.document);
+    git.resolve({ code: 1 });
+    await drain();
+    expect(onChange.mock.calls.some(([ctx]) => ctx?.selection)).toBe(false);
+    await settle();
+    expect(onChange).toHaveBeenLastCalledWith(null);
+    expect(tracker.current()).toBeNull();
+  });
+
+  it('stops posting and disposes its listeners and watcher on dispose', async () => {
+    setActive(makeEditor('/ws/a.ts'));
+    tracker.dispose();
+    await settle();
+    expect(onChange).not.toHaveBeenCalled();
+    expect(disposers.length).toBe(7);
+    for (const d of disposers) expect(d).toHaveBeenCalled();
+    expect(watcherDispose).toHaveBeenCalled();
+  });
+
+  it('logs a failed compute and keeps the previous value', async () => {
+    const a = makeEditor('/ws/a.ts');
+    setActive(a);
+    await settle();
+    a.document.getText.mockImplementation(() => {
+      throw new Error('boom');
+    });
+    select(a, sel(0, 0, 0, 4));
+    await settle();
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('boom'));
+    expect(tracker.current()).toEqual({ filePath: '/ws/a.ts' });
   });
 
   it('keeps the last file context when focus moves to a non-file editor', async () => {

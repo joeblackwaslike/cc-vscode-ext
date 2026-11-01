@@ -236,6 +236,7 @@ export function activate(context: vscode.ExtensionContext): void {
     settings,
     exec: execFileCode,
     onChange: (ctx) => viewManager.broadcastMessage({ type: 'ide_context', context: ctx }),
+    log: (m) => logger.warn(m),
   });
   context.subscriptions.push(editorContext);
 

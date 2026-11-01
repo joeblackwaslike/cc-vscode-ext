@@ -7,10 +7,12 @@ import type { IdeContext, IdeSelection } from '../shared/ideTags';
 /** Runs a command and resolves with its exit code. */
 export type ExecFn = (cmd: string, args: string[], cwd: string) => Promise<{ code: number }>;
 
-/** `ExecFn` over `child_process.execFile`; spawn failures resolve with code -1. */
+const DEFAULT_GIT_TIMEOUT_MS = 5000;
+
+/** `ExecFn` over `child_process.execFile`; spawn failures and kills resolve with code -1. */
 export const execFileCode: ExecFn = (cmd, args, cwd) =>
   new Promise((resolve) => {
-    execFile(cmd, args, { cwd }, (err) => {
+    execFile(cmd, args, { cwd, timeout: DEFAULT_GIT_TIMEOUT_MS }, (err) => {
       if (!err) return resolve({ code: 0 });
       resolve({ code: typeof err.code === 'number' ? err.code : -1 });
     });
@@ -21,6 +23,9 @@ export interface EditorContextTrackerOptions {
   exec: ExecFn;
   onChange: (ctx: IdeContext | null) => void;
   debounceMs?: number;
+  /** How long `git check-ignore` may run before the file counts as not git-ignored. */
+  gitTimeoutMs?: number;
+  log?: (message: string) => void;
 }
 
 const WATCHED_SETTINGS = ['attachOpenFile', 'attachSelection', 'respectGitIgnore'].flatMap((key) => [
@@ -44,6 +49,11 @@ function sameContext(a: IdeContext | null, b: IdeContext | null): boolean {
   );
 }
 
+/** Escapes VS Code glob metacharacters so the path matches only itself. */
+function escapeGlob(p: string): string {
+  return p.replace(/[[\]*?{}]/g, '[$&]');
+}
+
 /**
  * Follows the last active `file` editor and its selection, and reports the
  * IDE context to offer the composer, with the attach and git-ignore settings
@@ -59,6 +69,11 @@ export class EditorContextTracker implements vscode.Disposable {
   private readonly disposables: vscode.Disposable[];
 
   constructor(private readonly opts: EditorContextTrackerOptions) {
+    const gitignoreWatcher = vscode.workspace.createFileSystemWatcher('**/.gitignore');
+    const resetIgnored = (): void => {
+      this.ignored.clear();
+      this.schedule();
+    };
     this.disposables = [
       vscode.window.onDidChangeActiveTextEditor((editor) => {
         if (isFileEditor(editor)) this.track(editor);
@@ -75,11 +90,13 @@ export class EditorContextTracker implements vscode.Disposable {
         this.schedule();
       }),
       vscode.workspace.onDidChangeConfiguration((e) => {
-        if (e.affectsConfiguration('files.exclude')) this.ignored.clear();
-        if (e.affectsConfiguration('files.exclude') || WATCHED_SETTINGS.some((s) => e.affectsConfiguration(s))) {
-          this.schedule();
-        }
+        if (e.affectsConfiguration('files.exclude')) resetIgnored();
+        else if (WATCHED_SETTINGS.some((s) => e.affectsConfiguration(s))) this.schedule();
       }),
+      gitignoreWatcher.onDidChange(resetIgnored),
+      gitignoreWatcher.onDidCreate(resetIgnored),
+      gitignoreWatcher.onDidDelete(resetIgnored),
+      gitignoreWatcher,
     ];
     const active = vscode.window.activeTextEditor;
     if (isFileEditor(active)) this.track(active);
@@ -92,6 +109,7 @@ export class EditorContextTracker implements vscode.Disposable {
 
   dispose(): void {
     this.disposed = true;
+    this.generation++;
     clearTimeout(this.timer);
     for (const d of this.disposables) d.dispose();
   }
@@ -102,13 +120,20 @@ export class EditorContextTracker implements vscode.Disposable {
   }
 
   private schedule(): void {
+    this.generation++;
     clearTimeout(this.timer);
     this.timer = setTimeout(() => void this.flush(), this.opts.debounceMs ?? 300);
   }
 
   private async flush(): Promise<void> {
-    const generation = ++this.generation;
-    const next = await this.compute(this.editor);
+    const generation = this.generation;
+    let next: IdeContext | null;
+    try {
+      next = await this.compute(this.editor);
+    } catch (err) {
+      this.opts.log?.(`EditorContextTracker: ${err instanceof Error ? err.message : String(err)}`);
+      return;
+    }
     if (this.disposed || generation !== this.generation || sameContext(next, this.value)) return;
     this.value = next;
     this.opts.onChange(next);
@@ -143,16 +168,44 @@ export class EditorContextTracker implements vscode.Disposable {
   }
 
   private async probeIgnored(uri: vscode.Uri): Promise<boolean> {
-    const dir = path.dirname(uri.fsPath);
-    const gitIgnored = this.opts
-      .exec('git', ['check-ignore', '-q', uri.fsPath], dir)
-      .then(({ code }) => code === 0, () => false);
-    const excluded = vscode.workspace.getWorkspaceFolder(uri)
-      ? Promise.resolve(
-          vscode.workspace.findFiles(new vscode.RelativePattern(dir, path.basename(uri.fsPath)), undefined, 1)
-        ).then((found) => found.length === 0, () => false)
-      : Promise.resolve(false);
-    const [ignored, hidden] = await Promise.all([gitIgnored, excluded]);
-    return ignored || hidden;
+    const [git, excluded] = await Promise.all([this.isGitIgnored(uri.fsPath), this.isExcluded(uri)]);
+    if (git.timedOut) this.ignored.delete(uri.fsPath);
+    return git.ignored || excluded;
+  }
+
+  private async isGitIgnored(fsPath: string): Promise<{ ignored: boolean; timedOut: boolean }> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<'timeout'>((resolve) => {
+      timer = setTimeout(() => resolve('timeout'), this.opts.gitTimeoutMs ?? DEFAULT_GIT_TIMEOUT_MS);
+    });
+    try {
+      const result = await Promise.race([
+        this.opts.exec('git', ['check-ignore', '-q', fsPath], path.dirname(fsPath)),
+        timeout,
+      ]);
+      if (result === 'timeout') return { ignored: false, timedOut: true };
+      return { ignored: result.code === 0, timedOut: false };
+    } catch {
+      return { ignored: false, timedOut: false };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /** True when `files.exclude` hides the file; any probe failure counts as excluded. */
+  private async isExcluded(uri: vscode.Uri): Promise<boolean> {
+    try {
+      const folder = vscode.workspace.getWorkspaceFolder(uri);
+      if (!folder) return false;
+      const relative = path.relative(folder.uri.fsPath, uri.fsPath).split(path.sep).join('/');
+      const found = await vscode.workspace.findFiles(
+        new vscode.RelativePattern(folder, escapeGlob(relative)),
+        undefined,
+        1
+      );
+      return found.length === 0;
+    } catch {
+      return true;
+    }
   }
 }
