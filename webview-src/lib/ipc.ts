@@ -10,7 +10,7 @@ import type {
 } from '../../src/types/ipc';
 import type { ClaudeStreamEvent } from '../../src/types/process';
 import type { SessionInfo, ConversationState, SessionGroup } from '../../src/types/session';
-import type { PermissionMode } from '../../src/process/ProcessArgs';
+import type { ApproveMode, PermissionMode } from '../../src/process/ProcessArgs';
 
 export type {
   FromWebviewMessage,
@@ -20,6 +20,7 @@ export type {
   SessionGroup,
   ConversationState,
   PermissionMode,
+  ApproveMode,
   ThinkingLevel,
   ContextUsage,
   ContextCategory,

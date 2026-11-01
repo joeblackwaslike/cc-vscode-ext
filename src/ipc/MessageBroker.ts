@@ -10,7 +10,7 @@ import type {
   ContextUsage,
 } from '../types/ipc';
 import { CommandDiscovery } from '../commands/CommandDiscovery';
-import type { ApproveMode } from '../settings/ExtensionSettings';
+import type { ApproveMode } from '../process/ProcessArgs';
 import { EFFORT_THINKING_TOKENS, type PermissionMode } from '../process/ProcessArgs';
 import { parseContextUsage } from '../process/usage';
 import { ControlRequestManager, type ControlResponseEvent } from '../process/ControlRequest';

@@ -1,4 +1,4 @@
-import type { PermissionDecision, PermissionMode, PermissionRequest } from './ipc';
+import type { ApproveMode, PermissionDecision, PermissionRequest } from './ipc';
 import type { ToolResult } from './conversationModel';
 
 export const OTHER_LABEL = 'Other';
@@ -76,15 +76,14 @@ export function buildAskAnswerDecision(
   return { behavior: 'allow', updatedInput: { ...input, answers } };
 }
 
-const APPROVE_LABELS: Record<PermissionMode, string> = {
+const APPROVE_LABELS: Record<ApproveMode, string> = {
   auto: 'Yes, and use auto mode',
   acceptEdits: 'Yes, and auto-accept',
   default: 'Yes, and manually approve edits',
   bypassPermissions: 'Yes, and bypass permissions',
-  plan: 'Yes, and auto-accept',
 };
 
-export function exitPlanApproveLabel(mode: PermissionMode): string {
+export function exitPlanApproveLabel(mode: ApproveMode): string {
   return APPROVE_LABELS[mode];
 }
 

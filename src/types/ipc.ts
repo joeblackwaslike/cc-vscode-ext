@@ -1,4 +1,4 @@
-import type { PermissionMode } from '../process/ProcessArgs';
+import type { ApproveMode, PermissionMode } from '../process/ProcessArgs';
 import type { ClaudeStreamEvent } from './process';
 import type { DiffFile } from './diff';
 import type { ConversationState, SessionInfo, SessionGroup } from './session';
@@ -319,7 +319,7 @@ export interface PermissionRequest {
   description: string | undefined;
   priorMode: PermissionMode | undefined;
   /** Mode the plan-approval button switches to; meaningful for ExitPlanMode only. */
-  approveMode: PermissionMode;
+  approveMode: ApproveMode;
   /** Explains why approveMode differs from the configured setting. */
   approveNotice: string | undefined;
 }

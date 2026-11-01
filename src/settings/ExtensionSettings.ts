@@ -4,8 +4,6 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import type { ApproveMode, PermissionMode } from '../process/ProcessArgs';
 
-export type { ApproveMode };
-
 const PERMISSION_MODES: readonly PermissionMode[] = ['auto', 'default', 'plan', 'acceptEdits', 'bypassPermissions'];
 
 const APPROVE_MODES: readonly ApproveMode[] = ['auto', 'default', 'acceptEdits', 'bypassPermissions'];

@@ -9,7 +9,7 @@
  */
 
 import type { PermissionMode } from './ProcessArgs';
-import type { ApproveMode } from '../settings/ExtensionSettings';
+import type { ApproveMode } from './ProcessArgs';
 import type {
   PermissionDecision,
   PermissionRequest,
