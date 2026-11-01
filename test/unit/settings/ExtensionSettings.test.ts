@@ -1,17 +1,25 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockGet, mockOnDidChangeConfiguration } = vi.hoisted(() => {
+const { mockGet, mockInspect, mockUpdate, mockOnDidChangeConfiguration } = vi.hoisted(() => {
   const mockGet = vi.fn();
+  const mockInspect = vi.fn();
+  const mockUpdate = vi.fn(async () => undefined);
   const mockOnDidChangeConfiguration = vi.fn(() => ({ dispose: vi.fn() }));
-  return { mockGet, mockOnDidChangeConfiguration };
+  return { mockGet, mockInspect, mockUpdate, mockOnDidChangeConfiguration };
 });
 
 vi.mock('vscode', () => ({
+  ConfigurationTarget: { Global: 1, Workspace: 2, WorkspaceFolder: 3 },
   workspace: {
-    getConfiguration: vi.fn(() => ({ get: mockGet })),
+    getConfiguration: vi.fn(() => ({ get: mockGet, inspect: mockInspect, update: mockUpdate })),
     onDidChangeConfiguration: mockOnDidChangeConfiguration,
   },
 }));
+
+function stubConfig(values: Record<string, unknown>, explicitDefault?: Record<string, unknown>): void {
+  mockGet.mockImplementation((key: string, fallback?: unknown) => (key in values ? values[key] : fallback));
+  mockInspect.mockImplementation((key: string) => explicitDefault?.[key] ?? undefined);
+}
 
 import { ExtensionSettings } from '../../../src/settings/ExtensionSettings';
 
@@ -74,5 +82,84 @@ describe('ExtensionSettings', () => {
     const [callback] = mockOnDidChangeConfiguration.mock.calls[0] as [(e: { affectsConfiguration(s: string): boolean }) => void];
     callback({ affectsConfiguration: () => false });
     expect(handler).not.toHaveBeenCalled();
+  });
+
+  describe('getDefaultPermissionMode', () => {
+    it('returns auto when clawdCode.defaultPermissionMode is explicitly auto and claudeCode.initialPermissionMode is plan', () => {
+      stubConfig(
+        { defaultPermissionMode: 'auto', initialPermissionMode: 'plan' },
+        { defaultPermissionMode: { globalValue: 'auto' } },
+      );
+      expect(new ExtensionSettings().getDefaultPermissionMode()).toBe('auto');
+    });
+
+    it('falls through to claudeCode.initialPermissionMode when clawdCode value is unset', () => {
+      stubConfig({ defaultPermissionMode: 'auto', initialPermissionMode: 'plan' });
+      expect(new ExtensionSettings().getDefaultPermissionMode()).toBe('plan');
+    });
+  });
+
+  describe('getExitPlanApproveMode', () => {
+    it('returns auto by default and for an invalid value', () => {
+      stubConfig({});
+      expect(new ExtensionSettings().getExitPlanApproveMode()).toBe('auto');
+      stubConfig({ exitPlanModeFallback: 'turbo' });
+      expect(new ExtensionSettings().getExitPlanApproveMode()).toBe('auto');
+      stubConfig({ exitPlanModeFallback: 'plan' });
+      expect(new ExtensionSettings().getExitPlanApproveMode()).toBe('auto');
+    });
+
+    it('returns a valid configured value', () => {
+      stubConfig({ exitPlanModeFallback: 'bypassPermissions' });
+      expect(new ExtensionSettings().getExitPlanApproveMode()).toBe('bypassPermissions');
+    });
+  });
+
+  describe('getOfferDefaultMode', () => {
+    it('returns off when configured off, auto by default, auto for an invalid value', () => {
+      stubConfig({ offerDefaultModeAfterPlan: 'off' });
+      expect(new ExtensionSettings().getOfferDefaultMode()).toBe('off');
+      stubConfig({});
+      expect(new ExtensionSettings().getOfferDefaultMode()).toBe('auto');
+      stubConfig({ offerDefaultModeAfterPlan: 'turbo' });
+      expect(new ExtensionSettings().getOfferDefaultMode()).toBe('auto');
+    });
+  });
+
+  describe('shouldAllowBypass', () => {
+    it('is true for each trigger in the spec and false when none applies', () => {
+      const bypassTriggers: Array<Record<string, unknown>> = [
+        { allowDangerouslySkipPermissions: true },
+        { exitPlanModeFallback: 'bypassPermissions' },
+        { offerDefaultModeAfterPlan: 'bypassPermissions' },
+        { defaultPermissionMode: 'bypassPermissions' },
+      ];
+      for (const values of bypassTriggers) {
+        stubConfig(values, values.defaultPermissionMode ? { defaultPermissionMode: { globalValue: 'bypassPermissions' } } : undefined);
+        expect(new ExtensionSettings().shouldAllowBypass()).toBe(true);
+      }
+      stubConfig({});
+      expect(new ExtensionSettings().shouldAllowBypass()).toBe(false);
+    });
+  });
+
+  describe('setDefaultPermissionMode', () => {
+    it('writes to workspace scope when a workspace value exists', async () => {
+      stubConfig({}, { defaultPermissionMode: { workspaceValue: 'plan' } });
+      await new ExtensionSettings().setDefaultPermissionMode('auto');
+      expect(mockUpdate).toHaveBeenCalledWith('defaultPermissionMode', 'auto', 2);
+    });
+
+    it('writes to workspace folder scope when a folder value exists', async () => {
+      stubConfig({}, { defaultPermissionMode: { workspaceFolderValue: 'plan', workspaceValue: 'plan' } });
+      await new ExtensionSettings().setDefaultPermissionMode('auto');
+      expect(mockUpdate).toHaveBeenCalledWith('defaultPermissionMode', 'auto', 3);
+    });
+
+    it('writes to global scope otherwise', async () => {
+      stubConfig({}, { defaultPermissionMode: { globalValue: 'plan' } });
+      await new ExtensionSettings().setDefaultPermissionMode('auto');
+      expect(mockUpdate).toHaveBeenCalledWith('defaultPermissionMode', 'auto', 1);
+    });
   });
 });

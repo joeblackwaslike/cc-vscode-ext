@@ -4,6 +4,17 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import type { PermissionMode } from '../process/ProcessArgs';
 
+const PERMISSION_MODES: readonly PermissionMode[] = ['auto', 'default', 'plan', 'acceptEdits', 'bypassPermissions'];
+
+/** Permission modes a plan approval can switch into. */
+export type ApproveMode = Exclude<PermissionMode, 'plan'>;
+
+const APPROVE_MODES: readonly ApproveMode[] = ['auto', 'default', 'acceptEdits', 'bypassPermissions'];
+
+function pickEnum<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
+  return allowed.includes(value as T) ? (value as T) : fallback;
+}
+
 /** Shape of a single `claudeCode.environmentVariables` entry. */
 export interface ConfigEnvVar {
   name: string;
@@ -55,10 +66,15 @@ export class ExtensionSettings {
    * Priority: clawdCode VS Code setting → claudeCode VS Code setting (official ext) → ~/.claude/settings.json → 'auto'
    */
   getDefaultPermissionMode(): PermissionMode {
-    const validModes: PermissionMode[] = ['auto', 'default', 'plan', 'acceptEdits', 'bypassPermissions'];
+    const validModes = PERMISSION_MODES;
     const ownCfg = vscode.workspace.getConfiguration('clawdCode');
     const configured = ownCfg.get<string>('defaultPermissionMode');
-    if (configured && configured !== 'auto' && validModes.includes(configured as PermissionMode)) {
+    const inspected = ownCfg.inspect<string>('defaultPermissionMode');
+    const isExplicit =
+      inspected?.globalValue !== undefined ||
+      inspected?.workspaceValue !== undefined ||
+      inspected?.workspaceFolderValue !== undefined;
+    if (configured && (isExplicit || configured !== 'auto') && validModes.includes(configured as PermissionMode)) {
       return configured as PermissionMode;
     }
     // Fallback: official Claude Code extension's VS Code setting
@@ -78,6 +94,44 @@ export class ExtensionSettings {
       }
     } catch { /* file absent or unreadable */ }
     return 'auto';
+  }
+
+  /** Mode a plan approval switches into, from `clawdCode.exitPlanModeFallback`. Invalid values yield `auto`. */
+  getExitPlanApproveMode(): ApproveMode {
+    const raw = vscode.workspace.getConfiguration('clawdCode').get<string>('exitPlanModeFallback');
+    return pickEnum(raw, APPROVE_MODES, 'auto');
+  }
+
+  /** Mode offered as the new default after a plan approval, or `off`. Invalid values yield `auto`. */
+  getOfferDefaultMode(): ApproveMode | 'off' {
+    const raw = vscode.workspace.getConfiguration('clawdCode').get<string>('offerDefaultModeAfterPlan');
+    return pickEnum<ApproveMode | 'off'>(raw, [...APPROVE_MODES, 'off'], 'auto');
+  }
+
+  /** Whether the CLI must be launched with `--allow-dangerously-skip-permissions`. */
+  shouldAllowBypass(): boolean {
+    const own = vscode.workspace.getConfiguration('clawdCode');
+    const official = vscode.workspace.getConfiguration('claudeCode');
+    return (
+      own.get<boolean>('allowDangerouslySkipPermissions', false) === true ||
+      official.get<boolean>('allowDangerouslySkipPermissions', false) === true ||
+      this.getExitPlanApproveMode() === 'bypassPermissions' ||
+      this.getOfferDefaultMode() === 'bypassPermissions' ||
+      this.getDefaultPermissionMode() === 'bypassPermissions'
+    );
+  }
+
+  /** Writes `clawdCode.defaultPermissionMode` in the narrowest scope that already holds a value, else global. */
+  async setDefaultPermissionMode(mode: PermissionMode): Promise<void> {
+    const cfg = vscode.workspace.getConfiguration('clawdCode');
+    const inspected = cfg.inspect<string>('defaultPermissionMode');
+    let target = vscode.ConfigurationTarget.Global;
+    if (inspected?.workspaceFolderValue !== undefined) {
+      target = vscode.ConfigurationTarget.WorkspaceFolder;
+    } else if (inspected?.workspaceValue !== undefined) {
+      target = vscode.ConfigurationTarget.Workspace;
+    }
+    await cfg.update('defaultPermissionMode', mode, target);
   }
 
   /** Reads the default model from ~/.claude/settings.json, or undefined if not set. */

@@ -171,12 +171,7 @@ export function activate(context: vscode.ExtensionContext): void {
         commandRunner,
         workspacePath,
         permissionRequests,
-        getExitPlanModeFallback: () => {
-          const val =
-            vscode.workspace.getConfiguration('clawdCode').get<string>('exitPlanModeFallback') ??
-            'auto';
-          return val as import('./process/ProcessArgs').PermissionMode;
-        },
+        getExitPlanModeFallback: () => settings.getExitPlanApproveMode(),
       }
     );
 
