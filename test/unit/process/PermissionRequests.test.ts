@@ -211,7 +211,7 @@ describe('PermissionRequests', () => {
       expect(offers()).toEqual([{ type: 'default_mode_offer', channelId: 'c', mode: 'bypassPermissions', currentDefault: 'plan' }]);
     });
 
-    it('offers the configured offer mode even when approval was downgraded', () => {
+    it('emits no offer when the approval was downgraded', () => {
       const p = new PermissionRequests({
         write, broadcast,
         getApproveMode: () => 'bypassPermissions',
@@ -220,7 +220,45 @@ describe('PermissionRequests', () => {
       });
       p.register('c', exitPlan);
       p.respond('c', exitPlan.request_id, approve('acceptEdits'));
-      expect(offers()).toEqual([{ type: 'default_mode_offer', channelId: 'c', mode: 'bypassPermissions', currentDefault: 'plan' }]);
+      expect(offers()).toEqual([]);
+    });
+
+    describe('takeOffer', () => {
+      it('accepts one answer matching the outstanding offer', () => {
+        const p = make('acceptEdits', 'plan');
+        p.respond('c', exitPlan.request_id, approve('acceptEdits'));
+        expect(p.takeOffer('c', 'acceptEdits')).toBe(true);
+        expect(p.takeOffer('c', 'acceptEdits')).toBe(false);
+      });
+
+      it('rejects a mismatched mode and keeps the offer outstanding', () => {
+        const log = vi.fn();
+        const p = new PermissionRequests({
+          write, broadcast, log,
+          getApproveMode: () => 'acceptEdits',
+          getOfferMode: () => 'acceptEdits',
+          getResolvedDefault: () => 'plan',
+        });
+        p.register('c', exitPlan);
+        p.respond('c', exitPlan.request_id, approve('acceptEdits'));
+        expect(p.takeOffer('c', 'bypassPermissions')).toBe(false);
+        expect(log).toHaveBeenCalledWith(expect.stringMatching(/offer/));
+        expect(p.takeOffer('d', 'acceptEdits')).toBe(false);
+        expect(p.takeOffer('c', 'acceptEdits')).toBe(true);
+      });
+
+      it('rejects an answer when no offer was made', () => {
+        expect(make('acceptEdits', 'plan').takeOffer('c', 'acceptEdits')).toBe(false);
+      });
+
+      it('closeChannel drops the outstanding offer and pending prompts', () => {
+        const p = make('acceptEdits', 'plan');
+        p.respond('c', exitPlan.request_id, approve('acceptEdits'));
+        p.register('c', ask);
+        p.closeChannel('c');
+        expect(p.takeOffer('c', 'acceptEdits')).toBe(false);
+        expect(p.pendingFor('c')).toEqual([]);
+      });
     });
 
     it('treats a default setMode as option 1 when approveMode is default', () => {

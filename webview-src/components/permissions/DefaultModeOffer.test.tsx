@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, test, vi } from 'vitest';
 import { DefaultModeOffer } from './DefaultModeOffer';
@@ -35,5 +35,11 @@ describe('DefaultModeOffer', () => {
     onAnswer.mockClear();
     await user.keyboard('{Escape}');
     expect(onAnswer).toHaveBeenCalledWith(false);
+  });
+
+  test('an auto-repeated 1 held over from the plan card does not accept', () => {
+    const { onAnswer } = setup();
+    fireEvent.keyDown(screen.getByText('Set bypassPermissions as your default mode?'), { key: '1', repeat: true });
+    expect(onAnswer).not.toHaveBeenCalled();
   });
 });

@@ -64,6 +64,7 @@ export class PermissionRequests {
   private readonly pending = new Map<string, PermissionRequest>();
   private readonly modes = new Map<string, ChannelMode>();
   private readonly bypassFlags = new Map<string, boolean>();
+  private readonly offers = new Map<string, PermissionMode>();
 
   constructor(private readonly deps: PermissionRequestsDeps) {}
 
@@ -123,13 +124,31 @@ export class PermissionRequests {
   }
 
   private offerDefaultMode(req: PermissionRequest, decision: PermissionDecision): void {
-    if (req.toolName !== 'ExitPlanMode' || decision.behavior !== 'allow') return;
+    if (req.toolName !== 'ExitPlanMode' || decision.behavior !== 'allow' || req.approveNotice !== undefined) return;
     const chosen = decision.updatedPermissions?.find((u) => u.type === 'setMode');
     if (chosen?.mode !== req.approveMode) return;
     const mode = this.deps.getOfferMode?.() ?? 'off';
     const currentDefault = this.deps.getResolvedDefault?.();
     if (mode === 'off' || currentDefault === undefined || mode === currentDefault) return;
+    this.offers.set(req.channelId, mode);
     this.deps.broadcast({ type: 'default_mode_offer', channelId: req.channelId, mode, currentDefault });
+  }
+
+  /** Claims the channel's outstanding default-mode offer if `mode` matches it; each offer is answered once. */
+  takeOffer(channelId: string, mode: PermissionMode): boolean {
+    const offered = this.offers.get(channelId);
+    if (offered !== mode) {
+      this.deps.log?.(`[permissions] default-mode answer ${mode} on ${channelId} ignored: outstanding offer is ${offered ?? 'none'}`);
+      return false;
+    }
+    this.offers.delete(channelId);
+    return true;
+  }
+
+  /** Forgets a closed channel's outstanding offer and cancels its pending prompts. */
+  closeChannel(channelId: string): void {
+    this.offers.delete(channelId);
+    this.cancelChannel(channelId);
   }
 
   denyWithoutPrompt(channelId: string, event: CanUseToolEvent, message: string): void {

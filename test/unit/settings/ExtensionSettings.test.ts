@@ -14,7 +14,11 @@ vi.mock('fs', () => ({ readFileSync: mockReadFileSync }));
 vi.mock('vscode', () => ({
   ConfigurationTarget: { Global: 1, Workspace: 2, WorkspaceFolder: 3 },
   workspace: {
-    getConfiguration: vi.fn(() => ({ get: mockGet, inspect: mockInspect, update: mockUpdate })),
+    getConfiguration: vi.fn((section: string) => ({
+      get: (key: string, fallback?: unknown) => mockGet(`${section}.${key}`, fallback),
+      inspect: (key: string) => mockInspect(`${section}.${key}`),
+      update: (key: string, value: unknown, target: unknown) => mockUpdate(`${section}.${key}`, value, target),
+    })),
     onDidChangeConfiguration: mockOnDidChangeConfiguration,
   },
 }));
@@ -58,9 +62,9 @@ describe('ExtensionSettings', () => {
 
   it('read() returns configured values when present', () => {
     mockGet.mockImplementation((key: string) => {
-      if (key === 'useTerminal') return true;
-      if (key === 'preferredLocation') return 'sidebar';
-      if (key === 'initialPermissionMode') return 'acceptEdits';
+      if (key === 'claudeCode.useTerminal') return true;
+      if (key === 'claudeCode.preferredLocation') return 'sidebar';
+      if (key === 'claudeCode.initialPermissionMode') return 'acceptEdits';
       return undefined;
     });
 
@@ -93,14 +97,14 @@ describe('ExtensionSettings', () => {
   describe('getDefaultPermissionMode', () => {
     it('returns auto when clawdCode.defaultPermissionMode is explicitly auto and claudeCode.initialPermissionMode is plan', () => {
       stubConfig(
-        { defaultPermissionMode: 'auto', initialPermissionMode: 'plan' },
-        { defaultPermissionMode: { globalValue: 'auto' } },
+        { 'clawdCode.defaultPermissionMode': 'auto', 'claudeCode.initialPermissionMode': 'plan' },
+        { 'clawdCode.defaultPermissionMode': { globalValue: 'auto' } },
       );
       expect(new ExtensionSettings().getDefaultPermissionMode()).toBe('auto');
     });
 
     it('falls through to claudeCode.initialPermissionMode when clawdCode value is unset', () => {
-      stubConfig({ defaultPermissionMode: 'auto', initialPermissionMode: 'plan' });
+      stubConfig({ 'clawdCode.defaultPermissionMode': 'auto', 'claudeCode.initialPermissionMode': 'plan' });
       expect(new ExtensionSettings().getDefaultPermissionMode()).toBe('plan');
     });
   });
@@ -109,25 +113,25 @@ describe('ExtensionSettings', () => {
     it('returns auto by default and for an invalid value', () => {
       stubConfig({});
       expect(new ExtensionSettings().getExitPlanApproveMode()).toBe('auto');
-      stubConfig({ exitPlanModeFallback: 'turbo' });
+      stubConfig({ 'clawdCode.exitPlanModeFallback': 'turbo' });
       expect(new ExtensionSettings().getExitPlanApproveMode()).toBe('auto');
-      stubConfig({ exitPlanModeFallback: 'plan' });
+      stubConfig({ 'clawdCode.exitPlanModeFallback': 'plan' });
       expect(new ExtensionSettings().getExitPlanApproveMode()).toBe('auto');
     });
 
     it('returns a valid configured value', () => {
-      stubConfig({ exitPlanModeFallback: 'bypassPermissions' });
+      stubConfig({ 'clawdCode.exitPlanModeFallback': 'bypassPermissions' });
       expect(new ExtensionSettings().getExitPlanApproveMode()).toBe('bypassPermissions');
     });
   });
 
   describe('getOfferDefaultMode', () => {
     it('returns off when configured off, auto by default, auto for an invalid value', () => {
-      stubConfig({ offerDefaultModeAfterPlan: 'off' });
+      stubConfig({ 'clawdCode.offerDefaultModeAfterPlan': 'off' });
       expect(new ExtensionSettings().getOfferDefaultMode()).toBe('off');
       stubConfig({});
       expect(new ExtensionSettings().getOfferDefaultMode()).toBe('auto');
-      stubConfig({ offerDefaultModeAfterPlan: 'turbo' });
+      stubConfig({ 'clawdCode.offerDefaultModeAfterPlan': 'turbo' });
       expect(new ExtensionSettings().getOfferDefaultMode()).toBe('auto');
     });
   });
@@ -135,16 +139,25 @@ describe('ExtensionSettings', () => {
   describe('shouldAllowBypass', () => {
     it('is true for each trigger in the spec and false when none applies', () => {
       const bypassTriggers: Array<Record<string, unknown>> = [
-        { allowDangerouslySkipPermissions: true },
-        { exitPlanModeFallback: 'bypassPermissions' },
-        { offerDefaultModeAfterPlan: 'bypassPermissions' },
-        { defaultPermissionMode: 'bypassPermissions' },
+        { 'clawdCode.allowDangerouslySkipPermissions': true },
+        { 'claudeCode.allowDangerouslySkipPermissions': true },
+        { 'clawdCode.exitPlanModeFallback': 'bypassPermissions' },
+        { 'clawdCode.offerDefaultModeAfterPlan': 'bypassPermissions' },
+        { 'clawdCode.defaultPermissionMode': 'bypassPermissions' },
       ];
       for (const values of bypassTriggers) {
-        stubConfig(values, values.defaultPermissionMode ? { defaultPermissionMode: { globalValue: 'bypassPermissions' } } : undefined);
+        const explicit = values['clawdCode.defaultPermissionMode'] ? { 'clawdCode.defaultPermissionMode': { globalValue: 'bypassPermissions' } } : undefined;
+        stubConfig(values, explicit);
         expect(new ExtensionSettings().shouldAllowBypass()).toBe(true);
       }
       stubConfig({});
+      expect(new ExtensionSettings().shouldAllowBypass()).toBe(false);
+    });
+
+    it('reads claudeCode.allowDangerouslySkipPermissions from its own section while clawdCode is unset', () => {
+      stubConfig({ 'claudeCode.allowDangerouslySkipPermissions': true });
+      expect(new ExtensionSettings().shouldAllowBypass()).toBe(true);
+      stubConfig({ 'claudeCode.exitPlanModeFallback': 'bypassPermissions' });
       expect(new ExtensionSettings().shouldAllowBypass()).toBe(false);
     });
 
@@ -157,21 +170,21 @@ describe('ExtensionSettings', () => {
 
   describe('setDefaultPermissionMode', () => {
     it('writes to workspace scope when a workspace value exists', async () => {
-      stubConfig({}, { defaultPermissionMode: { workspaceValue: 'plan' } });
+      stubConfig({}, { 'clawdCode.defaultPermissionMode': { workspaceValue: 'plan' } });
       await new ExtensionSettings().setDefaultPermissionMode('auto');
-      expect(mockUpdate).toHaveBeenCalledWith('defaultPermissionMode', 'auto', 2);
+      expect(mockUpdate).toHaveBeenCalledWith('clawdCode.defaultPermissionMode', 'auto', 2);
     });
 
-    it('writes to workspace folder scope when a folder value exists', async () => {
-      stubConfig({}, { defaultPermissionMode: { workspaceFolderValue: 'plan', workspaceValue: 'plan' } });
+    it('never targets the workspace-folder scope, which needs a resource to write', async () => {
+      stubConfig({}, { 'clawdCode.defaultPermissionMode': { workspaceFolderValue: 'plan', workspaceValue: 'plan' } });
       await new ExtensionSettings().setDefaultPermissionMode('auto');
-      expect(mockUpdate).toHaveBeenCalledWith('defaultPermissionMode', 'auto', 3);
+      expect(mockUpdate).toHaveBeenCalledWith('clawdCode.defaultPermissionMode', 'auto', 2);
     });
 
     it('writes to global scope otherwise', async () => {
-      stubConfig({}, { defaultPermissionMode: { globalValue: 'plan' } });
+      stubConfig({}, { 'clawdCode.defaultPermissionMode': { globalValue: 'plan' } });
       await new ExtensionSettings().setDefaultPermissionMode('auto');
-      expect(mockUpdate).toHaveBeenCalledWith('defaultPermissionMode', 'auto', 1);
+      expect(mockUpdate).toHaveBeenCalledWith('clawdCode.defaultPermissionMode', 'auto', 1);
     });
   });
 });

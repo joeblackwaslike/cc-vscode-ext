@@ -300,7 +300,9 @@ export class MessageBroker {
           return;
         }
         case 'default_mode_offer_response':
-          if (msg.accept) void this.persistDefaultMode(msg.channelId, msg.mode);
+          if (this.permissionRequests.takeOffer(msg.channelId, msg.mode) && msg.accept) {
+            void this.persistDefaultMode(msg.channelId, msg.mode);
+          }
           return;
         case 'control_request':
           this.turnGenerations.set(
@@ -741,7 +743,7 @@ export class MessageBroker {
     // Reject any in-flight control requests immediately instead of letting them
     // hang until their 10s timeout after the channel is gone.
     this.control.dispose();
-    this.permissionRequests.cancelChannel(msg.channelId);
+    this.permissionRequests.closeChannel(msg.channelId);
     this.turnGenerations.delete(msg.channelId);
     this.handoffWatchers.get(msg.channelId)?.dispose();
     this.handoffWatchers.delete(msg.channelId);

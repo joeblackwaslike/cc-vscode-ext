@@ -125,7 +125,7 @@ describe('PermissionDock', () => {
     const wrapper = ({ children }: { children: ReactNode }) => (
       <SessionContext.Provider value={hook.result.current}>{children}</SessionContext.Provider>
     );
-    const { rerender } = render(<PermissionDock channelId="ch" />, { wrapper });
+    render(<PermissionDock channelId="ch" />, { wrapper });
     const user = userEvent.setup({ delay: null });
     expect(screen.getByText('Set bypassPermissions as your default mode?')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /Yes, set bypassPermissions as my default/ }));
@@ -133,6 +133,5 @@ describe('PermissionDock', () => {
       type: 'default_mode_offer_response', channelId: 'ch', mode: 'bypassPermissions', accept: true,
     });
     expect(hook.result.current.state.permissions.ch.defaultModeOffer).toBeUndefined();
-    rerender(<PermissionDock channelId="ch" />);
   });
 });

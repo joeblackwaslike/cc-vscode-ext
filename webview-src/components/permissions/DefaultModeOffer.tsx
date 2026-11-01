@@ -15,7 +15,7 @@ export function DefaultModeOffer({ mode, currentDefault, onAnswer }: Props) {
   useEffect(() => { rootRef.current?.focus(); }, []);
 
   function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
-    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
     if (e.key === 'Escape') onAnswer(false);
     else if (e.key === '1') onAnswer(true);
     else if (e.key === '2') onAnswer(false);

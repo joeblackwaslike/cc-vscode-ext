@@ -1216,47 +1216,104 @@ describe('permission prompt routing', () => {
     expect(h.viewManager.setPermissionMode).not.toHaveBeenCalled();
   });
 
-  it('default_mode_offer_response with accept writes the default and updates the new-conversation default', async () => {
-    const setDefaultPermissionMode = vi.fn(async () => {});
-    const h = createIpcTestHarness();
-    new MessageBroker(
-      h.processManager, h.sessionManager, h.diffManager, h.viewManager,
-      h.channelRouter, h.webview, h.logger, { setDefaultPermissionMode },
-    );
-    h.dispatch({ type: 'default_mode_offer_response', channelId: 'ch-1', mode: 'bypassPermissions', accept: true });
-    await vi.waitFor(() => expect(setDefaultPermissionMode).toHaveBeenCalledWith('bypassPermissions'));
-    await vi.waitFor(() => expect(h.viewManager.setPermissionMode).toHaveBeenCalledWith('bypassPermissions'));
-    await vi.waitFor(() => expect(h.viewManager.broadcastSessionStates).toHaveBeenCalled());
-    expect(h.viewManager.broadcastSessionStates.mock.invocationCallOrder[0]).toBeGreaterThan(
-      h.viewManager.setPermissionMode.mock.invocationCallOrder[0]!,
-    );
-  });
+  describe('default_mode_offer_response', () => {
+    function brokerWithOffer(setDefaultPermissionMode: (mode: PermissionMode) => Promise<void>) {
+      const h = createIpcTestHarness();
+      h.processManager.writeToChannel.mockReturnValue(true);
+      const permissionRequests = new PermissionRequests({
+        write: (c, d) => h.processManager.writeToChannel(c, d) as boolean,
+        broadcast: (m) => h.viewManager.broadcastMessage(m),
+        getApproveMode: () => 'acceptEdits',
+        getOfferMode: () => 'bypassPermissions',
+        getResolvedDefault: () => 'plan',
+      });
+      new MessageBroker(
+        h.processManager, h.sessionManager, h.diffManager, h.viewManager,
+        h.channelRouter, h.webview, h.logger, { permissionRequests, setDefaultPermissionMode },
+      );
+      h.dispatch({ type: 'launch_claude', channelId: 'ch-1', permissionMode: 'plan' });
+      const routed = h.channelRouter.register.mock.calls[0][1] as (event: unknown) => void;
+      routed(canUseTool('req-9', 'ExitPlanMode'));
+      h.dispatch({
+        type: 'permission_response', channelId: 'ch-1', requestId: 'req-9',
+        decision: {
+          behavior: 'allow', updatedInput: {},
+          updatedPermissions: [{ type: 'setMode', mode: 'acceptEdits', destination: 'session' }],
+        },
+      });
+      expect(h.viewManager.broadcastMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'default_mode_offer' }));
+      vi.clearAllMocks();
+      return h;
+    }
 
-  it('default_mode_offer_response with accept false writes nothing', async () => {
-    const setDefaultPermissionMode = vi.fn(async () => {});
-    const h = createIpcTestHarness();
-    new MessageBroker(
-      h.processManager, h.sessionManager, h.diffManager, h.viewManager,
-      h.channelRouter, h.webview, h.logger, { setDefaultPermissionMode },
-    );
-    h.dispatch({ type: 'default_mode_offer_response', channelId: 'ch-1', mode: 'bypassPermissions', accept: false });
-    await Promise.resolve();
-    expect(setDefaultPermissionMode).not.toHaveBeenCalled();
-    expect(h.viewManager.setPermissionMode).not.toHaveBeenCalled();
-  });
+    it('with accept writes the default and updates the new-conversation default', async () => {
+      const setDefaultPermissionMode = vi.fn(async () => {});
+      const h = brokerWithOffer(setDefaultPermissionMode);
+      h.dispatch({ type: 'default_mode_offer_response', channelId: 'ch-1', mode: 'bypassPermissions', accept: true });
+      await vi.waitFor(() => expect(setDefaultPermissionMode).toHaveBeenCalledWith('bypassPermissions'));
+      await vi.waitFor(() => expect(h.viewManager.setPermissionMode).toHaveBeenCalledWith('bypassPermissions'));
+      await vi.waitFor(() => expect(h.viewManager.broadcastSessionStates).toHaveBeenCalled());
+      expect(h.viewManager.broadcastSessionStates.mock.invocationCallOrder[0]).toBeGreaterThan(
+        h.viewManager.setPermissionMode.mock.invocationCallOrder[0]!,
+      );
+    });
 
-  it('default_mode_offer_response reports a rejected write instead of crashing', async () => {
-    const setDefaultPermissionMode = vi.fn(async () => { throw new Error('read-only'); });
-    const h = createIpcTestHarness();
-    new MessageBroker(
-      h.processManager, h.sessionManager, h.diffManager, h.viewManager,
-      h.channelRouter, h.webview, h.logger, { setDefaultPermissionMode },
-    );
-    h.dispatch({ type: 'default_mode_offer_response', channelId: 'ch-1', mode: 'auto', accept: true });
-    await vi.waitFor(() =>
-      expect(h.channelRouter.route).toHaveBeenCalledWith('ch-1', expect.objectContaining({ type: 'error' })),
-    );
-    expect(h.viewManager.setPermissionMode).not.toHaveBeenCalled();
+    it('with accept false writes nothing', async () => {
+      const setDefaultPermissionMode = vi.fn(async () => {});
+      const h = brokerWithOffer(setDefaultPermissionMode);
+      h.dispatch({ type: 'default_mode_offer_response', channelId: 'ch-1', mode: 'bypassPermissions', accept: false });
+      await Promise.resolve();
+      expect(setDefaultPermissionMode).not.toHaveBeenCalled();
+      expect(h.viewManager.setPermissionMode).not.toHaveBeenCalled();
+    });
+
+    it('ignores a mode that does not match the outstanding offer', async () => {
+      const setDefaultPermissionMode = vi.fn(async () => {});
+      const h = brokerWithOffer(setDefaultPermissionMode);
+      h.dispatch({ type: 'default_mode_offer_response', channelId: 'ch-1', mode: 'auto', accept: true });
+      await Promise.resolve();
+      expect(setDefaultPermissionMode).not.toHaveBeenCalled();
+    });
+
+    it('accepts only the first answer', async () => {
+      const setDefaultPermissionMode = vi.fn(async () => {});
+      const h = brokerWithOffer(setDefaultPermissionMode);
+      h.dispatch({ type: 'default_mode_offer_response', channelId: 'ch-1', mode: 'bypassPermissions', accept: false });
+      h.dispatch({ type: 'default_mode_offer_response', channelId: 'ch-1', mode: 'bypassPermissions', accept: true });
+      await Promise.resolve();
+      expect(setDefaultPermissionMode).not.toHaveBeenCalled();
+    });
+
+    it('ignores an answer after the channel closed', async () => {
+      const setDefaultPermissionMode = vi.fn(async () => {});
+      const h = brokerWithOffer(setDefaultPermissionMode);
+      h.dispatch({ type: 'close_channel', channelId: 'ch-1' });
+      h.dispatch({ type: 'default_mode_offer_response', channelId: 'ch-1', mode: 'bypassPermissions', accept: true });
+      await Promise.resolve();
+      expect(setDefaultPermissionMode).not.toHaveBeenCalled();
+    });
+
+    it('ignores an answer when no offer was made', async () => {
+      const setDefaultPermissionMode = vi.fn(async () => {});
+      const h = createIpcTestHarness();
+      new MessageBroker(
+        h.processManager, h.sessionManager, h.diffManager, h.viewManager,
+        h.channelRouter, h.webview, h.logger, { setDefaultPermissionMode },
+      );
+      h.dispatch({ type: 'default_mode_offer_response', channelId: 'ch-1', mode: 'bypassPermissions', accept: true });
+      await Promise.resolve();
+      expect(setDefaultPermissionMode).not.toHaveBeenCalled();
+    });
+
+    it('reports a rejected write instead of crashing', async () => {
+      const setDefaultPermissionMode = vi.fn(async () => { throw new Error('read-only'); });
+      const h = brokerWithOffer(setDefaultPermissionMode);
+      h.dispatch({ type: 'default_mode_offer_response', channelId: 'ch-1', mode: 'bypassPermissions', accept: true });
+      await vi.waitFor(() =>
+        expect(h.channelRouter.route).toHaveBeenCalledWith('ch-1', expect.objectContaining({ type: 'error' })),
+      );
+      expect(h.viewManager.setPermissionMode).not.toHaveBeenCalled();
+    });
   });
 
   it('a system event carrying permissionMode is adopted', () => {

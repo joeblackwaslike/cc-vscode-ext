@@ -124,12 +124,9 @@ export class ExtensionSettings {
   async setDefaultPermissionMode(mode: PermissionMode): Promise<void> {
     const cfg = vscode.workspace.getConfiguration('clawdCode');
     const inspected = cfg.inspect<string>('defaultPermissionMode');
-    let target = vscode.ConfigurationTarget.Global;
-    if (inspected?.workspaceFolderValue !== undefined) {
-      target = vscode.ConfigurationTarget.WorkspaceFolder;
-    } else if (inspected?.workspaceValue !== undefined) {
-      target = vscode.ConfigurationTarget.Workspace;
-    }
+    const target = inspected?.workspaceValue !== undefined
+      ? vscode.ConfigurationTarget.Workspace
+      : vscode.ConfigurationTarget.Global;
     await cfg.update('defaultPermissionMode', mode, target);
   }
 
