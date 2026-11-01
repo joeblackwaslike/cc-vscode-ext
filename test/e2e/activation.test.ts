@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { closeVSCode, launchVSCode } from './helpers/launch';
-import { commandExists, openCommandPalette } from './helpers/panel';
+import { openCommandPalette } from './helpers/panel';
 
 const CLAUDE_COMMANDS_PREFIX = 'Clawd Code:';
 const MIN_CLAUDE_COMMANDS = 5;
