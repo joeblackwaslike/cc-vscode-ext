@@ -31,7 +31,7 @@ Aliases for `claude-vscode.*` were last checked at 2.1.181. Re-check against 2.1
 | `preferredLocation`, `lockEditorGroups`, `focusView` | missing | 0 |
 | `archiveInactiveSessions`, `continueAfterReload` | missing | 6 |
 | `claudeProcessWrapper`, `usePythonEnvironment`, `disableLoginPrompt` | missing | 6 |
-| `allowDangerouslySkipPermissions` | missing | 6 |
+| `allowDangerouslySkipPermissions` (launches the CLI with `--allow-dangerously-skip-permissions`) | have | |
 
 Semantics worth copying: the open file is attached when `attachOpenFile` is on, or when `attachSelection` is on and text is selected. Alt+K still adds a selection as an @-mention when `attachSelection` is off. `initialPermissionMode` accepts `manual` as an alias for `default`, and the extension also reads `~/.claude/settings.json` (v2.1.283+).
 
@@ -40,6 +40,7 @@ Deliberate divergences:
 - `clawdCode.attachOpenFile=false` removes the automatic open-file attachment entirely, including the file name shown in the footer.
 - `clawdCode.exitPlanModeFallback` sets the mode behind the plan approval button. Upstream has no documented setting for this.
 - `clawdCode.offerDefaultModeAfterPlan` picks which mode the "set as my default" card offers (any permission mode, or `off` to hide the card).
+- `clawdCode.exitPlanModeFallback`, `clawdCode.offerDefaultModeAfterPlan` and `clawdCode.allowDangerouslySkipPermissions` are implemented. A live run against the real CLI (`test/unit/process/plan-approval.acceptance.test.ts`, `CLAUDE_ACCEPTANCE=1`) showed that approving ExitPlanMode with `bypassPermissions` or `acceptEdits` changes the session mode: Write and Bash ran with no further permission request under bypass, and under `acceptEdits` Write ran unprompted while Bash still asked. The CLI emits no mode event after the update, so the permission behavior is the observable.
 
 ## Keybindings
 
@@ -66,7 +67,7 @@ Status: missing.
 | Sidebar, secondary sidebar, panel and editor tabs, multi-tab | have | |
 | Sessions list, resume, history, groups storage | have | |
 | Permission dock, permission-mode picker, model picker, effort levels | have | |
-| Plan approval card (auto, manual, keep planning, feedback) | have, mode not configurable | 0 |
+| Plan approval card (auto, manual, keep planning, feedback); the approve button follows `clawdCode.exitPlanModeFallback` | have | |
 | AskUserQuestion | have | |
 | Native diff, accept and reject | have | |
 | Focus view, context ring | have | |
@@ -78,14 +79,14 @@ Status: missing.
 | Per-hunk accept and reject | missing | 4 |
 | Pending and done tab icons | missing | 4 |
 | API-key login via `ANTHROPIC_API_KEY`; Bedrock, Vertex, Foundry via `~/.claude/settings.json` | partial | 6 |
-| Bypass mode (only offered when `allowDangerouslySkipPermissions` is on) | missing | 6 |
+| Bypass mode (only offered when `allowDangerouslySkipPermissions` is on) | have | |
 
 ## Found in the changelog (approved, assigned to phases)
 
 | Feature | Phase |
 |---|---|
 | Plan opens as a Markdown document with inline comments; `/plan`, `/plan <task>`, `/plan open` (2.1.280+) | 0 |
-| Post-approval card "Yes, set auto mode as my default", with the offered mode configurable by `clawdCode.offerDefaultModeAfterPlan` (any permission mode, or `off`) | 0 |
+| Post-approval card "Yes, set auto mode as my default", with the offered mode configurable by `clawdCode.offerDefaultModeAfterPlan` (any permission mode, or `off`): done | 0 |
 | Option previews on question cards | 2 |
 | LaTeX and syntax-colored code blocks | 2 |
 | Chat row for files Claude sends you | 2 |
