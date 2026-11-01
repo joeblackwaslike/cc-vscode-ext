@@ -148,7 +148,7 @@ export function activate(context: vscode.ExtensionContext): void {
     log: (m) => logger.warn(m),
     getApproveMode: () => settings.getExitPlanApproveMode(),
     getOfferMode: () => settings.getOfferDefaultMode(),
-    getResolvedDefault: () => settings.getDefaultPermissionMode(),
+    getResolvedDefault: () => viewManager.getPermissionMode(),
     reportError: (c, message) => channelRouter.route(c, { type: 'error', message }),
   });
   context.subscriptions.push({

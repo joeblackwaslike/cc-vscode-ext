@@ -186,7 +186,7 @@ describe('PermissionRequests', () => {
       updatedPermissions: [{ type: 'setMode', mode, destination: 'session' }] as PermissionDecision extends { updatedPermissions?: infer U } ? U : never,
     });
     const offers = () => broadcast.mock.calls.map((c) => c[0]).filter((m) => m.type === 'default_mode_offer');
-    const make = (offer: 'off' | 'acceptEdits' | 'auto' | 'bypassPermissions', resolved: 'plan' | 'acceptEdits', approveMode: 'acceptEdits' | 'bypassPermissions' | 'default' = 'acceptEdits') => {
+    const make = (offer: 'off' | 'acceptEdits' | 'auto' | 'bypassPermissions', resolved: 'plan' | 'acceptEdits' | 'auto', approveMode: 'acceptEdits' | 'bypassPermissions' | 'default' = 'acceptEdits') => {
       const p = new PermissionRequests({
         write,
         broadcast,
@@ -203,6 +203,18 @@ describe('PermissionRequests', () => {
       const p = make('acceptEdits', 'plan');
       p.respond('c', exitPlan.request_id, approve('acceptEdits'));
       expect(offers()).toEqual([{ type: 'default_mode_offer', channelId: 'c', mode: 'acceptEdits', currentDefault: 'plan' }]);
+    });
+
+    it('offers auto with currentDefault plan when the effective default is plan', () => {
+      const p = make('auto', 'plan', 'default');
+      p.respond('c', exitPlan.request_id, approve('default'));
+      expect(offers()).toEqual([{ type: 'default_mode_offer', channelId: 'c', mode: 'auto', currentDefault: 'plan' }]);
+    });
+
+    it('suppresses the auto offer when the effective default is already auto', () => {
+      const p = make('auto', 'auto', 'default');
+      p.respond('c', exitPlan.request_id, approve('default'));
+      expect(offers()).toEqual([]);
     });
 
     it('offers exactly once for the bypass/bypass/plan settings', () => {

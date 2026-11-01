@@ -85,6 +85,11 @@ export class ViewManager {
     this.lastSessionId = id;
   }
 
+  /** The permission mode new conversations launch with. */
+  getPermissionMode(): PermissionMode {
+    return this.defaultPermissionMode;
+  }
+
   setPermissionMode(mode: PermissionMode): void {
     this.defaultPermissionMode = mode;
   }
