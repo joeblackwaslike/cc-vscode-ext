@@ -1,5 +1,8 @@
+import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
+import type { PermissionMode } from '../lib/ipc';
+import { SessionContext, useSessionReducer } from '../store/sessionStore';
 
 const postMessage = vi.fn();
 vi.mock('../lib/ipc', () => ({ postMessage: (m: unknown) => postMessage(m) }));
@@ -78,6 +81,48 @@ describe('ChatInput selectors — live + optimistic', () => {
     expect(toggle.className).toContain('cc-tbtn--active');
     // And the live control message is posted so the host's ViewManager converges every webview.
     expect(postMessage).toHaveBeenCalledWith({ type: 'toggle_focus_view' });
+  });
+});
+
+describe('ChatInput mode picker — per-channel mode', () => {
+  function ModeHarness({ channelMode }: { channelMode?: PermissionMode }) {
+    const ext = useExtensionReducer();
+    const sess = useSessionReducer();
+    React.useEffect(() => {
+      ext.dispatch({ type: 'SET_DEFAULTS', defaults: { defaultPermissionMode: 'plan' } });
+      if (channelMode) sess.handleMessage({ type: 'channel_mode', channelId: 'ch1', mode: channelMode });
+    }, []);
+    return (
+      <ExtensionContext.Provider value={ext}>
+        <SessionContext.Provider value={sess}>
+          <span data-testid="default-mode">{ext.state.defaultPermissionMode}</span>
+          <ChatInput channelId="ch1" running={false} onSend={() => {}} onInterrupt={() => {}} onCompact={() => {}} />
+        </SessionContext.Provider>
+      </ExtensionContext.Provider>
+    );
+  }
+
+  test("shows the channel's own mode instead of the new-conversation default", () => {
+    render(<ModeHarness channelMode="bypassPermissions" />);
+    expect(screen.getByTestId('mode-selector')).toHaveTextContent('Bypass permissions');
+    expect(screen.getByTestId('default-mode')).toHaveTextContent('plan');
+  });
+
+  test('falls back to the default when the channel has no reported mode', () => {
+    render(<ModeHarness />);
+    expect(screen.getByTestId('mode-selector')).toHaveTextContent('Plan mode');
+  });
+
+  test('choosing a mode updates the picker and the default and posts set_permission_mode', () => {
+    postMessage.mockClear();
+    render(<ModeHarness channelMode="bypassPermissions" />);
+
+    fireEvent.click(screen.getByTestId('mode-selector'));
+    fireEvent.click(screen.getByRole('menuitem', { name: /Accept edits/ }));
+
+    expect(screen.getByTestId('mode-selector')).toHaveTextContent('Accept edits');
+    expect(screen.getByTestId('default-mode')).toHaveTextContent('acceptEdits');
+    expect(postMessage).toHaveBeenCalledWith({ type: 'set_permission_mode', channelId: 'ch1', mode: 'acceptEdits' });
   });
 });
 

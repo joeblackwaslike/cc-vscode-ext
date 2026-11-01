@@ -1110,6 +1110,44 @@ describe('permission prompt routing', () => {
     expect(sessionRelayManager.updateLaunchOptions).toHaveBeenCalledWith('ch-1', { permissionMode: 'bypassPermissions' });
   });
 
+  describe('channel mode announcements', () => {
+    const channelModes = (h: ReturnType<typeof createIpcTestHarness>) =>
+      h.viewManager.broadcastMessage.mock.calls
+        .map(([m]) => m as { type: string })
+        .filter((m) => m.type === 'channel_mode');
+
+    it('launch announces the mode the channel starts in', () => {
+      const { h } = makeBrokerWithPermissions();
+      h.dispatch({ type: 'launch_claude', channelId: 'ch-1', permissionMode: 'plan' });
+      expect(channelModes(h)).toEqual([{ type: 'channel_mode', channelId: 'ch-1', mode: 'plan' }]);
+    });
+
+    it('approving a plan into bypass announces bypass for that channel only', () => {
+      const { h } = makeBrokerWithPermissions(undefined, { fallback: () => 'bypassPermissions' });
+      h.dispatch({ type: 'launch_claude', channelId: 'ch-1', permissionMode: 'plan' });
+      const routed = h.channelRouter.register.mock.calls[0][1] as (event: unknown) => void;
+      routed(canUseTool('req-5', 'ExitPlanMode'));
+      h.viewManager.broadcastMessage.mockClear();
+      h.dispatch({
+        type: 'permission_response', channelId: 'ch-1', requestId: 'req-5',
+        decision: {
+          behavior: 'allow', updatedInput: {},
+          updatedPermissions: [{ type: 'setMode', mode: 'bypassPermissions', destination: 'session' }],
+        },
+      });
+      expect(channelModes(h)).toEqual([{ type: 'channel_mode', channelId: 'ch-1', mode: 'bypassPermissions' }]);
+      expect(h.viewManager.setPermissionMode).not.toHaveBeenCalledWith('bypassPermissions');
+    });
+
+    it('a CLI mode report announces the channel mode', () => {
+      const { h } = makeBrokerWithPermissions();
+      const routed = launch(h);
+      h.viewManager.broadcastMessage.mockClear();
+      routed({ ...fixtures.statusEvent, permissionMode: 'acceptEdits' });
+      expect(channelModes(h)).toEqual([{ type: 'channel_mode', channelId: 'ch-1', mode: 'acceptEdits' }]);
+    });
+  });
+
   it('a CLI status echo of the approved mode does not change the default either', () => {
     const { h } = makeBrokerWithPermissions(undefined, { fallback: () => 'bypassPermissions' });
     const routed = launch(h);

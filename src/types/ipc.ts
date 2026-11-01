@@ -631,6 +631,13 @@ export interface DefaultModeOfferMessage {
   currentDefault: PermissionMode;
 }
 
+/** The permission mode one channel is running in, distinct from the new-conversation default. */
+export interface ChannelModeMessage {
+  type: 'channel_mode';
+  channelId: string;
+  mode: PermissionMode;
+}
+
 export interface PermissionRequestMessage { type: 'permission_request'; request: PermissionRequest }
 export interface PermissionResolvedMessage {
   type: 'permission_resolved';
@@ -680,4 +687,5 @@ export type ToWebviewMessage =
   | PermissionRequestMessage
   | PermissionResolvedMessage
   | PermissionCancelledMessage
-  | DefaultModeOfferMessage;
+  | DefaultModeOfferMessage
+  | ChannelModeMessage;

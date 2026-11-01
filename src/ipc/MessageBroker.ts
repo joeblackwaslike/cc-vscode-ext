@@ -232,10 +232,11 @@ export class MessageBroker {
     this.noteChannelMode(channelId, mode);
   }
 
-  /** Per-channel half of a mode change: relay launch options and the permission coordinator. */
+  /** Per-channel half of a mode change: relay launch options, the permission coordinator and the channel's picker. */
   private noteChannelMode(channelId: string, mode: PermissionMode): void {
     this.sessionRelayManager.updateLaunchOptions(channelId, { permissionMode: mode });
     this.permissionRequests.noteMode(channelId, mode);
+    this.viewManager.broadcastMessage({ type: 'channel_mode', channelId, mode });
   }
 
   /** Fire a control request, swallowing failures into the log (live set_*). */
@@ -606,6 +607,9 @@ export class MessageBroker {
     this.processManager.beginLaunch(channelId);
     this.sessionRelayManager.registerLaunch(channelId, options, msg.cwd);
     this.permissionRequests.noteMode(channelId, options.permissionMode ?? 'default');
+    if (options.permissionMode !== undefined) {
+      this.viewManager.broadcastMessage({ type: 'channel_mode', channelId, mode: options.permissionMode });
+    }
     this.permissionRequests.noteBypassAllowed(channelId, allowBypass);
     if (options.resume) {
       this.startHandoffWatcher(channelId, options.resume);

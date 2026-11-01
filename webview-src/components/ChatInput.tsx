@@ -4,6 +4,7 @@ import { SlashCommandDropdown } from './SlashCommandDropdown';
 import { ComposerMenu, type MenuOption } from './ComposerMenu';
 import { ContextUsageRing } from './ContextUsageRing';
 import { ExtensionContext } from '../store/extensionStore';
+import { SessionContext } from '../store/sessionStore';
 import { postMessage } from '../lib/ipc';
 import type { PermissionMode, ThinkingLevel, ContextUsage } from '../lib/ipc';
 
@@ -58,6 +59,7 @@ const labelFor = (options: MenuOption[], value: string): string =>
 
 export function ChatInput({ channelId, onSend, onInterrupt, onCompact, onRefreshUsage, running, usage, disabled }: Props) {
   const ext = useContext(ExtensionContext);
+  const sess = useContext(SessionContext);
   const state = ext?.state;
   const [text, setText] = useState('');
   const [mention, setMention] = useState<string | null>(null);
@@ -146,7 +148,7 @@ export function ChatInput({ channelId, onSend, onInterrupt, onCompact, onRefresh
     [insert],
   );
 
-  const mode = (state?.defaultPermissionMode ?? 'default') as PermissionMode;
+  const mode = sess?.state.channels[channelId]?.mode ?? state?.defaultPermissionMode ?? 'default';
   const effort = (state?.thinkingLevel ?? 'medium') as ThinkingLevel;
   const model = state?.model ?? '';
   const focusViewEnabled = state?.focusViewEnabled ?? false;
@@ -157,13 +159,15 @@ export function ChatInput({ channelId, onSend, onInterrupt, onCompact, onRefresh
   ];
 
   const dispatch = ext?.dispatch;
+  const sessDispatch = sess?.dispatch;
 
   const setMode = useCallback(
     (value: string) => {
       dispatch?.({ type: 'SET_DEFAULTS', defaults: { defaultPermissionMode: value as PermissionMode } });
+      sessDispatch?.({ type: 'SET_CHANNEL_MODE', channelId, mode: value as PermissionMode });
       postMessage({ type: 'set_permission_mode', channelId, mode: value as PermissionMode });
     },
-    [channelId, dispatch],
+    [channelId, dispatch, sessDispatch],
   );
   const setEffort = useCallback(
     (value: string) => {

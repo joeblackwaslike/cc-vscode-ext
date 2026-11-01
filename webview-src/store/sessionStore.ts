@@ -15,6 +15,8 @@ export interface ChannelState {
   events: ClaudeStreamEvent[];
   running: boolean;
   usage?: ContextUsage;
+  /** Mode this channel's session runs in; the picker falls back to the default when unset. */
+  mode?: PermissionMode;
 }
 
 export interface ChannelPermissions {
@@ -58,6 +60,7 @@ export type Action =
   | { type: 'STREAM_EVENT'; channelId: string; event: ClaudeStreamEvent }
   | { type: 'SET_RUNNING'; channelId: string; running: boolean }
   | { type: 'SET_USAGE'; channelId: string; usage: ContextUsage }
+  | { type: 'SET_CHANNEL_MODE'; channelId: string; mode: PermissionMode }
   | { type: 'CLEAR_CHANNEL'; channelId: string }
   | { type: 'PERMISSION_ADDED'; request: PermissionRequest }
   | { type: 'DEFAULT_MODE_OFFERED'; channelId: string; mode: PermissionMode; currentDefault: PermissionMode }
@@ -102,6 +105,16 @@ function reducer(state: SessionStoreState, action: Action): SessionStoreState {
         channels: {
           ...state.channels,
           [action.channelId]: { ...prev, usage: action.usage },
+        },
+      };
+    }
+    case 'SET_CHANNEL_MODE': {
+      const prev = state.channels[action.channelId] ?? { events: [], running: false };
+      return {
+        ...state,
+        channels: {
+          ...state.channels,
+          [action.channelId]: { ...prev, mode: action.mode },
         },
       };
     }
@@ -208,6 +221,10 @@ export function useSessionReducer() {
       }
       if (msg.type === 'context_usage') {
         dispatch({ type: 'SET_USAGE', channelId: msg.channelId, usage: msg.usage });
+        return;
+      }
+      if (msg.type === 'channel_mode') {
+        dispatch({ type: 'SET_CHANNEL_MODE', channelId: msg.channelId, mode: msg.mode });
         return;
       }
       if (msg.type === 'handoff_prompt') {
