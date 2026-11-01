@@ -1,1 +1,2 @@
-command -v bd >/dev/null 2>&1 && bd hooks run post-checkout "$@" || true
+# Delegate to the tracked beads hook so its timeout and exit-code handling stay intact.
+[ ! -f .beads/hooks/post-checkout ] || sh .beads/hooks/post-checkout "$@"
