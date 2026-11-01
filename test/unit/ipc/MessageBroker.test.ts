@@ -13,7 +13,7 @@ vi.mock('vscode', () => ({
 }));
 import { createIpcTestHarness, createMockServices } from '../../helpers/ipcTestHarness';
 import { MessageBroker } from '../../../src/ipc/MessageBroker';
-import { PermissionRequests } from '../../../src/process/PermissionRequests';
+import { PermissionRequests, BYPASS_DOWNGRADE_NOTICE } from '../../../src/process/PermissionRequests';
 import type { PermissionMode } from '../../../src/process/ProcessArgs';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -1151,6 +1151,19 @@ describe('permission prompt routing', () => {
       const { h } = twoTabs(() => 'bypassPermissions', true);
       h.dispatch({ type: 'set_permission_mode', channelId: 'a', mode: 'auto' });
       expect(sentModes(h, 'a')).toEqual(['bypassPermissions']);
+    });
+
+    it('logs and notifies the channel when the picker downgrades a bypass fallback', () => {
+      const { h } = twoTabs(() => 'bypassPermissions');
+      h.dispatch({ type: 'set_permission_mode', channelId: 'a', mode: 'auto' });
+      expect(h.logger.warn).toHaveBeenCalledWith(expect.stringMatching(/bypass/i));
+      expect(h.channelRouter.route).toHaveBeenCalledWith('a', { type: 'error', message: BYPASS_DOWNGRADE_NOTICE });
+    });
+
+    it('sends no downgrade notice when the channel was launched with the flag', () => {
+      const { h } = twoTabs(() => 'bypassPermissions', true);
+      h.dispatch({ type: 'set_permission_mode', channelId: 'a', mode: 'auto' });
+      expect(h.channelRouter.route).not.toHaveBeenCalledWith('a', expect.objectContaining({ type: 'error' }));
     });
 
     it("tab B reporting its own unchanged mode does not overwrite the default set by tab A's report", () => {

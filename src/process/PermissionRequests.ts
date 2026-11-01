@@ -60,6 +60,10 @@ interface ChannelMode {
   beforePlan: PermissionMode | undefined;
 }
 
+/** Shown when a configured bypass plan-exit fallback is downgraded because the session lacks the skip-permissions flag. */
+export const BYPASS_DOWNGRADE_NOTICE =
+  'Bypass permissions is unavailable because this session was launched without the dangerous-skip flag; using Accept edits.';
+
 export class PermissionRequests {
   private readonly pending = new Map<string, PermissionRequest>();
   private readonly modes = new Map<string, ChannelMode>();
@@ -83,7 +87,7 @@ export class PermissionRequests {
       priorMode: request.tool_name === 'ExitPlanMode' ? this.modes.get(channelId)?.beforePlan : undefined,
       approveMode: downgraded ? 'acceptEdits' : configured,
       approveNotice: downgraded
-        ? 'Bypass permissions is unavailable because this session was launched without the dangerous-skip flag; using auto-accept.'
+        ? BYPASS_DOWNGRADE_NOTICE
         : undefined,
     };
     this.pending.set(req.requestId, req);

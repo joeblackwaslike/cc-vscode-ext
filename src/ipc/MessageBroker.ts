@@ -20,7 +20,7 @@ import type { ILogger } from '../process/ClaudeProcessManager';
 import { SessionRelayManager } from '../relay/SessionRelayManager';
 import { HandoffWatcher } from '../process/HandoffWatcher';
 import { ClaudeProjectReader } from '../sessions/ClaudeProjectReader';
-import { PermissionRequests, isCanUseToolRequest } from '../process/PermissionRequests';
+import { PermissionRequests, BYPASS_DOWNGRADE_NOTICE, isCanUseToolRequest } from '../process/PermissionRequests';
 
 // ─── Dependency interfaces ─────────────────────────────────────────────────────
 
@@ -324,6 +324,8 @@ export class MessageBroker {
             targetMode = this.services.getExitPlanModeFallback();
             if (targetMode === 'bypassPermissions' && !this.permissionRequests.bypassAllowed(msg.channelId)) {
               targetMode = 'acceptEdits';
+              this.logger.warn(`[permissions] bypass plan-exit fallback downgraded to acceptEdits on ${msg.channelId}: session launched without the skip-permissions flag`);
+              this.channelRouter.route(msg.channelId, { type: 'error', message: BYPASS_DOWNGRADE_NOTICE });
             }
           }
           this.adoptPermissionMode(msg.channelId, targetMode);
