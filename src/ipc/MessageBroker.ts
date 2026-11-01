@@ -175,8 +175,6 @@ export class MessageBroker {
   private readonly launchesAwaitingReplay = new Set<string>();
   private readonly cancelledLaunches = new Set<string>();
   private readonly handoffWatchers = new Map<string, HandoffWatcher>();
-  /** Tracks the last permission mode applied, used to detect plan-mode exits. */
-  private currentPermissionMode: PermissionMode = 'auto';
   private readonly commandDiscovery = new CommandDiscovery();
   private readonly projectReader = new ClaudeProjectReader();
 
@@ -227,7 +225,6 @@ export class MessageBroker {
    * `updateDefault` false keeps the mode new conversations launch with unchanged.
    * Sends no control request. */
   private adoptPermissionMode(channelId: string, mode: PermissionMode, updateDefault = true): void {
-    this.currentPermissionMode = mode;
     if (updateDefault) this.viewManager.setPermissionMode(mode);
     this.viewManager.broadcastSessionStates();
     this.noteChannelMode(channelId, mode);
@@ -318,11 +315,14 @@ export class MessageBroker {
         // ─── Live session controls (applied to the running process now, and
         //     stored as defaults for subsequent launches) ──────────────────
         case 'set_permission_mode': {
-          const prev = this.currentPermissionMode;
+          const prev = this.permissionRequests.modeOf(msg.channelId);
           let targetMode = msg.mode;
           // When the user explicitly exits plan mode, apply the configured fallback.
           if (msg.mode !== 'plan' && prev === 'plan' && this.services.getExitPlanModeFallback) {
             targetMode = this.services.getExitPlanModeFallback();
+            if (targetMode === 'bypassPermissions' && !this.permissionRequests.bypassAllowed(msg.channelId)) {
+              targetMode = 'acceptEdits';
+            }
           }
           this.adoptPermissionMode(msg.channelId, targetMode);
           this.sendControl(msg.channelId, 'set_permission_mode', {
@@ -664,10 +664,7 @@ export class MessageBroker {
       if (typed.type === 'system') {
         const mode = (event as { permissionMode?: unknown }).permissionMode;
         if (typeof mode === 'string') {
-          // The picker mode is broker-wide, but relay options and the plan-exit
-          // prior mode are per channel, so a channel's own transition is recorded
-          // even when another channel already moved the broker-wide value.
-          if (mode !== this.currentPermissionMode) this.adoptPermissionMode(channelId, mode as PermissionMode);
+          if (mode !== this.permissionRequests.modeOf(channelId)) this.adoptPermissionMode(channelId, mode as PermissionMode);
           else this.noteChannelMode(channelId, mode as PermissionMode);
         }
       }

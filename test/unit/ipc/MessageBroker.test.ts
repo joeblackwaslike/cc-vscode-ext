@@ -908,7 +908,7 @@ describe('permission prompt routing', () => {
 
   function makeBrokerWithPermissions(
     h = createIpcTestHarness(),
-    opts: { isRelaying?: boolean; fallback?: () => PermissionMode } = {},
+    opts: { isRelaying?: boolean; fallback?: () => PermissionMode; allowBypass?: boolean } = {},
   ) {
     const sessionRelayManager = {
       registerLaunch: vi.fn(),
@@ -929,7 +929,10 @@ describe('permission prompt routing', () => {
     const broker = new MessageBroker(
       h.processManager, h.sessionManager, h.diffManager, h.viewManager,
       h.channelRouter, h.webview, h.logger,
-      { sessionRelayManager, permissionRequests, getExitPlanModeFallback: opts.fallback },
+      {
+        sessionRelayManager, permissionRequests, getExitPlanModeFallback: opts.fallback,
+        shouldAllowBypass: () => opts.allowBypass ?? false,
+      },
     );
     return { h, broker, sessionRelayManager, permissionRequests };
   }
@@ -1108,6 +1111,54 @@ describe('permission prompt routing', () => {
     });
     expect(h.viewManager.setPermissionMode).not.toHaveBeenCalled();
     expect(sessionRelayManager.updateLaunchOptions).toHaveBeenCalledWith('ch-1', { permissionMode: 'bypassPermissions' });
+  });
+
+  describe('per-channel plan exit through the mode picker', () => {
+    const sentModes = (h: ReturnType<typeof createIpcTestHarness>, channelId: string) =>
+      h.processManager.writeToChannel.mock.calls
+        .filter(([c, data]) => c === channelId && (data as { request?: { subtype?: string } }).request?.subtype === 'set_permission_mode')
+        .map(([, data]) => (data as { request: { mode: string } }).request.mode);
+
+    function twoTabs(fallback: () => PermissionMode, allowBypass = false) {
+      const ctx = makeBrokerWithPermissions(undefined, { fallback, allowBypass });
+      ctx.h.dispatch({ type: 'launch_claude', channelId: 'a', permissionMode: 'plan' });
+      ctx.h.dispatch({ type: 'launch_claude', channelId: 'b', permissionMode: 'auto' });
+      const routedA = ctx.h.channelRouter.register.mock.calls[0][1] as (event: unknown) => void;
+      const routedB = ctx.h.channelRouter.register.mock.calls[1][1] as (event: unknown) => void;
+      routedA({ ...fixtures.statusEvent, permissionMode: 'plan' });
+      return { ...ctx, routedA, routedB };
+    }
+
+    it('a picker change in tab B does not apply the fallback while tab A is in plan', () => {
+      const { h } = twoTabs(() => 'acceptEdits');
+      h.dispatch({ type: 'set_permission_mode', channelId: 'b', mode: 'default' });
+      expect(sentModes(h, 'b')).toEqual(['default']);
+    });
+
+    it('leaving plan in tab A applies the fallback', () => {
+      const { h } = twoTabs(() => 'acceptEdits');
+      h.dispatch({ type: 'set_permission_mode', channelId: 'a', mode: 'auto' });
+      expect(sentModes(h, 'a')).toEqual(['acceptEdits']);
+    });
+
+    it('downgrades a bypass fallback to acceptEdits when the channel was launched without the flag', () => {
+      const { h } = twoTabs(() => 'bypassPermissions');
+      h.dispatch({ type: 'set_permission_mode', channelId: 'a', mode: 'auto' });
+      expect(sentModes(h, 'a')).toEqual(['acceptEdits']);
+    });
+
+    it('keeps a bypass fallback when the channel was launched with the flag', () => {
+      const { h } = twoTabs(() => 'bypassPermissions', true);
+      h.dispatch({ type: 'set_permission_mode', channelId: 'a', mode: 'auto' });
+      expect(sentModes(h, 'a')).toEqual(['bypassPermissions']);
+    });
+
+    it("tab B reporting its own unchanged mode does not overwrite the default set by tab A's report", () => {
+      const { h, routedB } = twoTabs(() => 'acceptEdits');
+      h.viewManager.setPermissionMode.mockClear();
+      routedB({ ...fixtures.statusEvent, permissionMode: 'auto' });
+      expect(h.viewManager.setPermissionMode).not.toHaveBeenCalled();
+    });
   });
 
   describe('channel mode announcements', () => {

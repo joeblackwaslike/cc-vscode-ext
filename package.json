@@ -133,7 +133,7 @@
               "Approving a plan switches to bypass-permissions mode, which skips all permission prompts."
             ],
             "default": "auto",
-            "description": "Permission mode that approving a plan switches to. 'bypassPermissions' skips all permission prompts."
+            "description": "Permission mode a plan exit switches to, both from the approve button on the plan card and when leaving plan mode through the mode picker. 'bypassPermissions' skips all permission prompts."
           },
           "clawdCode.offerDefaultModeAfterPlan": {
             "type": "string",

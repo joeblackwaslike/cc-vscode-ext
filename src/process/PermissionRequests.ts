@@ -174,6 +174,11 @@ export class PermissionRequests {
     this.modes.set(channelId, entry);
   }
 
+  /** The mode last noted for the channel, or undefined before its launch. */
+  modeOf(channelId: string): PermissionMode | undefined {
+    return this.modes.get(channelId)?.current;
+  }
+
   /** Records whether the channel's CLI was launched with the dangerous-skip flag. */
   noteBypassAllowed(channelId: string, allowed: boolean): void {
     this.bypassFlags.set(channelId, allowed);

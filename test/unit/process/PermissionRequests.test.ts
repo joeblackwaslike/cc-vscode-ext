@@ -262,6 +262,14 @@ describe('PermissionRequests', () => {
     expect(broadcast).not.toHaveBeenCalled();
   });
 
+  it('modeOf returns the last noted mode per channel', () => {
+    expect(perms.modeOf('a')).toBeUndefined();
+    perms.noteMode('a', 'plan');
+    perms.noteMode('b', 'auto');
+    expect(perms.modeOf('a')).toBe('plan');
+    expect(perms.modeOf('b')).toBe('auto');
+  });
+
   it('bypassAllowed reflects the last noteBypassAllowed', () => {
     expect(perms.bypassAllowed('ch-1')).toBe(false);
     perms.noteBypassAllowed('ch-1', true);
