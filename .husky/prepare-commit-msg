@@ -1,0 +1,2 @@
+# Delegate to the tracked beads hook so its timeout and exit-code handling stay intact.
+[ ! -f .beads/hooks/prepare-commit-msg ] || sh .beads/hooks/prepare-commit-msg "$@"

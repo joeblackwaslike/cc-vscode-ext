@@ -42,9 +42,8 @@ docs/**
 esbuild.config.js
 vite.config.ts
 tsconfig*.json
-eslint.config.js
-.eslintrc*
-.eslint*
+.oxlintrc.json
+.husky/**
 .prettier*
 .editorconfig
 .gitignore

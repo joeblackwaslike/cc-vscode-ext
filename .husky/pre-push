@@ -1,0 +1,20 @@
+# Fast local gate (~2s): the same lint + typecheck CI runs, before anything leaves the machine.
+set -e
+refs=$(cat)
+pnpm -s lint
+pnpm -s typecheck
+pnpm -s typecheck:webview
+
+[ ! -f .beads/hooks/pre-push ] || printf '%s\n' "$refs" | sh .beads/hooks/pre-push "$@" || exit $?
+
+# Pushing a v* release tag also installs the built extension into VS Code Insiders. The
+# marketplace publish happens in CI (publish-vscode.yml).
+printf '%s\n' "$refs" | while read -r _local_ref _local_sha remote_ref _remote_sha; do
+  case "$remote_ref" in
+    refs/tags/v*)
+      echo "Release tag ${remote_ref#refs/tags/} detected: installing into VS Code Insiders..."
+      pnpm install:insiders
+      break
+      ;;
+  esac
+done

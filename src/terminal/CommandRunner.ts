@@ -29,12 +29,12 @@ const SHELL_INTEGRATION_TIMEOUT_MS = 5000;
  * codes, and title-setting OSC sequences — which we don't want in the panel.
  */
 export function stripAnsi(text: string): string {
-  /* eslint-disable no-control-regex */
+  /* oxlint-disable no-control-regex */
   return text
     .replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '') // CSI ... final byte
     .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '') // OSC ... BEL/ST terminated
     .replace(/\x1b[@-Z\\-_]/g, ''); // lone two-byte escapes
-  /* eslint-enable no-control-regex */
+  /* oxlint-enable no-control-regex */
 }
 
 /**
