@@ -1084,13 +1084,47 @@ describe('permission prompt routing', () => {
         updatedPermissions: [{ type: 'setMode', mode: 'default', destination: 'session' }],
       },
     });
-    expect(h.viewManager.setPermissionMode).toHaveBeenLastCalledWith('default');
+    expect(h.viewManager.setPermissionMode).not.toHaveBeenCalledWith('default');
     expect(h.viewManager.setPermissionMode).not.toHaveBeenCalledWith('auto');
     const sentSetMode = h.processManager.writeToChannel.mock.calls.some(
       ([, data]) => (data as { request?: { subtype?: string } }).request?.subtype === 'set_permission_mode',
     );
     expect(sentSetMode).toBe(false);
     expect(sessionRelayManager.updateLaunchOptions).toHaveBeenCalledWith('ch-1', { permissionMode: 'default' });
+  });
+
+  it('approving a plan with bypassPermissions leaves the new-conversation default unchanged', () => {
+    const { h, sessionRelayManager } = makeBrokerWithPermissions(undefined, { fallback: () => 'bypassPermissions' });
+    const routed = launch(h);
+    routed({ ...fixtures.statusEvent, permissionMode: 'plan' });
+    routed(canUseTool('req-3', 'ExitPlanMode'));
+    h.viewManager.setPermissionMode.mockClear();
+    h.dispatch({
+      type: 'permission_response', channelId: 'ch-1', requestId: 'req-3',
+      decision: {
+        behavior: 'allow', updatedInput: {},
+        updatedPermissions: [{ type: 'setMode', mode: 'bypassPermissions', destination: 'session' }],
+      },
+    });
+    expect(h.viewManager.setPermissionMode).not.toHaveBeenCalled();
+    expect(sessionRelayManager.updateLaunchOptions).toHaveBeenCalledWith('ch-1', { permissionMode: 'bypassPermissions' });
+  });
+
+  it('a CLI status echo of the approved mode does not change the default either', () => {
+    const { h } = makeBrokerWithPermissions(undefined, { fallback: () => 'bypassPermissions' });
+    const routed = launch(h);
+    routed({ ...fixtures.statusEvent, permissionMode: 'plan' });
+    routed(canUseTool('req-4', 'ExitPlanMode'));
+    h.dispatch({
+      type: 'permission_response', channelId: 'ch-1', requestId: 'req-4',
+      decision: {
+        behavior: 'allow', updatedInput: {},
+        updatedPermissions: [{ type: 'setMode', mode: 'bypassPermissions', destination: 'session' }],
+      },
+    });
+    h.viewManager.setPermissionMode.mockClear();
+    routed({ ...fixtures.statusEvent, permissionMode: 'bypassPermissions' });
+    expect(h.viewManager.setPermissionMode).not.toHaveBeenCalled();
   });
 
   it('default_mode_offer_response with accept writes the default and updates the new-conversation default', async () => {

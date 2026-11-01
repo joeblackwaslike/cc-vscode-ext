@@ -223,10 +223,11 @@ export class MessageBroker {
 
   /** Record a mode change that already happened (or is being requested) and
    * propagate it to the views, relay launch options and permission coordinator.
+   * `updateDefault` false keeps the mode new conversations launch with unchanged.
    * Sends no control request. */
-  private adoptPermissionMode(channelId: string, mode: PermissionMode): void {
+  private adoptPermissionMode(channelId: string, mode: PermissionMode, updateDefault = true): void {
     this.currentPermissionMode = mode;
-    this.viewManager.setPermissionMode(mode);
+    if (updateDefault) this.viewManager.setPermissionMode(mode);
     this.viewManager.broadcastSessionStates();
     this.noteChannelMode(channelId, mode);
   }
@@ -295,7 +296,7 @@ export class MessageBroker {
             const setMode = msg.decision.updatedPermissions?.find(
               (u) => u.type === 'setMode' && u.destination === 'session' && u.mode !== undefined,
             );
-            if (setMode?.mode) this.adoptPermissionMode(msg.channelId, setMode.mode);
+            if (setMode?.mode) this.adoptPermissionMode(msg.channelId, setMode.mode, false);
           }
           return;
         }
