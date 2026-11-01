@@ -168,6 +168,14 @@ describe('PermissionRequests', () => {
     expect(broadcast).not.toHaveBeenCalled();
   });
 
+  it('bypassAllowed reflects the last noteBypassAllowed', () => {
+    expect(perms.bypassAllowed('ch-1')).toBe(false);
+    perms.noteBypassAllowed('ch-1', true);
+    expect(perms.bypassAllowed('ch-1')).toBe(true);
+    perms.noteBypassAllowed('ch-1', false);
+    expect(perms.bypassAllowed('ch-1')).toBe(false);
+  });
+
   it('isCanUseToolRequest rejects control_response and other subtypes', () => {
     expect(isCanUseToolRequest(ask)).toBe(true);
     expect(isCanUseToolRequest({ type: 'control_response', response: {} })).toBe(false);

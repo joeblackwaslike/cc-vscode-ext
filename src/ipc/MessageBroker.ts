@@ -141,6 +141,8 @@ export interface MessageBrokerServices {
   workspacePath?: string;
   /** Returns the mode to switch to when the user exits plan mode. */
   getExitPlanModeFallback?: () => PermissionMode;
+  /** Whether to launch the CLI with the dangerous-skip flag so bypass can be selected mid-session. */
+  shouldAllowBypass?: () => boolean;
 }
 
 /**
@@ -571,7 +573,9 @@ export class MessageBroker {
     msg: Extract<FromWebviewMessage, { type: 'launch_claude' }>
   ): Promise<void> {
     const { channelId } = msg;
+    const allowBypass = this.services.shouldAllowBypass?.() === true;
     const options: ProcessLaunchOptions = {
+      ...(allowBypass ? { allowDangerouslySkipPermissions: true } : {}),
       ...(msg.resume !== undefined ? { resume: msg.resume } : {}),
       ...(msg.permissionMode !== undefined ? { permissionMode: msg.permissionMode } : {}),
       ...(msg.thinkingLevel !== undefined ? { effort: msg.thinkingLevel } : {}),
@@ -583,6 +587,7 @@ export class MessageBroker {
     this.processManager.beginLaunch(channelId);
     this.sessionRelayManager.registerLaunch(channelId, options, msg.cwd);
     this.permissionRequests.noteMode(channelId, options.permissionMode ?? 'default');
+    this.permissionRequests.noteBypassAllowed(channelId, allowBypass);
     if (options.resume) {
       this.startHandoffWatcher(channelId, options.resume);
       this.launchesAwaitingReplay.add(channelId);

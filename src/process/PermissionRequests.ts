@@ -56,6 +56,7 @@ interface ChannelMode {
 export class PermissionRequests {
   private readonly pending = new Map<string, PermissionRequest>();
   private readonly modes = new Map<string, ChannelMode>();
+  private readonly bypassFlags = new Map<string, boolean>();
 
   constructor(private readonly deps: PermissionRequestsDeps) {}
 
@@ -147,6 +148,15 @@ export class PermissionRequests {
     if (mode === 'plan' && entry.current !== 'plan') entry.beforePlan = entry.current;
     entry.current = mode;
     this.modes.set(channelId, entry);
+  }
+
+  /** Records whether the channel's CLI was launched with the dangerous-skip flag. */
+  noteBypassAllowed(channelId: string, allowed: boolean): void {
+    this.bypassFlags.set(channelId, allowed);
+  }
+
+  bypassAllowed(channelId: string): boolean {
+    return this.bypassFlags.get(channelId) ?? false;
   }
 
   private writeDecision(channelId: string, requestId: string, decision: PermissionDecision): boolean {

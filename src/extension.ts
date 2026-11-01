@@ -172,6 +172,7 @@ export function activate(context: vscode.ExtensionContext): void {
         workspacePath,
         permissionRequests,
         getExitPlanModeFallback: () => settings.getExitPlanApproveMode(),
+        shouldAllowBypass: () => settings.shouldAllowBypass(),
       }
     );
 

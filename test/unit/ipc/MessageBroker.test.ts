@@ -17,6 +17,7 @@ import { PermissionRequests } from '../../../src/process/PermissionRequests';
 import type { PermissionMode } from '../../../src/process/ProcessArgs';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { buildArgs } from '../../../src/process/ProcessArgs';
 
 function makebroker() {
   const h = createIpcTestHarness();
@@ -83,6 +84,45 @@ describe('MessageBroker', () => {
           '/workspace'
         )
       );
+    });
+
+    function brokerWithBypass(shouldAllowBypass: () => boolean) {
+      const h = createIpcTestHarness();
+      const permissionRequests = new PermissionRequests({ write: vi.fn(() => true), broadcast: vi.fn() });
+      new MessageBroker(
+        h.processManager, h.sessionManager, h.diffManager, h.viewManager,
+        h.channelRouter, h.webview, h.logger,
+        { ...createMockServices(), permissionRequests, shouldAllowBypass },
+      );
+      return { h, permissionRequests };
+    }
+
+    it('passes allowDangerouslySkipPermissions to spawn options when shouldAllowBypass is true', () => {
+      const { h, permissionRequests } = brokerWithBypass(() => true);
+      h.dispatch({ type: 'launch_claude', channelId: 'ch-1' });
+      expect(h.processManager.spawnClaude).toHaveBeenCalledWith(
+        'ch-1',
+        expect.objectContaining({ allowDangerouslySkipPermissions: true }),
+        undefined,
+      );
+      expect(permissionRequests.bypassAllowed('ch-1')).toBe(true);
+    });
+
+    it('omits allowDangerouslySkipPermissions when shouldAllowBypass is false', () => {
+      const { h, permissionRequests } = brokerWithBypass(() => false);
+      h.dispatch({ type: 'launch_claude', channelId: 'ch-1' });
+      const options = h.processManager.spawnClaude.mock.calls[0][1];
+      expect(options).not.toHaveProperty('allowDangerouslySkipPermissions');
+      expect(permissionRequests.bypassAllowed('ch-1')).toBe(false);
+    });
+
+    it('keeps the prompt tool and plan mode when the flag is set', () => {
+      const { h } = brokerWithBypass(() => true);
+      h.dispatch({ type: 'launch_claude', channelId: 'ch-1', permissionMode: 'plan' });
+      const args = buildArgs(h.processManager.spawnClaude.mock.calls[0][1]);
+      expect(args).toContain('--allow-dangerously-skip-permissions');
+      expect(args).toContain('--permission-prompt-tool');
+      expect(args).toContain('plan');
     });
 
     it('marks the channel as launching before history replay so early writes are buffered', () => {
