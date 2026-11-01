@@ -23,9 +23,19 @@ vi.mock('vscode', () => ({
   },
 }));
 
-function stubConfig(values: Record<string, unknown>, explicitDefault?: Record<string, unknown>): void {
-  mockGet.mockImplementation((key: string, fallback?: unknown) => (key in values ? values[key] : fallback));
-  mockInspect.mockImplementation((key: string) => explicitDefault?.[key] ?? undefined);
+function stubConfig(
+  values: Record<string, unknown>,
+  explicitDefault?: Record<string, unknown>,
+  workspaceOnly: Record<string, unknown> = {},
+): void {
+  const effective = { ...values, ...workspaceOnly };
+  mockGet.mockImplementation((key: string, fallback?: unknown) => (key in effective ? effective[key] : fallback));
+  mockInspect.mockImplementation((key: string) => {
+    if (explicitDefault?.[key]) return explicitDefault[key];
+    if (key in workspaceOnly) return { workspaceValue: workspaceOnly[key] };
+    if (key in values) return { defaultValue: values[key] };
+    return undefined;
+  });
 }
 
 import { ExtensionSettings } from '../../../src/settings/ExtensionSettings';
@@ -130,6 +140,52 @@ describe('ExtensionSettings', () => {
     it('returns a valid configured value', () => {
       stubConfig({ 'clawdCode.exitPlanModeFallback': 'bypassPermissions' });
       expect(new ExtensionSettings().getExitPlanApproveMode()).toBe('bypassPermissions');
+    });
+  });
+
+  describe('workspace-scoped values', () => {
+    it('ignores a workspace-only exitPlanModeFallback but honors a user-level one', () => {
+      stubConfig({}, undefined, { 'clawdCode.exitPlanModeFallback': 'bypassPermissions' });
+      expect(new ExtensionSettings().getExitPlanApproveMode()).toBe('auto');
+      stubConfig({}, { 'clawdCode.exitPlanModeFallback': { globalValue: 'acceptEdits', workspaceValue: 'bypassPermissions' } });
+      expect(new ExtensionSettings().getExitPlanApproveMode()).toBe('acceptEdits');
+    });
+
+    it('ignores a workspace-only offerDefaultModeAfterPlan but honors a user-level one', () => {
+      stubConfig({}, undefined, { 'clawdCode.offerDefaultModeAfterPlan': 'off' });
+      expect(new ExtensionSettings().getOfferDefaultMode()).toBe('auto');
+      stubConfig({}, { 'clawdCode.offerDefaultModeAfterPlan': { globalValue: 'off' } });
+      expect(new ExtensionSettings().getOfferDefaultMode()).toBe('off');
+    });
+
+    it('does not let workspace settings grant the bypass flag', () => {
+      const workspaceGrants: Array<Record<string, unknown>> = [
+        { 'claudeCode.allowDangerouslySkipPermissions': true },
+        { 'clawdCode.allowDangerouslySkipPermissions': true },
+        { 'clawdCode.exitPlanModeFallback': 'bypassPermissions' },
+        { 'clawdCode.offerDefaultModeAfterPlan': 'bypassPermissions' },
+        { 'clawdCode.defaultPermissionMode': 'bypassPermissions' },
+        { 'claudeCode.initialPermissionMode': 'bypassPermissions' },
+      ];
+      for (const grant of workspaceGrants) {
+        stubConfig({}, undefined, grant);
+        expect(new ExtensionSettings().shouldAllowBypass()).toBe(false);
+      }
+    });
+
+    it('honors user-level consent for the flag', () => {
+      stubConfig({}, { 'claudeCode.allowDangerouslySkipPermissions': { globalValue: true } });
+      expect(new ExtensionSettings().shouldAllowBypass()).toBe(true);
+      stubConfig({}, { 'clawdCode.allowDangerouslySkipPermissions': { globalValue: true } });
+      expect(new ExtensionSettings().shouldAllowBypass()).toBe(true);
+      stubConfig({}, { 'clawdCode.exitPlanModeFallback': { globalValue: 'bypassPermissions' } });
+      expect(new ExtensionSettings().shouldAllowBypass()).toBe(true);
+      stubConfig({}, { 'clawdCode.offerDefaultModeAfterPlan': { globalValue: 'bypassPermissions' } });
+      expect(new ExtensionSettings().shouldAllowBypass()).toBe(true);
+      stubConfig({}, { 'clawdCode.defaultPermissionMode': { globalValue: 'bypassPermissions' } });
+      expect(new ExtensionSettings().shouldAllowBypass()).toBe(true);
+      stubConfig({}, { 'claudeCode.initialPermissionMode': { globalValue: 'bypassPermissions' } });
+      expect(new ExtensionSettings().shouldAllowBypass()).toBe(true);
     });
   });
 

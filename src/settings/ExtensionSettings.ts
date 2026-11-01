@@ -2,12 +2,11 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import type { PermissionMode } from '../process/ProcessArgs';
+import type { ApproveMode, PermissionMode } from '../process/ProcessArgs';
+
+export type { ApproveMode };
 
 const PERMISSION_MODES: readonly PermissionMode[] = ['auto', 'default', 'plan', 'acceptEdits', 'bypassPermissions'];
-
-/** Permission modes a plan approval can switch into. */
-export type ApproveMode = Exclude<PermissionMode, 'plan'>;
 
 const APPROVE_MODES: readonly ApproveMode[] = ['auto', 'default', 'acceptEdits', 'bypassPermissions'];
 
@@ -61,21 +60,34 @@ export class ExtensionSettings {
     };
   }
 
+  private getUserLevel<T>(section: string, key: string): T | undefined {
+    const inspected = vscode.workspace.getConfiguration(section).inspect<T>(key);
+    return inspected?.globalValue ?? inspected?.defaultValue;
+  }
+
   /**
    * Resolves the default permission mode to use for new conversations.
    * Priority: clawdCode VS Code setting → claudeCode VS Code setting (official ext) → ~/.claude/settings.json → 'auto'
    */
   getDefaultPermissionMode(): PermissionMode {
+    return this.resolveDefaultPermissionMode(false);
+  }
+
+  private resolveDefaultPermissionMode(userLevelOnly: boolean): PermissionMode {
     const ownCfg = vscode.workspace.getConfiguration('clawdCode');
-    const configured = ownCfg.get<string>('defaultPermissionMode');
+    const configured = userLevelOnly
+      ? this.getUserLevel<string>('clawdCode', 'defaultPermissionMode')
+      : ownCfg.get<string>('defaultPermissionMode');
     const inspected = ownCfg.inspect<string>('defaultPermissionMode');
-    const isExplicit = inspected?.globalValue !== undefined || inspected?.workspaceValue !== undefined;
+    const isExplicit =
+      inspected?.globalValue !== undefined || (!userLevelOnly && inspected?.workspaceValue !== undefined);
     if (configured && (isExplicit || configured !== 'auto') && PERMISSION_MODES.includes(configured as PermissionMode)) {
       return configured as PermissionMode;
     }
     // Fallback: official Claude Code extension's VS Code setting
-    const officialCfg = vscode.workspace.getConfiguration('claudeCode');
-    const officialMode = officialCfg.get<string>('initialPermissionMode');
+    const officialMode = userLevelOnly
+      ? this.getUserLevel<string>('claudeCode', 'initialPermissionMode')
+      : vscode.workspace.getConfiguration('claudeCode').get<string>('initialPermissionMode');
     if (officialMode && officialMode !== 'default' && PERMISSION_MODES.includes(officialMode as PermissionMode)) {
       return officialMode as PermissionMode;
     }
@@ -92,28 +104,26 @@ export class ExtensionSettings {
     return 'auto';
   }
 
-  /** Mode a plan approval switches into, from `clawdCode.exitPlanModeFallback`. Invalid values yield `auto`. */
+  /** Mode a plan approval switches into, from the user-level `clawdCode.exitPlanModeFallback`. Invalid values yield `auto`. */
   getExitPlanApproveMode(): ApproveMode {
-    const raw = vscode.workspace.getConfiguration('clawdCode').get<string>('exitPlanModeFallback');
+    const raw = this.getUserLevel<string>('clawdCode', 'exitPlanModeFallback');
     return pickEnum(raw, APPROVE_MODES, 'auto');
   }
 
-  /** Mode offered as the new default after a plan approval, or `off`. Invalid values yield `auto`. */
+  /** Mode offered as the new default after a plan approval, or `off`, from the user-level setting. Invalid values yield `auto`. */
   getOfferDefaultMode(): ApproveMode | 'off' {
-    const raw = vscode.workspace.getConfiguration('clawdCode').get<string>('offerDefaultModeAfterPlan');
+    const raw = this.getUserLevel<string>('clawdCode', 'offerDefaultModeAfterPlan');
     return pickEnum<ApproveMode | 'off'>(raw, [...APPROVE_MODES, 'off'], 'auto');
   }
 
-  /** Whether the CLI must be launched with `--allow-dangerously-skip-permissions`. */
+  /** Whether the CLI must be launched with `--allow-dangerously-skip-permissions`. Only user-level consent counts; workspace settings cannot grant it. */
   shouldAllowBypass(): boolean {
-    const own = vscode.workspace.getConfiguration('clawdCode');
-    const official = vscode.workspace.getConfiguration('claudeCode');
     return (
-      own.get<boolean>('allowDangerouslySkipPermissions', false) === true ||
-      official.get<boolean>('allowDangerouslySkipPermissions', false) === true ||
+      this.getUserLevel<boolean>('clawdCode', 'allowDangerouslySkipPermissions') === true ||
+      this.getUserLevel<boolean>('claudeCode', 'allowDangerouslySkipPermissions') === true ||
       this.getExitPlanApproveMode() === 'bypassPermissions' ||
       this.getOfferDefaultMode() === 'bypassPermissions' ||
-      this.getDefaultPermissionMode() === 'bypassPermissions'
+      this.resolveDefaultPermissionMode(true) === 'bypassPermissions'
     );
   }
 

@@ -124,6 +124,7 @@
             "description": "Default permission mode for new conversations. Set to 'plan' to always start in plan mode."
           },
           "clawdCode.exitPlanModeFallback": {
+            "scope": "application",
             "type": "string",
             "enum": ["auto", "default", "acceptEdits", "bypassPermissions"],
             "enumDescriptions": [
@@ -136,6 +137,7 @@
             "description": "Permission mode a plan exit switches to, both from the approve button on the plan card and when leaving plan mode through the mode picker. 'bypassPermissions' skips all permission prompts."
           },
           "clawdCode.offerDefaultModeAfterPlan": {
+            "scope": "application",
             "type": "string",
             "enum": ["auto", "default", "acceptEdits", "bypassPermissions", "off"],
             "enumDescriptions": [
@@ -149,6 +151,7 @@
             "description": "Mode to offer as your new default after you approve a plan. 'off' disables the offer. 'bypassPermissions' skips all permission prompts."
           },
           "clawdCode.allowDangerouslySkipPermissions": {
+            "scope": "application",
             "type": "boolean",
             "default": false,
             "description": "Launch Claude with --allow-dangerously-skip-permissions so bypassPermissions mode can be selected. Also enabled automatically when a plan-approval or default mode is bypassPermissions."
