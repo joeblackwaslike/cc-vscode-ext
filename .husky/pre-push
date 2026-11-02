@@ -1,4 +1,4 @@
-# Fast local gate (~2s): the same lint + typecheck CI runs, before anything leaves the machine.
+# Fast local gate (~6s): the same lint + typecheck CI runs, before anything leaves the machine.
 set -e
 refs=$(cat)
 pnpm -s lint
