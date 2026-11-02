@@ -186,7 +186,11 @@ export class EditorContextTracker implements vscode.Disposable {
     }
     if (sel.text === undefined || !settings.getRespectGitIgnore()) return context;
     this.ignored.delete(context.filePath);
-    if (!(await this.isIgnored(vscode.Uri.file(context.filePath)))) return context;
+    const ignored = await this.isIgnored(vscode.Uri.file(context.filePath));
+    if (!settings.getAttachSelection()) {
+      return settings.getAttachOpenFile() ? { filePath: context.filePath } : null;
+    }
+    if (!ignored) return context;
     return { filePath: context.filePath, selection: { startLine: sel.startLine, endLine: sel.endLine } };
   }
 
@@ -223,12 +227,13 @@ export class EditorContextTracker implements vscode.Disposable {
       return;
     }
     if (this.disposed || generation !== this.generation || sameContext(next, this.value)) return;
-    this.value = next;
     try {
       this.opts.onChange(next);
     } catch (err) {
       this.log(err);
+      return;
     }
+    this.value = next;
   }
 
   private log(err: unknown): void {

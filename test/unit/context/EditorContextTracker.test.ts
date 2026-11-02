@@ -456,13 +456,27 @@ describe('EditorContextTracker', () => {
     expect(log).toHaveBeenCalledWith('EditorContextTracker: /ws/a.ts: git check-ignore exit 2: usage: git check-ignore');
   });
 
-  it('logs a throwing onChange instead of rejecting', async () => {
+  it('logs a throwing onChange instead of rejecting, without committing the unreported value', async () => {
     onChange.mockImplementation(() => {
       throw new Error('broadcast failed');
     });
     setActive(makeEditor('/ws/a.ts'));
     await settle();
     expect(log).toHaveBeenCalledWith(expect.stringContaining('broadcast failed'));
+    expect(tracker.current()).toBeNull();
+  });
+
+  it('retries an unreported context once onChange recovers', async () => {
+    onChange.mockImplementationOnce(() => {
+      throw new Error('broadcast failed');
+    });
+    const a = makeEditor('/ws/a.ts');
+    setActive(a);
+    await settle();
+    expect(tracker.current()).toBeNull();
+    listeners.docChange({ document: a.document, contentChanges: [] });
+    await settle();
+    expect(onChange).toHaveBeenLastCalledWith({ filePath: '/ws/a.ts' });
     expect(tracker.current()).toEqual({ filePath: '/ws/a.ts' });
   });
 
@@ -606,6 +620,25 @@ describe('EditorContextTracker', () => {
       flags.gitIgnore = false;
       exec.mockResolvedValue({ code: 0 });
       await expect(tracker.sanitize(sent)).resolves.toBe(sent);
+    });
+
+    it('drops the selection when attachSelection is disabled while the ignore probe is pending', async () => {
+      const git = deferred<{ code: number }>();
+      exec.mockReturnValue(git.promise);
+      const result = tracker.sanitize(sent);
+      flags.selection = false;
+      git.resolve({ code: 1 });
+      await expect(result).resolves.toStrictEqual({ filePath: '/ws/a.ts' });
+    });
+
+    it('drops the whole context when both attachment settings are disabled while the ignore probe is pending', async () => {
+      const git = deferred<{ code: number }>();
+      exec.mockReturnValue(git.promise);
+      const result = tracker.sanitize(sent);
+      flags.selection = false;
+      flags.openFile = false;
+      git.resolve({ code: 1 });
+      await expect(result).resolves.toBeNull();
     });
   });
 
