@@ -135,6 +135,11 @@ export class SessionRelayManager {
     return true;
   }
 
+  /** Discards the turns queued for this channel, so a cancelled prompt never starts after the relay settles. */
+  clearQueue(channelId: string): void {
+    this.queuedMessages.delete(channelId);
+  }
+
   setThreshold(threshold: number, channelId?: string): void {
     if (channelId === undefined) {
       this.defaultThreshold = threshold;

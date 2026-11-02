@@ -260,6 +260,21 @@ describe('SessionRelayManager', () => {
       expect(sendUserMessage.mock.calls[1][1]).toBe(content);
     });
 
+    it('clearQueue() discards queued messages so the relay never flushes them', async () => {
+      const { relay, sendUserMessage, logger } = makeFakes();
+      relay.registerLaunch('ch-1', {}, '/work');
+      relay.onContextUsage('ch-1', usage(80));
+      expect(relay.enqueueIfRelaying('ch-1', 'cancelled')).toBe(true);
+
+      relay.clearQueue('ch-1');
+      relay.handleStreamEvent('ch-1', { type: 'result', subtype: 'error' });
+      await vi.waitFor(() => expect(logger.error).toHaveBeenCalled());
+      await new Promise((r) => setImmediate(r));
+
+      expect(relay.isRelaying('ch-1')).toBe(false);
+      expect(sendUserMessage).toHaveBeenCalledTimes(1);
+    });
+
     it('flushes a queued message to the original process if the relay fails', async () => {
       const { relay, sendUserMessage, logger } = makeFakes();
       relay.registerLaunch('ch-1', {}, '/work');

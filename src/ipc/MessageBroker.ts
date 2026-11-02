@@ -89,6 +89,7 @@ export interface ISessionRelayManager {
   setThreshold(threshold: number, channelId?: string): void;
   isRelaying(channelId: string): boolean;
   enqueueIfRelaying(channelId: string, content: UserContent): boolean;
+  clearQueue(channelId: string): void;
   updateLaunchOptions(channelId: string, patch: Partial<ProcessLaunchOptions>): void;
 }
 
@@ -150,8 +151,8 @@ export interface MessageBrokerServices {
   shouldAllowBypass?: () => boolean;
   /** The editor context currently offered to the composer. */
   getIdeContext?: () => IdeContext | null;
-  /** Re-checks a context at send time; drops selected text the host may not send now. */
-  sanitizeIdeContext?: (context: IdeContext) => Promise<IdeContext>;
+  /** Re-checks a context at send time; drops what the current settings or ignore rules no longer allow. */
+  sanitizeIdeContext?: (context: IdeContext) => Promise<IdeContext | null>;
 }
 
 /**
@@ -172,13 +173,11 @@ export class MessageBroker {
    * relay notification instead of racing that new turn (see
    * `refreshContextUsage`). */
   private readonly turnGenerations = new Map<string, number>();
-  /** Per-channel tail of user turns still waiting on an ide context re-check. */
-  private readonly pendingTurns = new Map<string, Promise<void>>();
-  /** Per-channel counter bumped on interrupt/cancel/close/dispose. A pending
-   * turn captures this at submit time and is dropped if it no longer matches
-   * right before delivery, so cancelling a channel drops turns that were
-   * already queued without affecting turns submitted afterward. */
-  private readonly cancelEpoch = new Map<string, number>();
+  /** Per-channel queue of user turns still waiting on an ide context re-check.
+   * `epoch` is bumped on interrupt/cancel/close/dispose; a turn captures it at
+   * submit time and is dropped if it changed before delivery. The entry is
+   * removed once its last turn settles, so closed channels leave nothing behind. */
+  private readonly pendingTurns = new Map<string, { tail: Promise<void>; epoch: number }>();
   // Channels this broker launched and has not closed. Their lifetime is tied to the
   // webview that owns the tabs: when that webview goes away (dispose) or is
   // re-created (a second get_auth_status), nothing can show or answer them any more.
@@ -294,16 +293,17 @@ export class MessageBroker {
    * on one channel are delivered in submit order while a re-check is pending.
    */
   private submitUserTurn(channelId: string, text: string, context: IdeContext | undefined): void {
-    const recheck = context?.selection?.text !== undefined ? this.services.sanitizeIdeContext : undefined;
-    const pending = this.pendingTurns.get(channelId);
-    if (!recheck && !pending) return this.deliverUserTurn(channelId, text, context);
-    const epoch = this.cancelEpoch.get(channelId) ?? 0;
-    const run = (pending ?? Promise.resolve())
+    const recheck = context ? this.services.sanitizeIdeContext : undefined;
+    const existing = this.pendingTurns.get(channelId);
+    if (!recheck && !existing) return this.deliverUserTurn(channelId, text, context);
+    const queue = existing ?? { tail: Promise.resolve(), epoch: 0 };
+    const epoch = queue.epoch;
+    const run = queue.tail
       .then(async () => {
         const checked = context && recheck ? await this.recheckContext(context, recheck) : context;
-        if ((this.cancelEpoch.get(channelId) ?? 0) !== epoch) return;
+        if (queue.epoch !== epoch) return;
         try {
-          this.deliverUserTurn(channelId, text, checked);
+          this.deliverUserTurn(channelId, text, checked ?? undefined);
         } catch (err) {
           this.logger.error('[MessageBroker] failed to deliver user turn', err);
         }
@@ -311,21 +311,24 @@ export class MessageBroker {
       .catch((err: unknown) => {
         this.logger.error('[MessageBroker] ide context re-check failed', err);
       });
-    this.pendingTurns.set(channelId, run);
+    queue.tail = run;
+    this.pendingTurns.set(channelId, queue);
     void run.then(() => {
-      if (this.pendingTurns.get(channelId) === run) this.pendingTurns.delete(channelId);
+      if (queue.tail === run && this.pendingTurns.get(channelId) === queue) this.pendingTurns.delete(channelId);
     });
   }
 
-  /** Drop any turn still queued on this channel that was submitted before now. */
+  /** Drop any turn on this channel submitted before now, whether awaiting a re-check or queued behind a relay. */
   private cancelPendingTurns(channelId: string): void {
-    this.cancelEpoch.set(channelId, (this.cancelEpoch.get(channelId) ?? 0) + 1);
+    const queue = this.pendingTurns.get(channelId);
+    if (queue) queue.epoch++;
+    this.sessionRelayManager.clearQueue(channelId);
   }
 
   private async recheckContext(
     context: IdeContext,
-    recheck: (ctx: IdeContext) => Promise<IdeContext>
-  ): Promise<IdeContext> {
+    recheck: (ctx: IdeContext) => Promise<IdeContext | null>
+  ): Promise<IdeContext | null> {
     try {
       return await recheck(context);
     } catch (err) {

@@ -15,6 +15,7 @@ vi.mock('vscode', () => ({
 }));
 import { createIpcTestHarness, createMockServices } from '../../helpers/ipcTestHarness';
 import { MessageBroker } from '../../../src/ipc/MessageBroker';
+import type { SessionRelayManager } from '../../../src/relay/SessionRelayManager';
 import { PermissionRequests, BYPASS_DOWNGRADE_NOTICE } from '../../../src/process/PermissionRequests';
 import type { PermissionMode } from '../../../src/process/ProcessArgs';
 import { readFileSync } from 'node:fs';
@@ -237,7 +238,7 @@ describe('MessageBroker', () => {
       ]);
     });
 
-    function brokerWithSanitizeAndInstance(sanitizeIdeContext: (ctx: IdeContext) => Promise<IdeContext>) {
+    function brokerWithSanitizeAndInstance(sanitizeIdeContext: (ctx: IdeContext) => Promise<IdeContext | null>) {
       const h = createIpcTestHarness();
       const broker = new MessageBroker(
         h.processManager,
@@ -252,7 +253,7 @@ describe('MessageBroker', () => {
       return { h, broker };
     }
 
-    function brokerWithSanitize(sanitizeIdeContext: (ctx: IdeContext) => Promise<IdeContext>) {
+    function brokerWithSanitize(sanitizeIdeContext: (ctx: IdeContext) => Promise<IdeContext | null>) {
       return brokerWithSanitizeAndInstance(sanitizeIdeContext).h;
     }
 
@@ -296,16 +297,43 @@ describe('MessageBroker', () => {
       ]);
     });
 
-    it('does not re-check a context without selected text', () => {
-      const sanitize = vi.fn(async (ctx: IdeContext) => ctx);
+    it('re-checks a file-only context too, and sends the plain prompt when the host drops it', async () => {
+      const sanitize = vi.fn(async () => null);
       const h = brokerWithSanitize(sanitize);
       const context = { filePath: '/w/a.ts' };
       h.dispatch({ type: 'control_request', channelId: 'ch-1', requestId: 'r', text: 'hi', context });
-      expect(sanitize).not.toHaveBeenCalled();
-      expect(h.processManager.sendUserMessage).toHaveBeenCalledWith('ch-1', [
-        { type: 'text', text: 'hi' },
-        { type: 'text', text: formatIdeBlocks(context)[0] },
-      ]);
+      await vi.waitFor(() => expect(h.processManager.sendUserMessage).toHaveBeenCalled());
+      expect(sanitize).toHaveBeenCalledWith(context);
+      expect(h.processManager.sendUserMessage).toHaveBeenCalledWith('ch-1', 'hi');
+    });
+
+    it('keeps no per-channel cancel state once a closed channel\'s pending turns settle', async () => {
+      let release!: (ctx: IdeContext) => void;
+      const { h, broker } = brokerWithSanitizeAndInstance(() => new Promise((r) => (release = r)));
+      h.dispatch({ type: 'control_request', channelId: 'ch-1', requestId: 'a', text: 'first', context: withText });
+      h.dispatch({ type: 'interrupt_claude', channelId: 'ch-1' });
+      h.dispatch({ type: 'close_channel', channelId: 'ch-1' });
+      h.dispatch({ type: 'interrupt_claude', channelId: 'ch-2' });
+      h.dispatch({ type: 'close_channel', channelId: 'ch-2' });
+      await new Promise((r) => setImmediate(r));
+      release(withText);
+      for (let i = 0; i < 3; i++) await new Promise((r) => setImmediate(r));
+      const maps = Object.values(broker).filter((v): v is Map<string, unknown> => v instanceof Map);
+      expect(maps.filter((m) => m.has('ch-1') || m.has('ch-2'))).toEqual([]);
+    });
+
+    it('does not deliver an old turn to a channel id that was closed and reopened', async () => {
+      const releases: Array<(ctx: IdeContext) => void> = [];
+      const { h } = brokerWithSanitizeAndInstance(() => new Promise((r) => releases.push(r)));
+      h.dispatch({ type: 'control_request', channelId: 'ch-1', requestId: 'a', text: 'old', context: withText });
+      await new Promise((r) => setImmediate(r));
+      h.dispatch({ type: 'close_channel', channelId: 'ch-1' });
+      h.dispatch({ type: 'control_request', channelId: 'ch-1', requestId: 'b', text: 'new', context: withText });
+      releases[0](withText);
+      await vi.waitFor(() => expect(releases).toHaveLength(2));
+      releases[1](withText);
+      await vi.waitFor(() => expect(h.processManager.sendUserMessage).toHaveBeenCalled());
+      expect(h.processManager.sendUserMessage.mock.calls.map(([, c]) => c[0].text)).toEqual(['new']);
     });
 
     it('drops a turn whose re-check was still pending when the channel was interrupted', async () => {
@@ -742,6 +770,7 @@ function makeBrokerWithRelay() {
     setThreshold: vi.fn(),
     isRelaying: vi.fn(() => false),
     enqueueIfRelaying: vi.fn(() => false),
+    clearQueue: vi.fn(),
     updateLaunchOptions: vi.fn(),
   };
   const broker = new MessageBroker(
@@ -1031,6 +1060,25 @@ describe('SessionRelayManager wiring', () => {
       expect(h.processManager.sendUserMessage).not.toHaveBeenCalled();
     });
 
+    it.each(['interrupt_claude', 'cancel_request'] as const)('%s discards turns queued behind the relay', (type) => {
+      const { h, sessionRelayManager } = makeBrokerWithRelay();
+      h.dispatch({ type, channelId: 'ch-1' });
+      expect(sessionRelayManager.clearQueue).toHaveBeenCalledWith('ch-1');
+    });
+
+    it('never sends a turn queued during a relay once the channel is interrupted', async () => {
+      const { h, broker } = makebroker();
+      const relay = (broker as unknown as { sessionRelayManager: SessionRelayManager }).sessionRelayManager;
+      relay.registerLaunch('ch-1', {}, '/w');
+      relay.onContextUsage('ch-1', { categories: [], totalTokens: 80_000, maxTokens: 100_000, percentage: 80 });
+      expect(relay.isRelaying('ch-1')).toBe(true);
+      h.dispatch({ type: 'control_request', channelId: 'ch-1', requestId: 'r', text: 'cancelled turn' });
+      h.dispatch({ type: 'interrupt_claude', channelId: 'ch-1' });
+      relay.handleStreamEvent('ch-1', { type: 'result', subtype: 'error' });
+      await vi.waitFor(() => expect(relay.isRelaying('ch-1')).toBe(false));
+      expect(h.processManager.sendUserMessage).not.toHaveBeenCalledWith('ch-1', 'cancelled turn');
+    });
+
     it('sends immediately when SessionRelayManager reports no relay in progress', () => {
       const { h, sessionRelayManager } = makeBrokerWithRelay();
       sessionRelayManager.enqueueIfRelaying.mockReturnValue(false);
@@ -1067,6 +1115,7 @@ describe('permission prompt routing', () => {
       setThreshold: vi.fn(),
       isRelaying: vi.fn(() => opts.isRelaying ?? false),
       enqueueIfRelaying: vi.fn(() => false),
+    clearQueue: vi.fn(),
       updateLaunchOptions: vi.fn(),
     };
     h.processManager.writeToChannel.mockReturnValue(true);
