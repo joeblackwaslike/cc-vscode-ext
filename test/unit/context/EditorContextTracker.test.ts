@@ -631,6 +631,15 @@ describe('EditorContextTracker', () => {
       await expect(result).resolves.toStrictEqual({ filePath: '/ws/a.ts' });
     });
 
+    it('keeps the selection when respectGitIgnore is disabled while the ignore probe is pending', async () => {
+      const git = deferred<{ code: number }>();
+      exec.mockReturnValue(git.promise);
+      const result = tracker.sanitize(sent);
+      flags.gitIgnore = false;
+      git.resolve({ code: 0 });
+      await expect(result).resolves.toBe(sent);
+    });
+
     it('drops the whole context when both attachment settings are disabled while the ignore probe is pending', async () => {
       const git = deferred<{ code: number }>();
       exec.mockReturnValue(git.promise);

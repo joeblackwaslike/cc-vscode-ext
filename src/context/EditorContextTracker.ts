@@ -190,7 +190,7 @@ export class EditorContextTracker implements vscode.Disposable {
     if (!settings.getAttachSelection()) {
       return settings.getAttachOpenFile() ? { filePath: context.filePath } : null;
     }
-    if (!ignored) return context;
+    if (!settings.getRespectGitIgnore() || !ignored) return context;
     return { filePath: context.filePath, selection: { startLine: sel.startLine, endLine: sel.endLine } };
   }
 
