@@ -34,7 +34,16 @@ function makeEditor(fsPath: string, scheme = 'file', text = 'picked text'): Fake
   };
 }
 
-type ListenerKey = 'active' | 'selection' | 'close' | 'tabs' | 'config' | 'gitChange' | 'gitCreate' | 'gitDelete';
+type ListenerKey =
+  | 'active'
+  | 'selection'
+  | 'docChange'
+  | 'close'
+  | 'tabs'
+  | 'config'
+  | 'gitChange'
+  | 'gitCreate'
+  | 'gitDelete';
 let listeners: Record<ListenerKey, Listener>;
 let disposers: ReturnType<typeof vi.fn>[];
 let flags: { openFile: boolean; selection: boolean; gitIgnore: boolean };
@@ -44,6 +53,7 @@ let log: ReturnType<typeof vi.fn>;
 let tracker: EditorContextTracker;
 
 const WS = { uri: { fsPath: '/ws' }, name: 'ws' };
+const NOT_A_REPO = 'fatal: not a git repository (or any of the parent directories): .git\n';
 
 const settings = {
   getAttachOpenFile: () => flags.openFile,
@@ -105,6 +115,7 @@ beforeEach(() => {
   const { window, workspace } = mockVscode;
   window.onDidChangeActiveTextEditor.mockImplementation(capture('active') as never);
   window.onDidChangeTextEditorSelection.mockImplementation(capture('selection') as never);
+  workspace.onDidChangeTextDocument.mockImplementation(capture('docChange') as never);
   workspace.onDidCloseTextDocument.mockImplementation(capture('close') as never);
   window.tabGroups.onDidChangeTabs.mockImplementation(capture('tabs') as never);
   window.tabGroups.all = [];
@@ -218,7 +229,7 @@ describe('EditorContextTracker', () => {
 
   it.each([
     ['spawn fails without killing', () => exec.mockResolvedValue({ code: -1 })],
-    ['exits 128', () => exec.mockResolvedValue({ code: 128 })],
+    ['exits 128 outside a repository', () => exec.mockResolvedValue({ code: 128, stderr: NOT_A_REPO })],
   ])('treats a file as not ignored when git %s', async (_label, arrange) => {
     arrange();
     const a = makeEditor('/tmp/a.ts');
@@ -371,10 +382,61 @@ describe('EditorContextTracker', () => {
     ['the file is tracked', 1, 1],
     ['the folder is not a repository', 128, 1],
   ])('sends text when %s, running git %i -> %i time(s)', async (_label, code, calls) => {
-    exec.mockResolvedValue({ code });
+    exec.mockResolvedValue({ code, stderr: code === 128 ? NOT_A_REPO : '' });
     await selectTwice();
     expect(tracker.current()?.selection?.text).toBe('picked text');
     expect(exec).toHaveBeenCalledTimes(calls);
+  });
+
+  it('withholds text and does not cache when git exits 128 for a reason other than a missing repository', async () => {
+    exec.mockResolvedValue({ code: 128, stderr: "fatal: detected dubious ownership in repository at '/ws'" });
+    await selectTwice();
+    expect(tracker.current()?.selection).toStrictEqual({ startLine: 1, endLine: 1 });
+    expect(exec).toHaveBeenCalledTimes(2);
+  });
+
+  it('withholds text when the exclude probe hangs, and retries it on the next event', async () => {
+    mockVscode.workspace.findFiles.mockReturnValueOnce(new Promise(() => {}));
+    const a = makeEditor('/ws/a.ts');
+    setActive(a);
+    select(a, sel(0, 0, 0, 4));
+    await settle();
+    expect(onChange).toHaveBeenCalledTimes(0);
+    await vi.advanceTimersByTimeAsync(5000);
+    await drain();
+    expect(tracker.current()?.selection).toStrictEqual({ startLine: 1, endLine: 1 });
+
+    select(a, sel(0, 0, 0, 5));
+    await settle();
+    expect(mockVscode.workspace.findFiles).toHaveBeenCalledTimes(2);
+    expect(tracker.current()?.selection?.text).toBe('picked text');
+  });
+
+  it('does not cache a failed exclude probe', async () => {
+    mockVscode.workspace.findFiles.mockRejectedValueOnce(new Error('search failed'));
+    const a = makeEditor('/ws/a.ts');
+    setActive(a);
+    select(a, sel(0, 0, 0, 4));
+    await settle();
+    expect(tracker.current()?.selection).toStrictEqual({ startLine: 1, endLine: 1 });
+    select(a, sel(0, 0, 0, 5));
+    await settle();
+    expect(mockVscode.workspace.findFiles).toHaveBeenCalledTimes(2);
+    expect(tracker.current()?.selection?.text).toBe('picked text');
+  });
+
+  it('recomputes the selected text when the tracked document changes', async () => {
+    const a = makeEditor('/ws/a.ts');
+    setActive(a);
+    select(a, sel(0, 0, 0, 4));
+    await settle();
+    a.document.getText.mockReturnValue('edited text');
+    listeners.docChange({ document: makeEditor('/ws/other.ts').document, contentChanges: [] });
+    await settle();
+    expect(tracker.current()?.selection?.text).toBe('picked text');
+    listeners.docChange({ document: a.document, contentChanges: [] });
+    await settle();
+    expect(tracker.current()?.selection?.text).toBe('edited text');
   });
 
   it('withholds text and does not cache when git exits with an unrecognized code', async () => {
@@ -426,7 +488,7 @@ describe('EditorContextTracker', () => {
     tracker.dispose();
     await settle();
     expect(onChange).not.toHaveBeenCalled();
-    expect(disposers.length).toBe(8);
+    expect(disposers.length).toBe(9);
     for (const d of disposers) expect(d).toHaveBeenCalled();
     expect(watcherDispose).toHaveBeenCalled();
   });
@@ -514,6 +576,20 @@ describe('EditorContextTracker', () => {
       await expect(tracker.sanitize(ctx)).resolves.toBe(ctx);
       await expect(tracker.sanitize({ filePath: '/ws/a.ts' })).resolves.toStrictEqual({ filePath: '/ws/a.ts' });
       expect(exec).not.toHaveBeenCalled();
+    });
+
+    it('drops the selection when attachSelection is now off', async () => {
+      flags.selection = false;
+      await expect(tracker.sanitize(sent)).resolves.toStrictEqual({ filePath: '/ws/a.ts' });
+      flags.openFile = false;
+      await expect(tracker.sanitize(sent)).resolves.toBeNull();
+      expect(exec).not.toHaveBeenCalled();
+    });
+
+    it('drops a file-only context when attachOpenFile is now off, but keeps a selection', async () => {
+      flags.openFile = false;
+      await expect(tracker.sanitize({ filePath: '/ws/a.ts' })).resolves.toBeNull();
+      await expect(tracker.sanitize(sent)).resolves.toBe(sent);
     });
 
     it('passes text through when respectGitIgnore is off', async () => {
@@ -612,6 +688,21 @@ describe('execFileCode', () => {
     await expect(execFileCode('clawd-no-such-binary', [], '/')).resolves.toStrictEqual({ code: -1 });
   });
 
+  it('rejects when the working directory is missing, which Node also reports as ENOENT', async () => {
+    await expect(execFileCode('sh', ['-c', 'exit 1'], '/clawd-no-such-dir')).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('rejects when the binary exists but cannot be spawned', async () => {
+    await expect(execFileCode('/etc/hosts', [], '/')).rejects.toMatchObject({ code: 'EACCES' });
+  });
+
+  it('captures stderr in the C locale', async () => {
+    await expect(execFileCode('sh', ['-c', 'echo "fatal: $LC_ALL" >&2; exit 128'], '/')).resolves.toStrictEqual({
+      code: 128,
+      stderr: 'fatal: C\n',
+    });
+  });
+
   it('reports a process stopped by a signal as killed', async () => {
     await expect(execFileCode('sh', ['-c', 'kill -TERM $$'], '/')).resolves.toStrictEqual({
       code: -1,
@@ -620,6 +711,6 @@ describe('execFileCode', () => {
   });
 
   it('passes the exit code through', async () => {
-    await expect(execFileCode('sh', ['-c', 'exit 1'], '/')).resolves.toStrictEqual({ code: 1 });
+    await expect(execFileCode('sh', ['-c', 'exit 1'], '/')).resolves.toStrictEqual({ code: 1, stderr: '' });
   });
 });

@@ -1,35 +1,67 @@
 import { execFile } from 'child_process';
+import { existsSync } from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import type { ExtensionSettings } from '../settings/ExtensionSettings';
 import { MAX_SELECTION_CHARS, type IdeContext, type IdeSelection } from '../shared/ideTags';
 
 /**
- * Result of running a command: its exit code, -1 when it could not be spawned,
- * and `killed` when it was stopped by a timeout or a signal before exiting.
+ * Result of running a command: its exit code, -1 when the binary is not
+ * installed, `killed` when it was stopped by a timeout or a signal before
+ * exiting, and its stderr when it exited with a non-zero code.
  */
 export interface ExecResult {
   code: number;
   killed?: boolean;
+  stderr?: string;
 }
 
 /** Runs a command and resolves with how it ended. */
 export type ExecFn = (cmd: string, args: string[], cwd: string) => Promise<ExecResult>;
 
-const DEFAULT_GIT_TIMEOUT_MS = 5000;
+const DEFAULT_PROBE_TIMEOUT_MS = 5000;
 
-/** `ExecFn` over `child_process.execFile`, killing the command after 5 s. */
+/**
+ * `ExecFn` over `child_process.execFile` in the C locale, killing the command
+ * after 5 s. Rejects when the binary exists but cannot be spawned, and when the
+ * working directory is gone, since Node reports that as ENOENT too.
+ */
 export const execFileCode: ExecFn = (cmd, args, cwd) =>
-  new Promise((resolve) => {
-    execFile(cmd, args, { cwd, timeout: DEFAULT_GIT_TIMEOUT_MS }, (err) => {
+  new Promise((resolve, reject) => {
+    const env = { ...process.env, LC_ALL: 'C' };
+    execFile(cmd, args, { cwd, env, timeout: DEFAULT_PROBE_TIMEOUT_MS }, (err, _stdout, stderr) => {
       if (!err) return resolve({ code: 0 });
       if (err.killed || err.signal) return resolve({ code: -1, killed: true });
-      resolve({ code: typeof err.code === 'number' ? err.code : -1 });
+      if (typeof err.code === 'number') return resolve({ code: err.code, stderr: String(stderr) });
+      if (err.code === 'ENOENT' && existsSync(cwd)) return resolve({ code: -1 });
+      reject(err);
     });
   });
 
-/** Exit codes whose meaning is settled: 1 = not ignored, 128 = not a repository, -1 = git missing. */
-const SETTLED_NOT_IGNORED = new Set([1, 128, -1]);
+/** Exit codes that settle "not ignored": 1 = not ignored, -1 = git not installed. */
+const SETTLED_NOT_IGNORED = new Set([1, -1]);
+const NOT_A_REPOSITORY = /not a git repository/i;
+
+interface ProbeResult {
+  ignored: boolean;
+  /** False when the answer must not be cached, because the probe failed or did not finish. */
+  settled: boolean;
+}
+
+const UNSETTLED: ProbeResult = { ignored: true, settled: false };
+
+/** Resolves with `'timeout'` when `promise` does not settle within `ms`. */
+async function withTimeout<T>(promise: PromiseLike<T>, ms: number): Promise<T | 'timeout'> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<'timeout'>((resolve) => {
+    timer = setTimeout(() => resolve('timeout'), ms);
+  });
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 export interface EditorContextTrackerOptions {
   settings: Pick<ExtensionSettings, 'getAttachOpenFile' | 'getAttachSelection' | 'getRespectGitIgnore'>;
@@ -38,6 +70,8 @@ export interface EditorContextTrackerOptions {
   debounceMs?: number;
   /** How long `git check-ignore` may run before the file counts as ignored for that computation. */
   gitTimeoutMs?: number;
+  /** How long the `files.exclude` probe may run before the file counts as excluded for that computation. */
+  excludeTimeoutMs?: number;
   log?: (message: string) => void;
 }
 
@@ -108,6 +142,9 @@ export class EditorContextTracker implements vscode.Disposable {
           this.track(textEditor);
         }
       }),
+      vscode.workspace.onDidChangeTextDocument(({ document }) => {
+        if (this.editor?.document === document) this.schedule();
+      }),
       vscode.workspace.onDidCloseTextDocument((doc) => {
         this.ignored.delete(doc.uri.fsPath);
         if (this.editor?.document === doc) this.untrack();
@@ -134,13 +171,20 @@ export class EditorContextTracker implements vscode.Disposable {
   }
 
   /**
-   * Re-checks a context that is about to be sent. With `respectGitIgnore` on,
+   * Re-checks a context that is about to be sent against the current settings.
+   * A selection is dropped when `attachSelection` is off, and a context without
+   * one becomes null when `attachOpenFile` is off. With `respectGitIgnore` on,
    * the ignore answer for the path is refreshed and the selected text is dropped
-   * when the file is ignored or excluded now, or when git does not answer in time.
+   * when the file is ignored or excluded now, or when the check does not answer.
    */
-  async sanitize(context: IdeContext): Promise<IdeContext> {
-    const sel = context.selection;
-    if (sel?.text === undefined || !this.opts.settings.getRespectGitIgnore()) return context;
+  async sanitize(context: IdeContext): Promise<IdeContext | null> {
+    const { settings } = this.opts;
+    const sel = settings.getAttachSelection() ? context.selection : undefined;
+    if (!sel) {
+      if (!settings.getAttachOpenFile()) return null;
+      return context.selection ? { filePath: context.filePath } : context;
+    }
+    if (sel.text === undefined || !settings.getRespectGitIgnore()) return context;
     this.ignored.delete(context.filePath);
     if (!(await this.isIgnored(vscode.Uri.file(context.filePath)))) return context;
     return { filePath: context.filePath, selection: { startLine: sel.startLine, endLine: sel.endLine } };
@@ -223,52 +267,48 @@ export class EditorContextTracker implements vscode.Disposable {
 
   private async probeIgnored(uri: vscode.Uri): Promise<boolean> {
     const [git, excluded] = await Promise.all([this.isGitIgnored(uri.fsPath), this.isExcluded(uri)]);
-    if (!git.settled) this.ignored.delete(uri.fsPath);
-    return git.ignored || excluded;
+    if (!git.settled || !excluded.settled) this.ignored.delete(uri.fsPath);
+    return git.ignored || excluded.ignored;
   }
 
   /**
-   * Runs `git check-ignore`. A timeout or kill means git is present but did not
-   * answer, so the file counts as ignored. Only settled answers may be cached.
+   * Runs `git check-ignore`. Only exit 0 (ignored), exit 1 (not ignored), a
+   * missing git, and exit 128 for a folder outside any repository are settled.
+   * Anything else, including a timeout, a kill, a spawn failure or another
+   * exit-128 error, counts as ignored and is not cached.
    */
-  private async isGitIgnored(fsPath: string): Promise<{ ignored: boolean; settled: boolean }> {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const timeout = new Promise<'timeout'>((resolve) => {
-      timer = setTimeout(() => resolve('timeout'), this.opts.gitTimeoutMs ?? DEFAULT_GIT_TIMEOUT_MS);
-    });
+  private async isGitIgnored(fsPath: string): Promise<ProbeResult> {
     try {
-      const result = await Promise.race([
+      const result = await withTimeout(
         this.opts.exec('git', ['check-ignore', '-q', fsPath], path.dirname(fsPath)),
-        timeout,
-      ]);
-      if (result === 'timeout' || result.killed) return { ignored: true, settled: false };
+        this.opts.gitTimeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS
+      );
+      if (result === 'timeout' || result.killed) return UNSETTLED;
       if (result.code === 0) return { ignored: true, settled: true };
       if (SETTLED_NOT_IGNORED.has(result.code)) return { ignored: false, settled: true };
-      // Unrecognized exit code: fail closed rather than guessing it means "not ignored".
-      return { ignored: true, settled: false };
+      if (result.code === 128 && NOT_A_REPOSITORY.test(result.stderr ?? '')) return { ignored: false, settled: true };
+      return UNSETTLED;
     } catch (err) {
       this.log(err);
-      return { ignored: true, settled: false };
-    } finally {
-      clearTimeout(timer);
+      return UNSETTLED;
     }
   }
 
-  /** True when `files.exclude` hides the file; any probe failure counts as excluded. */
-  private async isExcluded(uri: vscode.Uri): Promise<boolean> {
+  /** Whether `files.exclude` hides the file; a failed or hung probe counts as excluded and is not cached. */
+  private async isExcluded(uri: vscode.Uri): Promise<ProbeResult> {
     try {
       const folder = vscode.workspace.getWorkspaceFolder(uri);
-      if (!folder) return false;
+      if (!folder) return { ignored: false, settled: true };
       const relative = path.relative(folder.uri.fsPath, uri.fsPath).split(path.sep).join('/');
-      const found = await vscode.workspace.findFiles(
-        new vscode.RelativePattern(folder, escapeGlob(relative)),
-        undefined,
-        1
+      const found = await withTimeout(
+        vscode.workspace.findFiles(new vscode.RelativePattern(folder, escapeGlob(relative)), undefined, 1),
+        this.opts.excludeTimeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS
       );
-      return found.length === 0;
+      if (found === 'timeout') return UNSETTLED;
+      return { ignored: found.length === 0, settled: true };
     } catch (err) {
       this.log(err);
-      return true;
+      return UNSETTLED;
     }
   }
 }

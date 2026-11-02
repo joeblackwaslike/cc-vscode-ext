@@ -1,19 +1,16 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it, expect, vi, afterAll } from 'vitest';
+import { mockVscode } from '../../helpers/mockVscode';
 
-vi.mock('vscode', () => ({
-  RelativePattern: vi.fn(),
-  Uri: { file: vi.fn((path: string) => ({ fsPath: path })) },
-  workspace: {
-    createFileSystemWatcher: vi.fn(() => ({ onDidCreate: vi.fn(), onDidChange: vi.fn(), dispose: vi.fn() })),
-  },
-}));
+vi.mock('vscode', () => mockVscode);
 
 import { ChannelRouter } from '../../../src/process/ChannelRouter';
 import { ClaudeProcessManager } from '../../../src/process/ClaudeProcessManager';
 import { MessageBroker } from '../../../src/ipc/MessageBroker';
+import { EditorContextTracker, execFileCode } from '../../../src/context/EditorContextTracker';
 import type { IdeContext } from '../../../src/shared/ideTags';
 import { createIpcTestHarness } from '../../helpers/ipcTestHarness';
 
@@ -33,10 +30,21 @@ function waitFor(predicate: () => boolean, timeoutMs: number): Promise<void> {
   });
 }
 
-async function askThroughBroker(text: string, context: IdeContext | undefined, cwd: string): Promise<string> {
+/** Asks through the real broker, with the real tracker re-checking context at send time. */
+async function askThroughBroker(
+  text: string,
+  context: IdeContext | undefined,
+  cwd: string
+): Promise<{ reply: string; sent: string }> {
   const router = new ChannelRouter();
   const logger = { info() {}, warn() {}, error() {} };
   const pm = new ClaudeProcessManager(() => Promise.resolve(CLAUDE_BIN), router, logger);
+  const send = vi.spyOn(pm, 'sendUserMessage');
+  const tracker = new EditorContextTracker({
+    settings: { getAttachOpenFile: () => true, getAttachSelection: () => true, getRespectGitIgnore: () => true },
+    exec: execFileCode,
+    onChange: () => {},
+  });
   const h = createIpcTestHarness();
   new MessageBroker(
     pm as never,
@@ -45,7 +53,8 @@ async function askThroughBroker(text: string, context: IdeContext | undefined, c
     h.viewManager as never,
     router as never,
     h.webview as never,
-    logger
+    logger,
+    { sanitizeIdeContext: (ctx) => tracker.sanitize(ctx) }
   );
   let resultText = '';
   let done = false;
@@ -60,8 +69,9 @@ async function askThroughBroker(text: string, context: IdeContext | undefined, c
   try {
     h.dispatch({ type: 'control_request', channelId: 'ch', requestId: 'r1', text, context });
     await waitFor(() => done, 90000);
-    return resultText;
+    return { reply: resultText, sent: JSON.stringify(send.mock.calls) };
   } finally {
+    tracker.dispose();
     pm.closeChannel('ch');
   }
 }
@@ -75,7 +85,7 @@ describe.skipIf(!RUN)('ide context through the real MessageBroker and CLI (CLAUD
   });
 
   it('selection text reaches the model', async () => {
-    const reply = await askThroughBroker(
+    const { reply } = await askThroughBroker(
       'Reply with only the name of the constant in the selection I made.' + NO_TOOLS,
       { filePath, selection: { startLine: 3, endLine: 5, text: 'const zzSecretMarker = 1' } },
       cwd
@@ -85,7 +95,7 @@ describe.skipIf(!RUN)('ide context through the real MessageBroker and CLI (CLAUD
   }, 120000);
 
   it('file-only context reaches the model', async () => {
-    const reply = await askThroughBroker(
+    const { reply } = await askThroughBroker(
       'Reply with only the path of the file I have open.' + NO_TOOLS,
       { filePath },
       cwd
@@ -94,15 +104,21 @@ describe.skipIf(!RUN)('ide context through the real MessageBroker and CLI (CLAUD
     expect(reply).toContain('zz-ctx-probe.ts');
   }, 120000);
 
-  it('withheld selection text is never visible to the model', async () => {
-    const real = join(cwd, 'secret.ts');
+  it('selected text from a git-ignored file never reaches the CLI or the model', async () => {
+    const repo = join(cwd, 'repo');
+    mkdirSync(repo);
+    execFileSync('git', ['init', '-q'], { cwd: repo });
+    writeFileSync(join(repo, '.gitignore'), 'secret.ts\n');
+    const real = join(repo, 'secret.ts');
     writeFileSync(real, 'const zzNeverSent = 1;\nconst b = 2;\nconst c = 3;\n');
-    const reply = await askThroughBroker(
+    const { reply, sent } = await askThroughBroker(
       'Reply with only the name of the constant in my selection, or NONE if you cannot see its text.' + NO_TOOLS,
-      { filePath: real, selection: { startLine: 1, endLine: 1 } },
+      { filePath: real, selection: { startLine: 1, endLine: 1, text: 'const zzNeverSent = 1;' } },
       cwd
     );
     console.log('withheld reply:', JSON.stringify(reply));
+    expect(sent).not.toContain('zzNeverSent');
+    expect(sent).toContain('The selected text was not included');
     expect(reply).not.toContain('zzNeverSent');
   }, 120000);
 });

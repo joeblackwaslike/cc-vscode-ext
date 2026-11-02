@@ -110,6 +110,7 @@ export const mockVscode = {
     findFiles: vi.fn(() => Promise.resolve([] as unknown[])),
     getWorkspaceFolder: vi.fn(() => undefined as undefined | { uri: ReturnType<typeof makeUri>; name: string }),
     onDidChangeConfiguration: vi.fn(() => ({ dispose: vi.fn() })),
+    onDidChangeTextDocument: vi.fn(() => ({ dispose: vi.fn() })),
     onDidCloseTextDocument: vi.fn(() => ({ dispose: vi.fn() })),
     createFileSystemWatcher: vi.fn((_glob: string) => ({
       onDidChange: vi.fn(() => ({ dispose: vi.fn() })),
