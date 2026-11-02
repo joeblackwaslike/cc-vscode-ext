@@ -14,6 +14,9 @@ and as a usable extension in its own right.
   commands in your workspace.
 - **`@` file mentions** to pull specific files or folders into context, plus the ability to
   highlight a selection and ask about it directly.
+- **Automatic open-file and selection context** — the active file and any text you've selected
+  attach to your prompt as removable chips, configurable via `clawdCode.attachOpenFile`,
+  `clawdCode.attachSelection`, and `clawdCode.respectGitIgnore`.
 - **Session management** — conversations are saved automatically; browse past sessions, resume
   where you left off, and organize sessions into named groups via the sidebar.
 - **Diff review** — proposed edits render as an inline diff you can accept or reject before
