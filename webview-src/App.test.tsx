@@ -66,6 +66,52 @@ describe('App: new-conversation flow', () => {
   });
 });
 
+describe('App: editor context on send', () => {
+  test('a send with a visible chip posts the context and renders a history chip in the optimistic turn', async () => {
+    const user = userEvent.setup();
+    posted.length = 0;
+    render(<App />);
+    sendInitialState();
+    await screen.findByTestId('conversation-view');
+    act(() => {
+      window.postMessage({ type: 'ide_context', context: { filePath: '/repo/src/app.ts' } }, '*');
+    });
+    await screen.findByTestId('context-chip-file');
+
+    await user.type(screen.getByTestId('message-input'), 'hello there');
+    await user.click(screen.getByTestId('send-button'));
+
+    const request = posted.find((m) => m.type === 'control_request') as unknown as { context?: unknown };
+    expect(request.context).toEqual({ filePath: '/repo/src/app.ts' });
+    const bubble = await screen.findByTestId('chat-message-user');
+    expect(bubble).toHaveTextContent('hello there');
+    expect(bubble).not.toHaveTextContent('ide_opened_file');
+    expect(await screen.findByTestId('history-chip-file')).toHaveTextContent('app.ts');
+  });
+
+  test('a slash command with a visible chip posts no context and renders a plain-text turn', async () => {
+    const user = userEvent.setup();
+    posted.length = 0;
+    render(<App />);
+    sendInitialState();
+    await screen.findByTestId('conversation-view');
+    act(() => {
+      window.postMessage({ type: 'ide_context', context: { filePath: '/repo/src/app.ts' } }, '*');
+    });
+    await screen.findByTestId('context-chip-file');
+
+    await user.type(screen.getByTestId('message-input'), '/clear');
+    await user.click(screen.getByTestId('send-button'));
+
+    const request = posted.find((m) => m.type === 'control_request')!;
+    expect(request).not.toHaveProperty('context');
+    const bubble = await screen.findByTestId('chat-message-user');
+    expect(bubble).toHaveTextContent('/clear');
+    expect(bubble).not.toHaveTextContent('ide_opened_file');
+    expect(screen.queryByTestId('history-chip-file')).not.toBeInTheDocument();
+  });
+});
+
 describe('App: per-channel permission mode', () => {
   test('a channel approved into bypass shows bypass while a new tab still launches in the default', async () => {
     const user = userEvent.setup();

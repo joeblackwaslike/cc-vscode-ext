@@ -1,3 +1,4 @@
+import type { UserContent } from '../shared/userContent';
 import { spawn, type SpawnOptions } from 'child_process';
 import { buildArgs, type LaunchOptions } from './ProcessArgs';
 import type { ChannelRouter } from './ChannelRouter';
@@ -445,9 +446,9 @@ export class ClaudeProcessManager {
    * `Error: Expected message role 'user', got 'undefined'` and produce no
    * response, so this envelope is the contract the whole send path depends on.
    */
-  sendUserMessage(channelId: string, text: string): void {
+  sendUserMessage(channelId: string, content: UserContent): void {
     this.resultReceived.delete(channelId);
-    const turn = { type: 'user', message: { role: 'user', content: text } };
+    const turn = { type: 'user', message: { role: 'user', content } };
     this.outstandingTurns.set(channelId, turn);
     this.writeToChannel(channelId, turn);
   }

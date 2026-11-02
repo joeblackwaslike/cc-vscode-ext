@@ -3,14 +3,15 @@ import { AtMentionDropdown } from './AtMentionDropdown';
 import { SlashCommandDropdown } from './SlashCommandDropdown';
 import { ComposerMenu, type MenuOption } from './ComposerMenu';
 import { ContextUsageRing } from './ContextUsageRing';
+import { ContextChips } from './ContextChips';
 import { ExtensionContext } from '../store/extensionStore';
 import { SessionContext } from '../store/sessionStore';
 import { postMessage } from '../lib/ipc';
-import type { PermissionMode, ThinkingLevel, ContextUsage } from '../lib/ipc';
+import type { PermissionMode, ThinkingLevel, ContextUsage, IdeContext } from '../lib/ipc';
 
 interface Props {
   channelId: string;
-  onSend: (text: string) => void;
+  onSend: (text: string, context?: IdeContext) => void;
   onInterrupt: () => void;
   onCompact: () => void;
   onRefreshUsage?: (() => void) | undefined;
@@ -57,6 +58,12 @@ const PLUS_OPTIONS: MenuOption[] = [
 const labelFor = (options: MenuOption[], value: string): string =>
   options.find((o) => o.value === value)?.label ?? value;
 
+const chipIdentity = (ctx: IdeContext | null): string | null => {
+  if (!ctx) return null;
+  const sel = ctx.selection;
+  return JSON.stringify(sel ? [ctx.filePath, sel.startLine, sel.endLine] : [ctx.filePath]);
+};
+
 export function ChatInput({ channelId, onSend, onInterrupt, onCompact, onRefreshUsage, running, usage, disabled }: Props) {
   const ext = useContext(ExtensionContext);
   const sess = useContext(SessionContext);
@@ -66,6 +73,14 @@ export function ChatInput({ channelId, onSend, onInterrupt, onCompact, onRefresh
   const [slashQuery, setSlashQuery] = useState<string | null>(null);
   const [focused, setFocused] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const ideContext = state?.ideContext ?? null;
+  const chipId = chipIdentity(ideContext);
+  const [dismissedId, setDismissedId] = useState<string | null>(null);
+  const visibleContext = ideContext && chipId !== dismissedId ? ideContext : undefined;
+
+  useEffect(() => {
+    setDismissedId((prev) => (prev === chipId ? prev : null));
+  }, [chipId]);
 
   // Grow with content up to MAX_HEIGHT, then scroll. Runs on every value change
   // (including reset to '' after send), fixing the old fixed-height clipping.
@@ -79,10 +94,12 @@ export function ChatInput({ channelId, onSend, onInterrupt, onCompact, onRefresh
   const submit = useCallback(() => {
     const trimmed = text.trim();
     if (trimmed && !running) {
-      onSend(trimmed);
+      const context = trimmed.startsWith('/') ? undefined : visibleContext;
+      if (context) onSend(trimmed, context);
+      else onSend(trimmed);
       setText('');
     }
-  }, [text, running, onSend]);
+  }, [text, running, onSend, visibleContext]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -204,6 +221,7 @@ export function ChatInput({ channelId, onSend, onInterrupt, onCompact, onRefresh
         />
       )}
       <div className={`cc-composer${focused ? ' cc-composer--focus' : ''}`}>
+        <ContextChips context={visibleContext ?? null} onDismiss={() => setDismissedId(chipId)} />
         <textarea
           data-testid="message-input"
           ref={textareaRef}

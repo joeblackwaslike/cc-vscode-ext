@@ -141,4 +141,74 @@ describe('buildConversation', () => {
     if (turn.kind !== 'assistant') throw new Error('expected assistant turn');
     expect(turn.blocks).toEqual([{ type: 'text', text: 'here is the answer' }]);
   });
+
+  describe('ide tags', () => {
+    const FILE = '<ide_opened_file>The user opened the file /r/src/a.ts in the IDE. This may or may not be related to the current task.</ide_opened_file>';
+    const SEL = '<ide_selection>The user selected the lines 3 to 5 from /r/src/a.ts:\nfoo\n</ide_selection>';
+    const WITHHELD = '<ide_selection>The user selected the lines 3 to 5 from /r/src/a.ts. The selected text was not included because the file is git-ignored or excluded.</ide_selection>';
+    const user = (content: unknown) => buildConversation([ev({ type: 'user', message: { content } })]);
+
+    it('separates a file tag block from the prompt', () => {
+      expect(user([{ type: 'text', text: 'hi' }, { type: 'text', text: FILE }])).toEqual<Turn[]>([
+        { kind: 'user', key: '0', text: 'hi', ide: [{ kind: 'file', path: '/r/src/a.ts' }] },
+      ]);
+    });
+
+    it('turns a selection block into a selection chip', () => {
+      const [turn] = user([{ type: 'text', text: 'hi' }, { type: 'text', text: SEL }]);
+      expect(turn).toMatchObject({
+        text: 'hi',
+        ide: [{ kind: 'selection', path: '/r/src/a.ts', startLine: 3, endLine: 5 }],
+      });
+    });
+
+    it('handles the withheld selection form', () => {
+      const [turn] = user([{ type: 'text', text: 'hi' }, { type: 'text', text: WITHHELD }]);
+      expect(turn).toMatchObject({ text: 'hi', ide: [{ kind: 'selection', startLine: 3, endLine: 5 }] });
+    });
+
+    it('handles tags concatenated into one string', () => {
+      const [turn] = user(`${FILE}\n${SEL}\nhi`);
+      expect(turn).toMatchObject({ text: 'hi' });
+      expect((turn as { ide: unknown[] }).ide).toHaveLength(2);
+    });
+
+    it('keeps a turn whose only text is a tag', () => {
+      expect(user([{ type: 'text', text: FILE }])).toEqual<Turn[]>([
+        { kind: 'user', key: '0', text: '', ide: [{ kind: 'file', path: '/r/src/a.ts' }] },
+      ]);
+    });
+
+    it('omits ide when there are no tags', () => {
+      expect(user('plain')).toEqual<Turn[]>([{ kind: 'user', key: '0', text: 'plain' }]);
+    });
+
+    it('still skips tool_result carriers', () => {
+      expect(user([{ type: 'tool_result', tool_use_id: 'x', content: FILE }])).toEqual([]);
+    });
+
+    it('joins plain multi-block prompts with no separator', () => {
+      expect(user([{ type: 'text', text: 'a' }, { type: 'text', text: 'b' }])).toEqual<Turn[]>([
+        { kind: 'user', key: '0', text: 'ab' },
+      ]);
+    });
+
+    it('preserves leading indentation and trailing newline of plain prompts', () => {
+      expect(user('    indented\n')).toEqual<Turn[]>([{ kind: 'user', key: '0', text: '    indented\n' }]);
+    });
+
+    it('leaves no double gap when a tag sits mid-text', () => {
+      const [turn] = user(`before ${FILE} after`);
+      expect(turn).toMatchObject({ text: 'before after' });
+    });
+
+    it('leaves prose mentioning the tag name untouched', () => {
+      const prose = 'what does <ide_opened_file> mean?';
+      expect(user(prose)).toEqual<Turn[]>([{ kind: 'user', key: '0', text: prose }]);
+    });
+
+    it('strips exact tag text typed into prose (intended: indistinguishable from a real tag)', () => {
+      expect(user(`see ${FILE}`)).toMatchObject([{ text: 'see', ide: [{ kind: 'file' }] }]);
+    });
+  });
 });

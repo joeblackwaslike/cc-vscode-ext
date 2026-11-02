@@ -1,3 +1,4 @@
+import type { IdeContext } from '../shared/ideTags';
 import type { ApproveMode, PermissionMode } from '../process/ProcessArgs';
 import type { ClaudeStreamEvent } from './process';
 import type { DiffFile } from './diff';
@@ -52,6 +53,8 @@ export interface ControlRequestMessage {
   requestId: string;
   /** Raw user text. The host wraps it in the CLI's stream-json user envelope. */
   text: string;
+  /** Active editor context to attach as ide_* blocks. */
+  context?: IdeContext;
 }
 
 // ─── State queries ───────────────────────────────────────────────────────────
@@ -653,6 +656,12 @@ export interface PermissionCancelledMessage {
   toolUseIds: string[];
 }
 
+/** The editor context the composer should offer, or null when there is none. */
+export interface IdeContextMessage {
+  type: 'ide_context';
+  context: IdeContext | null;
+}
+
 /** Union of all messages sent from the extension host to the webview. */
 export type ToWebviewMessage =
   | StreamRequestMessage
@@ -688,4 +697,5 @@ export type ToWebviewMessage =
   | PermissionResolvedMessage
   | PermissionCancelledMessage
   | DefaultModeOfferMessage
-  | ChannelModeMessage;
+  | ChannelModeMessage
+  | IdeContextMessage;

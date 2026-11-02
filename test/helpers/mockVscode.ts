@@ -77,8 +77,10 @@ export const mockVscode = {
     visibleTextEditors: [] as unknown[],
     onDidChangeActiveTextEditor: vi.fn(() => ({ dispose: vi.fn() })),
     onDidChangeVisibleTextEditors: vi.fn(() => ({ dispose: vi.fn() })),
+    onDidChangeTextEditorSelection: vi.fn(() => ({ dispose: vi.fn() })),
     tabGroups: {
-      all: [] as unknown[],
+      all: [] as Array<{ tabs: Array<{ input: unknown }> }>,
+      onDidChangeTabs: vi.fn(() => ({ dispose: vi.fn() })),
     },
     createTerminal: vi.fn(() => ({
       show: vi.fn(),
@@ -105,8 +107,17 @@ export const mockVscode = {
     openTextDocument: vi.fn(() =>
       Promise.resolve({ uri: makeUri('file', '/mock/doc'), getText: () => '' })
     ),
-    findFiles: vi.fn(() => Promise.resolve([])),
+    findFiles: vi.fn(() => Promise.resolve([] as unknown[])),
+    getWorkspaceFolder: vi.fn(() => undefined as undefined | { uri: ReturnType<typeof makeUri>; name: string }),
     onDidChangeConfiguration: vi.fn(() => ({ dispose: vi.fn() })),
+    onDidChangeTextDocument: vi.fn(() => ({ dispose: vi.fn() })),
+    onDidCloseTextDocument: vi.fn(() => ({ dispose: vi.fn() })),
+    createFileSystemWatcher: vi.fn((_glob: string) => ({
+      onDidChange: vi.fn(() => ({ dispose: vi.fn() })),
+      onDidCreate: vi.fn(() => ({ dispose: vi.fn() })),
+      onDidDelete: vi.fn(() => ({ dispose: vi.fn() })),
+      dispose: vi.fn(),
+    })),
     fs: {
       readFile: vi.fn(() => Promise.resolve(new Uint8Array())),
       writeFile: vi.fn(() => Promise.resolve()),
@@ -202,6 +213,7 @@ export const mockVscode = {
     isEmpty: startLine === endLine && startChar === endChar,
   })),
   Position: vi.fn((line: number, character: number) => ({ line, character })),
+  RelativePattern: vi.fn((base: string, pattern: string) => ({ base, pattern })),
   Selection: vi.fn((anchorLine: number, anchorChar: number, activeLine: number, activeChar: number) => ({
     anchor: { line: anchorLine, character: anchorChar },
     active: { line: activeLine, character: activeChar },

@@ -1,3 +1,4 @@
+import type { UserContent } from '../shared/userContent';
 import type { ProcessLaunchOptions } from '../process/ClaudeProcessManager';
 import type { ILogger } from '../process/ClaudeProcessManager';
 import type { ContextUsage } from '../types/ipc';
@@ -18,7 +19,7 @@ const DEFAULT_THRESHOLD = 70;
 const DEFAULT_TIMEOUT_MS = 180_000;
 
 export interface IRelayProcessManager {
-  sendUserMessage(channelId: string, text: string): void;
+  sendUserMessage(channelId: string, content: UserContent): void;
   swapChannel(channelId: string, options: ProcessLaunchOptions, cwd?: string): Promise<void>;
 }
 
@@ -62,7 +63,7 @@ export class SessionRelayManager {
   private readonly thresholds = new Map<string, number>();
   private readonly relaying = new Set<string>();
   private readonly pendingCaptures = new Map<string, PendingCapture>();
-  private readonly queuedMessages = new Map<string, string[]>();
+  private readonly queuedMessages = new Map<string, UserContent[]>();
   private defaultThreshold = DEFAULT_THRESHOLD;
 
   constructor(
@@ -126,12 +127,17 @@ export class SessionRelayManager {
    * Returns false if no relay is in progress, meaning the caller should send
    * the message immediately as normal.
    */
-  enqueueIfRelaying(channelId: string, text: string): boolean {
+  enqueueIfRelaying(channelId: string, content: UserContent): boolean {
     if (!this.relaying.has(channelId)) return false;
     const queue = this.queuedMessages.get(channelId) ?? [];
-    queue.push(text);
+    queue.push(content);
     this.queuedMessages.set(channelId, queue);
     return true;
+  }
+
+  /** Discards the turns queued for this channel, so a cancelled prompt never starts after the relay settles. */
+  clearQueue(channelId: string): void {
+    this.queuedMessages.delete(channelId);
   }
 
   setThreshold(threshold: number, channelId?: string): void {
@@ -240,8 +246,8 @@ export class SessionRelayManager {
       const queued = this.queuedMessages.get(channelId);
       if (queued && queued.length > 0) {
         this.queuedMessages.delete(channelId);
-        for (const text of queued) {
-          this.processManager.sendUserMessage(channelId, text);
+        for (const content of queued) {
+          this.processManager.sendUserMessage(channelId, content);
         }
       }
     }

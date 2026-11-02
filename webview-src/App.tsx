@@ -9,7 +9,8 @@ import { ConversationView } from './components/ConversationView';
 import { SessionList } from './components/SessionList';
 import { TabBar, type TabInfo } from './components/TabBar';
 import { PastConversationsDropdown } from './components/PastConversationsDropdown';
-import type { ClaudeStreamEvent, ToWebviewMessage } from './lib/ipc';
+import type { ClaudeStreamEvent, IdeContext, ToWebviewMessage } from './lib/ipc';
+import { buildUserContent } from '../src/shared/userContent';
 
 // ─── Detect view mode from flags injected by HtmlBuilder ─────────────────────
 
@@ -140,7 +141,7 @@ function MainView() {
   );
 
   const handleSend = useCallback(
-    (text: string) => {
+    (text: string, context?: IdeContext) => {
       if (!activeId) return;
       const requestId = crypto.randomUUID();
       // Optimistically render the user's turn — the CLI's stream-json output
@@ -148,10 +149,10 @@ function MainView() {
       dispatch({
         type: 'STREAM_EVENT',
         channelId: activeId,
-        event: { type: 'user', message: { role: 'user', content: text } } as ClaudeStreamEvent,
+        event: { type: 'user', message: { role: 'user', content: buildUserContent(text, context) } } as ClaudeStreamEvent,
       });
       dispatch({ type: 'SET_RUNNING', channelId: activeId, running: true });
-      sendText(activeId, text, requestId);
+      sendText(activeId, text, requestId, context);
     },
     [activeId, sendText, dispatch],
   );

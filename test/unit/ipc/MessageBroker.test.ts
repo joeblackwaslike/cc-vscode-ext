@@ -1,3 +1,5 @@
+import { formatIdeBlocks } from '../../../src/shared/ideTags';
+import type { IdeContext } from '../../../src/shared/ideTags';
 import { describe, it, expect, vi } from 'vitest';
 
 vi.mock('vscode', () => ({
@@ -13,6 +15,7 @@ vi.mock('vscode', () => ({
 }));
 import { createIpcTestHarness, createMockServices } from '../../helpers/ipcTestHarness';
 import { MessageBroker } from '../../../src/ipc/MessageBroker';
+import type { SessionRelayManager } from '../../../src/relay/SessionRelayManager';
 import { PermissionRequests, BYPASS_DOWNGRADE_NOTICE } from '../../../src/process/PermissionRequests';
 import type { PermissionMode } from '../../../src/process/ProcessArgs';
 import { readFileSync } from 'node:fs';
@@ -224,6 +227,195 @@ describe('MessageBroker', () => {
       h.dispatch({ type: 'control_request', channelId: 'ch-1', requestId: 'req-1', text: 'hello' });
       expect(h.processManager.sendUserMessage).toHaveBeenCalledWith('ch-1', 'hello');
     });
+
+    it('sends array content with ide blocks when the request carries context', () => {
+      const { h } = makebroker();
+      const context = { filePath: '/w/a.ts' };
+      h.dispatch({ type: 'control_request', channelId: 'ch-1', requestId: 'req-1', text: 'hello', context });
+      expect(h.processManager.sendUserMessage).toHaveBeenCalledWith('ch-1', [
+        { type: 'text', text: 'hello' },
+        { type: 'text', text: formatIdeBlocks(context)[0] },
+      ]);
+    });
+
+    function brokerWithSanitizeAndInstance(sanitizeIdeContext: (ctx: IdeContext) => Promise<IdeContext | null>) {
+      const h = createIpcTestHarness();
+      const broker = new MessageBroker(
+        h.processManager,
+        h.sessionManager,
+        h.diffManager,
+        h.viewManager,
+        h.channelRouter,
+        h.webview,
+        h.logger,
+        { sanitizeIdeContext }
+      );
+      return { h, broker };
+    }
+
+    function brokerWithSanitize(sanitizeIdeContext: (ctx: IdeContext) => Promise<IdeContext | null>) {
+      return brokerWithSanitizeAndInstance(sanitizeIdeContext).h;
+    }
+
+    const withText = { filePath: '/w/a.ts', selection: { startLine: 1, endLine: 2, text: 'secret' } };
+    const linesOnly = { filePath: '/w/a.ts', selection: { startLine: 1, endLine: 2 } };
+
+    it('sends the context the host re-checked, not the text the webview held', async () => {
+      const h = brokerWithSanitize(async () => linesOnly);
+      h.dispatch({ type: 'control_request', channelId: 'ch-1', requestId: 'r', text: 'hi', context: withText });
+      await vi.waitFor(() => expect(h.processManager.sendUserMessage).toHaveBeenCalled());
+      expect(h.processManager.sendUserMessage).toHaveBeenCalledWith('ch-1', [
+        { type: 'text', text: 'hi' },
+        { type: 'text', text: formatIdeBlocks(linesOnly)[0] },
+      ]);
+    });
+
+    it('drops the selected text when the re-check throws', async () => {
+      const h = brokerWithSanitize(async () => {
+        throw new Error('check failed');
+      });
+      h.dispatch({ type: 'control_request', channelId: 'ch-1', requestId: 'r', text: 'hi', context: withText });
+      await vi.waitFor(() => expect(h.processManager.sendUserMessage).toHaveBeenCalled());
+      expect(h.processManager.sendUserMessage).toHaveBeenCalledWith('ch-1', [
+        { type: 'text', text: 'hi' },
+        { type: 'text', text: formatIdeBlocks(linesOnly)[0] },
+      ]);
+    });
+
+    it('keeps two quick sends on a channel in order while the first is re-checked', async () => {
+      let release!: (ctx: IdeContext) => void;
+      const h = brokerWithSanitize(() => new Promise((r) => (release = r)));
+      h.dispatch({ type: 'control_request', channelId: 'ch-1', requestId: 'a', text: 'first', context: withText });
+      h.dispatch({ type: 'control_request', channelId: 'ch-1', requestId: 'b', text: 'second' });
+      await new Promise((r) => setImmediate(r));
+      expect(h.processManager.sendUserMessage).not.toHaveBeenCalled();
+      release(withText);
+      await vi.waitFor(() => expect(h.processManager.sendUserMessage).toHaveBeenCalledTimes(2));
+      expect(h.processManager.sendUserMessage.mock.calls.map(([, c]) => (Array.isArray(c) ? c[0].text : c))).toEqual([
+        'first',
+        'second',
+      ]);
+    });
+
+    it('re-checks a file-only context too, and sends the plain prompt when the host drops it', async () => {
+      const sanitize = vi.fn(async () => null);
+      const h = brokerWithSanitize(sanitize);
+      const context = { filePath: '/w/a.ts' };
+      h.dispatch({ type: 'control_request', channelId: 'ch-1', requestId: 'r', text: 'hi', context });
+      await vi.waitFor(() => expect(h.processManager.sendUserMessage).toHaveBeenCalled());
+      expect(sanitize).toHaveBeenCalledWith(context);
+      expect(h.processManager.sendUserMessage).toHaveBeenCalledWith('ch-1', 'hi');
+    });
+
+    it('keeps no per-channel cancel state once a closed channel\'s pending turns settle', async () => {
+      let release!: (ctx: IdeContext) => void;
+      const { h, broker } = brokerWithSanitizeAndInstance(() => new Promise((r) => (release = r)));
+      h.dispatch({ type: 'control_request', channelId: 'ch-1', requestId: 'a', text: 'first', context: withText });
+      await new Promise((r) => setImmediate(r));
+      h.dispatch({ type: 'interrupt_claude', channelId: 'ch-1' });
+      h.dispatch({ type: 'close_channel', channelId: 'ch-1' });
+      h.dispatch({ type: 'interrupt_claude', channelId: 'ch-2' });
+      h.dispatch({ type: 'close_channel', channelId: 'ch-2' });
+      await new Promise((r) => setImmediate(r));
+      release(withText);
+      for (let i = 0; i < 3; i++) await new Promise((r) => setImmediate(r));
+      const maps = Object.values(broker).filter((v): v is Map<string, unknown> => v instanceof Map);
+      expect(maps.filter((m) => m.has('ch-1') || m.has('ch-2'))).toEqual([]);
+    });
+
+    it('does not deliver an old turn to a channel id that was closed and reopened', async () => {
+      const releases: Array<(ctx: IdeContext) => void> = [];
+      const { h } = brokerWithSanitizeAndInstance(() => new Promise((r) => releases.push(r)));
+      h.dispatch({ type: 'control_request', channelId: 'ch-1', requestId: 'a', text: 'old', context: withText });
+      await new Promise((r) => setImmediate(r));
+      h.dispatch({ type: 'close_channel', channelId: 'ch-1' });
+      h.dispatch({ type: 'control_request', channelId: 'ch-1', requestId: 'b', text: 'new', context: withText });
+      releases[0](withText);
+      await vi.waitFor(() => expect(releases).toHaveLength(2));
+      releases[1](withText);
+      await vi.waitFor(() => expect(h.processManager.sendUserMessage).toHaveBeenCalled());
+      expect(h.processManager.sendUserMessage.mock.calls.map(([, c]) => c[0].text)).toEqual(['new']);
+    });
+
+    it('drops a turn whose re-check was still pending when the channel was interrupted', async () => {
+      let release!: (ctx: IdeContext) => void;
+      const { h } = brokerWithSanitizeAndInstance(() => new Promise((r) => (release = r)));
+      h.dispatch({ type: 'control_request', channelId: 'ch-1', requestId: 'a', text: 'first', context: withText });
+      await new Promise((r) => setImmediate(r));
+      h.dispatch({ type: 'interrupt_claude', channelId: 'ch-1' });
+      release(withText);
+      await new Promise((r) => setImmediate(r));
+      expect(h.processManager.sendUserMessage).not.toHaveBeenCalled();
+    });
+
+    it('drops a turn whose re-check was still pending when the channel was closed', async () => {
+      let release!: (ctx: IdeContext) => void;
+      const { h } = brokerWithSanitizeAndInstance(() => new Promise((r) => (release = r)));
+      h.dispatch({ type: 'control_request', channelId: 'ch-1', requestId: 'a', text: 'first', context: withText });
+      await new Promise((r) => setImmediate(r));
+      h.dispatch({ type: 'close_channel', channelId: 'ch-1' });
+      release(withText);
+      await new Promise((r) => setImmediate(r));
+      expect(h.processManager.sendUserMessage).not.toHaveBeenCalled();
+    });
+
+    it('drops a turn whose re-check was still pending when the broker was disposed', async () => {
+      let release!: (ctx: IdeContext) => void;
+      const { h, broker } = brokerWithSanitizeAndInstance(() => new Promise((r) => (release = r)));
+      h.dispatch({ type: 'control_request', channelId: 'ch-1', requestId: 'a', text: 'first', context: withText });
+      await new Promise((r) => setImmediate(r));
+      broker.dispose();
+      release(withText);
+      await new Promise((r) => setImmediate(r));
+      expect(h.processManager.sendUserMessage).not.toHaveBeenCalled();
+    });
+
+    it('skips the re-check for turns cancelled while queued, and a later turn does not wait on the abandoned check', async () => {
+      const releases: Array<(ctx: IdeContext) => void> = [];
+      const sanitize = vi.fn(() => new Promise<IdeContext>((r) => releases.push(r)));
+      const { h } = brokerWithSanitizeAndInstance(sanitize);
+      for (const text of ['a', 'b', 'c']) {
+        h.dispatch({ type: 'control_request', channelId: 'ch-1', requestId: text, text, context: withText });
+      }
+      await vi.waitFor(() => expect(sanitize).toHaveBeenCalledTimes(1));
+      h.dispatch({ type: 'interrupt_claude', channelId: 'ch-1' });
+      h.dispatch({ type: 'control_request', channelId: 'ch-1', requestId: 'd', text: 'd', context: withText });
+      h.dispatch({ type: 'control_request', channelId: 'ch-1', requestId: 'e', text: 'e', context: withText });
+      await vi.waitFor(() => expect(sanitize).toHaveBeenCalledTimes(2));
+      releases[1](withText);
+      await vi.waitFor(() => expect(sanitize).toHaveBeenCalledTimes(3));
+      releases[2](withText);
+      await vi.waitFor(() => expect(h.processManager.sendUserMessage).toHaveBeenCalledTimes(2));
+      releases[0](withText);
+      for (let i = 0; i < 3; i++) await new Promise((r) => setImmediate(r));
+      expect(sanitize).toHaveBeenCalledTimes(3);
+      expect(h.processManager.sendUserMessage.mock.calls.map(([, c]) => c[0].text)).toEqual(['d', 'e']);
+    });
+
+    it('never runs the re-check for a turn cancelled before its turn came up', async () => {
+      let releaseFirst!: (ctx: IdeContext) => void;
+      const sanitize = vi.fn(() => new Promise<IdeContext>((r) => (releaseFirst ??= r)));
+      const { h } = brokerWithSanitizeAndInstance(sanitize);
+      h.dispatch({ type: 'control_request', channelId: 'ch-1', requestId: 'a', text: 'a', context: withText });
+      h.dispatch({ type: 'control_request', channelId: 'ch-1', requestId: 'b', text: 'b', context: withText });
+      await vi.waitFor(() => expect(sanitize).toHaveBeenCalledTimes(1));
+      h.dispatch({ type: 'cancel_request', channelId: 'ch-1' });
+      releaseFirst(withText);
+      for (let i = 0; i < 3; i++) await new Promise((r) => setImmediate(r));
+      expect(sanitize).toHaveBeenCalledTimes(1);
+      expect(h.processManager.sendUserMessage).not.toHaveBeenCalled();
+    });
+
+    it('still delivers a turn submitted after an earlier cancellation on the same channel', async () => {
+      const { h } = brokerWithSanitizeAndInstance(async () => linesOnly);
+      h.dispatch({ type: 'interrupt_claude', channelId: 'ch-1' });
+      h.dispatch({ type: 'control_request', channelId: 'ch-1', requestId: 'a', text: 'after', context: withText });
+      await vi.waitFor(() => expect(h.processManager.sendUserMessage).toHaveBeenCalled());
+      expect(h.processManager.sendUserMessage).toHaveBeenCalledWith('ch-1', [
+        { type: 'text', text: 'after' },
+        { type: 'text', text: formatIdeBlocks(linesOnly)[0] },
+      ]);
+    });
   });
 
   describe('list_sessions_request', () => {
@@ -239,6 +431,27 @@ describe('MessageBroker', () => {
         sessions: fakeSessions,
         groups: [],
       });
+    });
+
+    it('replays the current ide_context, or null when there is none', () => {
+      const ctx = { filePath: '/ws/a.ts', selection: { startLine: 1, endLine: 2, text: 'x' } };
+      const h = createIpcTestHarness();
+      new MessageBroker(
+        h.processManager,
+        h.sessionManager,
+        h.diffManager,
+        h.viewManager,
+        h.channelRouter,
+        h.webview,
+        h.logger,
+        { getIdeContext: () => ctx }
+      );
+      h.dispatch({ type: 'list_sessions_request' });
+      expect(h.postedMessages).toContainEqual({ type: 'ide_context', context: ctx });
+
+      const bare = makebroker();
+      bare.h.dispatch({ type: 'list_sessions_request' });
+      expect(bare.h.postedMessages).toContainEqual({ type: 'ide_context', context: null });
     });
 
     it('passes includeHidden to listSessions', () => {
@@ -594,6 +807,7 @@ function makeBrokerWithRelay() {
     setThreshold: vi.fn(),
     isRelaying: vi.fn(() => false),
     enqueueIfRelaying: vi.fn(() => false),
+    clearQueue: vi.fn(),
     updateLaunchOptions: vi.fn(),
   };
   const broker = new MessageBroker(
@@ -883,6 +1097,25 @@ describe('SessionRelayManager wiring', () => {
       expect(h.processManager.sendUserMessage).not.toHaveBeenCalled();
     });
 
+    it.each(['interrupt_claude', 'cancel_request'] as const)('%s discards turns queued behind the relay', (type) => {
+      const { h, sessionRelayManager } = makeBrokerWithRelay();
+      h.dispatch({ type, channelId: 'ch-1' });
+      expect(sessionRelayManager.clearQueue).toHaveBeenCalledWith('ch-1');
+    });
+
+    it('never sends a turn queued during a relay once the channel is interrupted', async () => {
+      const { h, broker } = makebroker();
+      const relay = (broker as unknown as { sessionRelayManager: SessionRelayManager }).sessionRelayManager;
+      relay.registerLaunch('ch-1', {}, '/w');
+      relay.onContextUsage('ch-1', { categories: [], totalTokens: 80_000, maxTokens: 100_000, percentage: 80 });
+      expect(relay.isRelaying('ch-1')).toBe(true);
+      h.dispatch({ type: 'control_request', channelId: 'ch-1', requestId: 'r', text: 'cancelled turn' });
+      h.dispatch({ type: 'interrupt_claude', channelId: 'ch-1' });
+      relay.handleStreamEvent('ch-1', { type: 'result', subtype: 'error' });
+      await vi.waitFor(() => expect(relay.isRelaying('ch-1')).toBe(false));
+      expect(h.processManager.sendUserMessage).not.toHaveBeenCalledWith('ch-1', 'cancelled turn');
+    });
+
     it('sends immediately when SessionRelayManager reports no relay in progress', () => {
       const { h, sessionRelayManager } = makeBrokerWithRelay();
       sessionRelayManager.enqueueIfRelaying.mockReturnValue(false);
@@ -919,6 +1152,7 @@ describe('permission prompt routing', () => {
       setThreshold: vi.fn(),
       isRelaying: vi.fn(() => opts.isRelaying ?? false),
       enqueueIfRelaying: vi.fn(() => false),
+      clearQueue: vi.fn(),
       updateLaunchOptions: vi.fn(),
     };
     h.processManager.writeToChannel.mockReturnValue(true);

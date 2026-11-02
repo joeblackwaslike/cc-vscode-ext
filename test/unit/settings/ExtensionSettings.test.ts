@@ -232,6 +232,35 @@ describe('ExtensionSettings', () => {
     });
   });
 
+  describe.each([
+    ['attachOpenFile', 'getAttachOpenFile'],
+    ['attachSelection', 'getAttachSelection'],
+    ['respectGitIgnore', 'getRespectGitIgnore'],
+  ] as const)('%s', (key, getter) => {
+    it('defaults to true', () => {
+      stubConfig({});
+      expect(new ExtensionSettings()[getter]()).toBe(true);
+    });
+
+    it('falls back to the claudeCode value when the clawdCode key is unset', () => {
+      stubConfig({ [`claudeCode.${key}`]: false });
+      expect(new ExtensionSettings()[getter]()).toBe(false);
+    });
+
+    it('prefers an explicit clawdCode value over claudeCode', () => {
+      stubConfig(
+        { [`claudeCode.${key}`]: false, [`clawdCode.${key}`]: true },
+        { [`clawdCode.${key}`]: { globalValue: true } },
+      );
+      expect(new ExtensionSettings()[getter]()).toBe(true);
+    });
+
+    it('honors an explicit workspace-level clawdCode value', () => {
+      stubConfig({ [`claudeCode.${key}`]: true }, { [`clawdCode.${key}`]: { workspaceValue: false } });
+      expect(new ExtensionSettings()[getter]()).toBe(false);
+    });
+  });
+
   describe('setDefaultPermissionMode', () => {
     it('writes to workspace scope when a workspace value exists', async () => {
       stubConfig({}, { 'clawdCode.defaultPermissionMode': { workspaceValue: 'plan' } });

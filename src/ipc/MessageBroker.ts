@@ -1,3 +1,5 @@
+import { buildUserContent, type UserContent } from '../shared/userContent';
+import type { IdeContext } from '../shared/ideTags';
 import type {
   FromWebviewMessage,
   ToWebviewMessage,
@@ -35,7 +37,7 @@ export interface IClaudeProcessManager {
   beginLaunch(channelId: string): void;
   cancelLaunch(channelId: string): void;
   writeToChannel(channelId: string, data: unknown): boolean;
-  sendUserMessage(channelId: string, text: string): void;
+  sendUserMessage(channelId: string, content: UserContent): void;
   interruptClaude(channelId: string): void;
   closeChannel(channelId: string): void;
   hasChannel(channelId: string): boolean;
@@ -86,7 +88,8 @@ export interface ISessionRelayManager {
   getThreshold(channelId?: string): number;
   setThreshold(threshold: number, channelId?: string): void;
   isRelaying(channelId: string): boolean;
-  enqueueIfRelaying(channelId: string, text: string): boolean;
+  enqueueIfRelaying(channelId: string, content: UserContent): boolean;
+  clearQueue(channelId: string): void;
   updateLaunchOptions(channelId: string, patch: Partial<ProcessLaunchOptions>): void;
 }
 
@@ -146,6 +149,10 @@ export interface MessageBrokerServices {
   setDefaultPermissionMode?: (mode: PermissionMode) => Promise<void>;
   /** Whether to launch the CLI with the dangerous-skip flag so bypass can be selected mid-session. */
   shouldAllowBypass?: () => boolean;
+  /** The editor context currently offered to the composer. */
+  getIdeContext?: () => IdeContext | null;
+  /** Re-checks a context at send time; drops what the current settings or ignore rules no longer allow. */
+  sanitizeIdeContext?: (context: IdeContext) => Promise<IdeContext | null>;
 }
 
 /**
@@ -166,6 +173,12 @@ export class MessageBroker {
    * relay notification instead of racing that new turn (see
    * `refreshContextUsage`). */
   private readonly turnGenerations = new Map<string, number>();
+  /** Per-channel queue of user turns still waiting on an ide context re-check.
+   * Interrupt/cancel/close/dispose mark the queue cancelled and detach it, so its
+   * turns are dropped without running their re-check and later turns start a
+   * fresh queue instead of waiting on the abandoned one. The entry is removed
+   * once its last turn settles, so closed channels leave nothing behind. */
+  private readonly pendingTurns = new Map<string, { tail: Promise<void>; cancelled: boolean }>();
   // Channels this broker launched and has not closed. Their lifetime is tied to the
   // webview that owns the tabs: when that webview goes away (dispose) or is
   // re-created (a second get_auth_status), nothing can show or answer them any more.
@@ -276,6 +289,66 @@ export class MessageBroker {
     }
   }
 
+  /**
+   * Sends a user turn. Selected text is re-checked by the host first, and turns
+   * on one channel are delivered in submit order while a re-check is pending.
+   */
+  private submitUserTurn(channelId: string, text: string, context: IdeContext | undefined): void {
+    const recheck = context ? this.services.sanitizeIdeContext : undefined;
+    const existing = this.pendingTurns.get(channelId);
+    if (!recheck && !existing) return this.deliverUserTurn(channelId, text, context);
+    const queue = existing ?? { tail: Promise.resolve(), cancelled: false };
+    const run = queue.tail
+      .then(async () => {
+        if (queue.cancelled) return;
+        const checked = context && recheck ? await this.recheckContext(context, recheck) : context;
+        if (queue.cancelled) return;
+        try {
+          this.deliverUserTurn(channelId, text, checked ?? undefined);
+        } catch (err) {
+          this.logger.error('[MessageBroker] failed to deliver user turn', err);
+        }
+      })
+      .catch((err: unknown) => {
+        this.logger.error('[MessageBroker] ide context re-check failed', err);
+      });
+    queue.tail = run;
+    this.pendingTurns.set(channelId, queue);
+    void run.then(() => {
+      if (queue.tail === run && this.pendingTurns.get(channelId) === queue) this.pendingTurns.delete(channelId);
+    });
+  }
+
+  /** Drop any turn on this channel submitted before now, whether awaiting a re-check or queued behind a relay. */
+  private cancelPendingTurns(channelId: string): void {
+    const queue = this.pendingTurns.get(channelId);
+    if (queue) {
+      queue.cancelled = true;
+      this.pendingTurns.delete(channelId);
+    }
+    this.sessionRelayManager.clearQueue(channelId);
+  }
+
+  private async recheckContext(
+    context: IdeContext,
+    recheck: (ctx: IdeContext) => Promise<IdeContext | null>
+  ): Promise<IdeContext | null> {
+    try {
+      return await recheck(context);
+    } catch (err) {
+      this.logger.warn(`[MessageBroker] ide context re-check failed, sending lines only: ${String(err)}`);
+      const sel = context.selection;
+      return sel ? { filePath: context.filePath, selection: { startLine: sel.startLine, endLine: sel.endLine } } : context;
+    }
+  }
+
+  private deliverUserTurn(channelId: string, text: string, context: IdeContext | undefined): void {
+    const content = buildUserContent(text, context);
+    if (!this.sessionRelayManager.enqueueIfRelaying(channelId, content)) {
+      this.processManager.sendUserMessage(channelId, content);
+    }
+  }
+
   private async handleMessage(msg: FromWebviewMessage): Promise<void> {
     try {
       switch (msg.type) {
@@ -286,6 +359,7 @@ export class MessageBroker {
           return this.handleCloseChannel(msg);
         case 'interrupt_claude':
         case 'cancel_request':
+          this.cancelPendingTurns(msg.channelId);
           this.processManager.interruptClaude(msg.channelId);
           this.permissionRequests.cancelChannel(msg.channelId);
           return;
@@ -309,9 +383,7 @@ export class MessageBroker {
             msg.channelId,
             (this.turnGenerations.get(msg.channelId) ?? 0) + 1
           );
-          if (!this.sessionRelayManager.enqueueIfRelaying(msg.channelId, msg.text)) {
-            this.processManager.sendUserMessage(msg.channelId, msg.text);
-          }
+          this.submitUserTurn(msg.channelId, msg.text, msg.context);
           return;
 
         // ─── Live session controls (applied to the running process now, and
@@ -396,6 +468,10 @@ export class MessageBroker {
           // Also broadcast full state so the webview's initialStateReceived flag is
           // set on startup (the webview sends list_sessions_request on mount).
           this.viewManager.broadcastSessionStates();
+          void this.webview.postMessage({
+            type: 'ide_context',
+            context: this.services.getIdeContext?.() ?? null,
+          });
           return;
         }
         case 'get_session_request': {
@@ -729,6 +805,7 @@ export class MessageBroker {
 
   /** Close every channel this broker launched; call when its webview is disposed. */
   dispose(): void {
+    for (const channelId of [...this.pendingTurns.keys()]) this.cancelPendingTurns(channelId);
     this.closeOwnedChannels();
   }
 
@@ -739,6 +816,7 @@ export class MessageBroker {
   }
 
   private handleCloseChannel(msg: Extract<FromWebviewMessage, { type: 'close_channel' }>): void {
+    this.cancelPendingTurns(msg.channelId);
     this.ownedChannels.delete(msg.channelId);
     if (this.launchesAwaitingReplay.has(msg.channelId)) this.cancelledLaunches.add(msg.channelId);
     this.processManager.closeChannel(msg.channelId);

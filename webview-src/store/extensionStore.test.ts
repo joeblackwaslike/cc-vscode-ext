@@ -98,4 +98,33 @@ describe('extensionStore', () => {
     expect(result.current.state.sessions).toEqual(fakeSessions);
     expect(result.current.state.groups).toEqual(fakeGroups);
   });
+
+  test('ide_context stores the latest editor context, null included', () => {
+    const { result } = renderHook(() => useExtensionReducer());
+    expect(result.current.state.ideContext).toBeNull();
+
+    const context = { filePath: '/repo/a.ts', selection: { startLine: 1, endLine: 3, text: 'x' } };
+    act(() => result.current.handleMessage({ type: 'ide_context', context }));
+    expect(result.current.state.ideContext).toEqual(context);
+
+    act(() => result.current.handleMessage({ type: 'ide_context', context: null }));
+    expect(result.current.state.ideContext).toBeNull();
+  });
+
+  test('update_state keeps the current ide context', () => {
+    const { result } = renderHook(() => useExtensionReducer());
+    act(() => result.current.handleMessage({ type: 'ide_context', context: { filePath: '/repo/a.ts' } }));
+    act(() =>
+      result.current.handleMessage({
+        type: 'update_state',
+        sessions: [],
+        groups: [],
+        activeSessionId: undefined,
+        defaultPermissionMode: 'default',
+        thinkingLevel: 'medium',
+        focusViewEnabled: false,
+      }),
+    );
+    expect(result.current.state.ideContext).toEqual({ filePath: '/repo/a.ts' });
+  });
 });

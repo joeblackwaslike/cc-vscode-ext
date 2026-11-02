@@ -177,6 +177,7 @@ export function createMockServices(): MockMessageBrokerServices {
       setThreshold: vi.fn(),
       isRelaying: vi.fn(() => false),
       enqueueIfRelaying: vi.fn(() => false),
+      clearQueue: vi.fn(),
       updateLaunchOptions: vi.fn(),
     } as unknown as ISessionRelayManager,
   };
