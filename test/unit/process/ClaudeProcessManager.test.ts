@@ -299,7 +299,7 @@ describe('ClaudeProcessManager', () => {
     await expect(manager.spawnClaude('ch-1', {})).rejects.toThrow('no binary');
     await manager.spawnClaude('ch-1', {});
 
-    expect(mockProcess.stdin.write).not.toHaveBeenCalled();
+    expect(mockProcess.stdin.write).toHaveBeenCalledTimes(1);
   });
 
   it('writeToChannel() is a no-op for inactive channels and never leaks into a later spawn', async () => {
@@ -309,7 +309,7 @@ describe('ClaudeProcessManager', () => {
 
     await manager.spawnClaude('nope', {});
 
-    expect(mockProcess.stdin.write).not.toHaveBeenCalled();
+    expect(mockProcess.stdin.write).toHaveBeenCalledTimes(1);
   });
 
   it('cancelLaunch() clears launch state so a relaunch of the same channel survives', async () => {
@@ -323,7 +323,7 @@ describe('ClaudeProcessManager', () => {
 
     expect(manager.hasChannel('ch-1')).toBe(true);
     expect(mockProcess.kill).not.toHaveBeenCalled();
-    expect(mockProcess.stdin.write).not.toHaveBeenCalled();
+    expect(mockProcess.stdin.write).toHaveBeenCalledTimes(1);
   });
 
   it('buffers writes made while a launch is in flight and delivers them in order', async () => {
@@ -335,8 +335,8 @@ describe('ClaudeProcessManager', () => {
 
     await manager.spawnClaude('ch-1', {});
 
-    expect(mockProcess.stdin.write).toHaveBeenNthCalledWith(1, '{"n":1}\n');
-    expect(mockProcess.stdin.write).toHaveBeenNthCalledWith(2, '{"n":2}\n');
+    expect(mockProcess.stdin.write).toHaveBeenNthCalledWith(2, '{"n":1}\n');
+    expect(mockProcess.stdin.write).toHaveBeenNthCalledWith(3, '{"n":2}\n');
   });
 
   it('writeToChannel() is a no-op when stdin is not writable', async () => {
@@ -505,6 +505,48 @@ describe('ClaudeProcessManager', () => {
   it('dispose() is safe when no channels are active', () => {
     const { manager } = makeManager();
     expect(() => manager.dispose()).not.toThrow();
+  });
+
+  describe('initialize handshake', () => {
+    const initLine = (channelId: string): string =>
+      JSON.stringify({
+        type: 'control_request',
+        request_id: `cc_init_${channelId}`,
+        request: { subtype: 'initialize', sdkMcpServers: ['claude-vscode'] },
+      }) + '\n';
+
+    it('writes initialize as the first stdin line on spawnClaude', async () => {
+      const { manager } = makeManager();
+      await manager.spawnClaude('ch-1', {});
+      expect(mockProcess.stdin.write).toHaveBeenNthCalledWith(1, initLine('ch-1'));
+    });
+
+    it('writes initialize again on a relay swapChannel respawn', async () => {
+      const { manager } = makeManager();
+      await manager.spawnClaude('ch-1', {});
+      mockProcess.stdin.write.mockClear();
+      await manager.swapChannel('ch-1', {});
+      expect(mockProcess.stdin.write).toHaveBeenCalledWith(initLine('ch-1'));
+    });
+
+    it('writes initialize again on the stale --resume retry', async () => {
+      const { manager, router } = makeManager();
+      router.register('ch-1', vi.fn());
+      await manager.spawnClaude('ch-1', { resume: 'gone' });
+      mockProcess.stdin.write.mockClear();
+      triggerStderrData('No conversation found with session ID: gone');
+      triggerProcessEvent('close', 1);
+      await vi.waitFor(() => expect(mockProcess.stdin.write).toHaveBeenCalledWith(initLine('ch-1')));
+    });
+
+    it('does not throw when stdin write fails', async () => {
+      const { manager } = makeManager();
+      mockProcess.stdin.write.mockImplementationOnce(() => {
+        throw new Error('EPIPE');
+      });
+      await expect(manager.spawnClaude('ch-1', {})).resolves.toBeUndefined();
+      expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining('initialize'));
+    });
   });
 
   describe('swapChannel()', () => {
