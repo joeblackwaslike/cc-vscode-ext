@@ -28,6 +28,7 @@ import { AuthChecker } from './auth/AuthChecker';
 import { WorktreeManager } from './worktree/WorktreeManager';
 import { FileListProvider } from './mentions/FileListProvider';
 import { EditorContextTracker, execFileCode } from './context/EditorContextTracker';
+import { createDiagnosticsCollector } from './ide/diagnostics';
 import { adaptWebview } from './utils/webviewAdapter';
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -180,6 +181,7 @@ export function activate(context: vscode.ExtensionContext): void {
         shouldAllowBypass: () => settings.shouldAllowBypass(),
         getIdeContext: () => editorContext.current(),
         sanitizeIdeContext: (ctx) => editorContext.sanitize(ctx),
+        collectDiagnostics: createDiagnosticsCollector({ isWithheld: (u) => editorContext.isWithheld(u) }),
       }
     );
 

@@ -22,6 +22,7 @@ import type { ILogger } from '../process/ClaudeProcessManager';
 import { SessionRelayManager } from '../relay/SessionRelayManager';
 import { HandoffWatcher } from '../process/HandoffWatcher';
 import { ClaudeProjectReader } from '../sessions/ClaudeProjectReader';
+import { DIAGNOSTICS_SERVER_NAME, handleMcpMessage, type CollectDiagnostics } from '../ide/DiagnosticsMcpServer';
 import { PermissionRequests, BYPASS_DOWNGRADE_NOTICE, isCanUseToolRequest } from '../process/PermissionRequests';
 
 // ─── Dependency interfaces ─────────────────────────────────────────────────────
@@ -131,6 +132,11 @@ export interface ICommandRunner {
   run(execId: string, command: string, cwd?: string): Promise<void>;
 }
 
+interface McpMessageRequest {
+  request_id: string;
+  request: { subtype: 'mcp_message'; server_name?: unknown; message?: unknown };
+}
+
 export interface MessageBrokerServices {
   authManager?: IAuthManager;
   worktreeManager?: IWorktreeManager;
@@ -153,6 +159,8 @@ export interface MessageBrokerServices {
   getIdeContext?: () => IdeContext | null;
   /** Re-checks a context at send time; drops what the current settings or ignore rules no longer allow. */
   sanitizeIdeContext?: (context: IdeContext) => Promise<IdeContext | null>;
+  /** Answers getDiagnostics calls the CLI makes to the in-process claude-vscode MCP server. */
+  collectDiagnostics?: CollectDiagnostics;
 }
 
 /**
@@ -248,6 +256,30 @@ export class MessageBroker {
     this.sessionRelayManager.updateLaunchOptions(channelId, { permissionMode: mode });
     this.permissionRequests.noteMode(channelId, mode);
     this.viewManager.broadcastMessage({ type: 'channel_mode', channelId, mode });
+  }
+
+  /** Answer a CLI-initiated mcp_message for the in-process claude-vscode server; never throws. */
+  private async answerMcpMessage(channelId: string, event: McpMessageRequest): Promise<void> {
+    const requestId = event.request_id;
+    const reply = (response: Record<string, unknown>): void => {
+      this.processManager.writeToChannel(channelId, {
+        type: 'control_response',
+        response: { request_id: requestId, ...response },
+      });
+    };
+    try {
+      const collect = this.services.collectDiagnostics;
+      if (event.request.server_name !== DIAGNOSTICS_SERVER_NAME || !collect) {
+        reply({ subtype: 'error', error: `Unknown MCP server: ${String(event.request.server_name)}` });
+        return;
+      }
+      const mcpResponse = await handleMcpMessage(event.request.message, collect);
+      reply({ subtype: 'success', response: { mcp_response: mcpResponse } });
+    } catch (err) {
+      const error = err instanceof Error ? err.message : String(err);
+      this.logger.error(`[MessageBroker] mcp_message failed on ${channelId}: ${error}`);
+      reply({ subtype: 'error', error });
+    }
   }
 
   /** Fire a control request, swallowing failures into the log (live set_*). */
@@ -719,7 +751,10 @@ export class MessageBroker {
     this.channelRouter.register(channelId, (event) => {
       const typed = event as { type?: string };
       if (typed.type === 'control_response') {
-        this.control.handleResponse(event as ControlResponseEvent);
+        const response = event as ControlResponseEvent;
+        if (!this.control.handleResponse(response) && response.response?.subtype === 'error') {
+          this.logger.warn(`[MessageBroker] control_response error on ${channelId}: ${response.response.error ?? 'unknown'}`);
+        }
         return;
       }
       if (typed.type === 'control_cancel_request') {
@@ -738,6 +773,11 @@ export class MessageBroker {
         return;
       }
       if (typed.type === 'control_request') {
+        const request = (event as { request?: { subtype?: unknown } }).request;
+        if (request?.subtype === 'mcp_message') {
+          void this.answerMcpMessage(channelId, event as McpMessageRequest);
+          return;
+        }
         this.logger.info(`[MessageBroker] ignoring unhandled control_request on ${channelId}`);
         return;
       }
