@@ -132,6 +132,14 @@ export interface ICommandRunner {
   run(execId: string, command: string, cwd?: string): Promise<void>;
 }
 
+const MCP_RESPONSE_TIMEOUT_MS = 30_000;
+
+class McpTimeoutError extends Error {
+  constructor() {
+    super('Diagnostics request timed out');
+  }
+}
+
 interface McpMessageRequest {
   request_id: string;
   request: { subtype: 'mcp_message'; server_name?: unknown; message?: unknown };
@@ -267,18 +275,28 @@ export class MessageBroker {
         response: { request_id: requestId, ...response },
       });
     };
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       const collect = this.services.collectDiagnostics;
       if (event.request.server_name !== DIAGNOSTICS_SERVER_NAME || !collect) {
         reply({ subtype: 'error', error: `Unknown MCP server: ${String(event.request.server_name)}` });
         return;
       }
-      const mcpResponse = await handleMcpMessage(event.request.message, collect);
+      const timeout = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new McpTimeoutError()), MCP_RESPONSE_TIMEOUT_MS);
+      });
+      const mcpResponse = await Promise.race([handleMcpMessage(event.request.message, collect), timeout]);
       reply({ subtype: 'success', response: { mcp_response: mcpResponse } });
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err);
-      this.logger.error(`[MessageBroker] mcp_message failed on ${channelId}: ${error}`);
+      if (err instanceof McpTimeoutError) {
+        this.logger.warn(`[MessageBroker] mcp_message on ${channelId}: ${error}`);
+      } else {
+        this.logger.error(`[MessageBroker] mcp_message failed on ${channelId}: ${error}`);
+      }
       reply({ subtype: 'error', error });
+    } finally {
+      clearTimeout(timer);
     }
   }
 
