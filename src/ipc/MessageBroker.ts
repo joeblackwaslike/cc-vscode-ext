@@ -174,10 +174,11 @@ export class MessageBroker {
    * `refreshContextUsage`). */
   private readonly turnGenerations = new Map<string, number>();
   /** Per-channel queue of user turns still waiting on an ide context re-check.
-   * `epoch` is bumped on interrupt/cancel/close/dispose; a turn captures it at
-   * submit time and is dropped if it changed before delivery. The entry is
-   * removed once its last turn settles, so closed channels leave nothing behind. */
-  private readonly pendingTurns = new Map<string, { tail: Promise<void>; epoch: number }>();
+   * Interrupt/cancel/close/dispose mark the queue cancelled and detach it, so its
+   * turns are dropped without running their re-check and later turns start a
+   * fresh queue instead of waiting on the abandoned one. The entry is removed
+   * once its last turn settles, so closed channels leave nothing behind. */
+  private readonly pendingTurns = new Map<string, { tail: Promise<void>; cancelled: boolean }>();
   // Channels this broker launched and has not closed. Their lifetime is tied to the
   // webview that owns the tabs: when that webview goes away (dispose) or is
   // re-created (a second get_auth_status), nothing can show or answer them any more.
@@ -296,12 +297,12 @@ export class MessageBroker {
     const recheck = context ? this.services.sanitizeIdeContext : undefined;
     const existing = this.pendingTurns.get(channelId);
     if (!recheck && !existing) return this.deliverUserTurn(channelId, text, context);
-    const queue = existing ?? { tail: Promise.resolve(), epoch: 0 };
-    const epoch = queue.epoch;
+    const queue = existing ?? { tail: Promise.resolve(), cancelled: false };
     const run = queue.tail
       .then(async () => {
+        if (queue.cancelled) return;
         const checked = context && recheck ? await this.recheckContext(context, recheck) : context;
-        if (queue.epoch !== epoch) return;
+        if (queue.cancelled) return;
         try {
           this.deliverUserTurn(channelId, text, checked ?? undefined);
         } catch (err) {
@@ -321,7 +322,10 @@ export class MessageBroker {
   /** Drop any turn on this channel submitted before now, whether awaiting a re-check or queued behind a relay. */
   private cancelPendingTurns(channelId: string): void {
     const queue = this.pendingTurns.get(channelId);
-    if (queue) queue.epoch++;
+    if (queue) {
+      queue.cancelled = true;
+      this.pendingTurns.delete(channelId);
+    }
     this.sessionRelayManager.clearQueue(channelId);
   }
 
@@ -801,7 +805,7 @@ export class MessageBroker {
 
   /** Close every channel this broker launched; call when its webview is disposed. */
   dispose(): void {
-    for (const channelId of this.pendingTurns.keys()) this.cancelPendingTurns(channelId);
+    for (const channelId of [...this.pendingTurns.keys()]) this.cancelPendingTurns(channelId);
     this.closeOwnedChannels();
   }
 

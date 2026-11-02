@@ -311,6 +311,7 @@ describe('MessageBroker', () => {
       let release!: (ctx: IdeContext) => void;
       const { h, broker } = brokerWithSanitizeAndInstance(() => new Promise((r) => (release = r)));
       h.dispatch({ type: 'control_request', channelId: 'ch-1', requestId: 'a', text: 'first', context: withText });
+      await new Promise((r) => setImmediate(r));
       h.dispatch({ type: 'interrupt_claude', channelId: 'ch-1' });
       h.dispatch({ type: 'close_channel', channelId: 'ch-1' });
       h.dispatch({ type: 'interrupt_claude', channelId: 'ch-2' });
@@ -366,6 +367,42 @@ describe('MessageBroker', () => {
       broker.dispose();
       release(withText);
       await new Promise((r) => setImmediate(r));
+      expect(h.processManager.sendUserMessage).not.toHaveBeenCalled();
+    });
+
+    it('skips the re-check for turns cancelled while queued, and a later turn does not wait on the abandoned check', async () => {
+      const releases: Array<(ctx: IdeContext) => void> = [];
+      const sanitize = vi.fn(() => new Promise<IdeContext>((r) => releases.push(r)));
+      const { h } = brokerWithSanitizeAndInstance(sanitize);
+      for (const text of ['a', 'b', 'c']) {
+        h.dispatch({ type: 'control_request', channelId: 'ch-1', requestId: text, text, context: withText });
+      }
+      await vi.waitFor(() => expect(sanitize).toHaveBeenCalledTimes(1));
+      h.dispatch({ type: 'interrupt_claude', channelId: 'ch-1' });
+      h.dispatch({ type: 'control_request', channelId: 'ch-1', requestId: 'd', text: 'd', context: withText });
+      h.dispatch({ type: 'control_request', channelId: 'ch-1', requestId: 'e', text: 'e', context: withText });
+      await vi.waitFor(() => expect(sanitize).toHaveBeenCalledTimes(2));
+      releases[1](withText);
+      await vi.waitFor(() => expect(sanitize).toHaveBeenCalledTimes(3));
+      releases[2](withText);
+      await vi.waitFor(() => expect(h.processManager.sendUserMessage).toHaveBeenCalledTimes(2));
+      releases[0](withText);
+      for (let i = 0; i < 3; i++) await new Promise((r) => setImmediate(r));
+      expect(sanitize).toHaveBeenCalledTimes(3);
+      expect(h.processManager.sendUserMessage.mock.calls.map(([, c]) => c[0].text)).toEqual(['d', 'e']);
+    });
+
+    it('never runs the re-check for a turn cancelled before its turn came up', async () => {
+      let releaseFirst!: (ctx: IdeContext) => void;
+      const sanitize = vi.fn(() => new Promise<IdeContext>((r) => (releaseFirst ??= r)));
+      const { h } = brokerWithSanitizeAndInstance(sanitize);
+      h.dispatch({ type: 'control_request', channelId: 'ch-1', requestId: 'a', text: 'a', context: withText });
+      h.dispatch({ type: 'control_request', channelId: 'ch-1', requestId: 'b', text: 'b', context: withText });
+      await vi.waitFor(() => expect(sanitize).toHaveBeenCalledTimes(1));
+      h.dispatch({ type: 'cancel_request', channelId: 'ch-1' });
+      releaseFirst(withText);
+      for (let i = 0; i < 3; i++) await new Promise((r) => setImmediate(r));
+      expect(sanitize).toHaveBeenCalledTimes(1);
       expect(h.processManager.sendUserMessage).not.toHaveBeenCalled();
     });
 
