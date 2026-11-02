@@ -7,6 +7,7 @@ import {
   createDiagnosticsCollector,
   MAX_DIAGNOSTIC_FILES,
   MAX_DIAGNOSTICS_PER_FILE,
+  MAX_PROBED_FILES,
 } from '../../../src/ide/diagnostics';
 
 const WITHHELD_NOTE = 'Diagnostics withheld: the file is git-ignored, excluded, or could not be verified.';
@@ -132,6 +133,7 @@ describe('createDiagnosticsCollector', () => {
       { type: 'text', text: '[]' },
       { type: 'text', text: WITHHELD_NOTE },
     ]);
+    expect(mockVscode.languages.getDiagnostics).not.toHaveBeenCalled();
   });
 
   it('isWithheld rejecting counts as withheld', async () => {
@@ -152,8 +154,9 @@ describe('createDiagnosticsCollector', () => {
     expect(entries).toHaveLength(MAX_DIAGNOSTIC_FILES);
     expect(entries[0].diagnostics).toHaveLength(MAX_DIAGNOSTICS_PER_FILE);
     expect(blocks).toHaveLength(2);
-    expect(blocks[1]!.text).toContain('5 files');
+    expect(blocks[1]!.text).toContain('5 files not examined');
     expect(blocks[1]!.text).toContain('7 diagnostics');
+    expect(isWithheld.mock.calls.length).toBeLessThanOrEqual(MAX_DIAGNOSTIC_FILES);
   });
 
   it('non-file schemes are dropped from the all-files form', async () => {
@@ -172,5 +175,48 @@ describe('createDiagnosticsCollector', () => {
       [uriOf('/ws/a.ts'), [diag()]],
     ];
     expect(JSON.parse((await collect()(undefined))[0]!.text)).toHaveLength(1);
+  });
+
+  it('stops probing at the file cap instead of probing every file', async () => {
+    all = Array.from({ length: MAX_DIAGNOSTIC_FILES + 50 }, (_, i) => [uriOf(`/ws/f${i}.ts`), [diag()]]) as never;
+    const blocks = await collect()(undefined);
+    expect(JSON.parse(blocks[0]!.text)).toHaveLength(MAX_DIAGNOSTIC_FILES);
+    expect(isWithheld).toHaveBeenCalledTimes(MAX_DIAGNOSTIC_FILES);
+    expect(blocks[1]!.text).toContain('50 files not examined');
+  });
+
+  it('counts withheld only among probed files and still applies the cap', async () => {
+    all = Array.from({ length: MAX_DIAGNOSTIC_FILES + 100 }, (_, i) => [uriOf(`/ws/${i < 30 ? 'secret' : 'f'}${i}.ts`), [diag()]]) as never;
+    isWithheld.mockImplementation(async (u: { path: string }) => u.path.includes('secret'));
+    const blocks = await collect()(undefined);
+    expect(JSON.parse(blocks[0]!.text)).toHaveLength(MAX_DIAGNOSTIC_FILES);
+    expect(blocks[1]!.text).toContain('withheld for 30 file(s)');
+    expect(blocks[1]!.text).toContain('70 files not examined');
+    expect(blocks[1]!.text).toContain('30 of the examined files withheld');
+    expect(isWithheld).toHaveBeenCalledTimes(MAX_DIAGNOSTIC_FILES + 30);
+  });
+
+  it('stops at the probe ceiling and says the rest were not examined', async () => {
+    all = Array.from({ length: MAX_PROBED_FILES + 40 }, (_, i) => [uriOf(`/ws/f${i}.ts`), [diag()]]) as never;
+    isWithheld.mockResolvedValue(true);
+    const blocks = await collect()(undefined);
+    expect(JSON.parse(blocks[0]!.text)).toEqual([]);
+    expect(isWithheld).toHaveBeenCalledTimes(MAX_PROBED_FILES);
+    expect(blocks[1]!.text).toContain(`withheld for ${MAX_PROBED_FILES} file(s)`);
+    expect(blocks[1]!.text).toContain('40 files not examined');
+  });
+
+  it('never runs more than 8 probes at once', async () => {
+    all = Array.from({ length: 40 }, (_, i) => [uriOf(`/ws/f${i}.ts`), [diag()]]) as never;
+    let active = 0;
+    let peak = 0;
+    isWithheld.mockImplementation(async () => {
+      peak = Math.max(peak, ++active);
+      await new Promise((r) => setImmediate(r));
+      active--;
+      return false;
+    });
+    await collect()(undefined);
+    expect(peak).toBeLessThanOrEqual(8);
   });
 });

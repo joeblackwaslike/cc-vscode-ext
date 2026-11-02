@@ -3,6 +3,8 @@ import type { CollectDiagnostics, ToolTextBlock } from './DiagnosticsMcpServer';
 
 export const MAX_DIAGNOSTIC_FILES = 200;
 export const MAX_DIAGNOSTICS_PER_FILE = 100;
+export const MAX_PROBED_FILES = 1000;
+const PROBE_CONCURRENCY = 8;
 
 const WITHHELD_EXPLICIT_NOTE = 'Diagnostics withheld: the file is git-ignored, excluded, or could not be verified.';
 
@@ -76,22 +78,30 @@ export function createDiagnosticsCollector(deps: DiagnosticsCollectorDeps): Coll
     const candidates = vscode.languages
       .getDiagnostics()
       .filter(([uri, found]) => uri.scheme === 'file' && found.length > 0);
-    const verdicts = await Promise.all(candidates.map(([uri]) => isWithheldSafe(deps, uri)));
-    const visible = candidates.filter((_, i) => !verdicts[i]);
-    const withheld = candidates.length - visible.length;
-    const shown = visible.slice(0, MAX_DIAGNOSTIC_FILES);
-    const cutFiles = visible.length - shown.length;
+    const shown: Array<[vscode.Uri, readonly vscode.Diagnostic[]]> = [];
+    let probed = 0;
+    let withheld = 0;
+    while (shown.length < MAX_DIAGNOSTIC_FILES && probed < Math.min(candidates.length, MAX_PROBED_FILES)) {
+      const size = Math.min(PROBE_CONCURRENCY, MAX_DIAGNOSTIC_FILES - shown.length, MAX_PROBED_FILES - probed);
+      const chunk = candidates.slice(probed, probed + size);
+      const verdicts = await Promise.all(chunk.map(([uri]) => isWithheldSafe(deps, uri)));
+      probed += chunk.length;
+      chunk.forEach((candidate, i) => (verdicts[i] ? withheld++ : shown.push(candidate)));
+    }
+    const notExamined = candidates.length - probed;
     const cutDiagnostics = shown.reduce((n, [, found]) => n + Math.max(0, found.length - MAX_DIAGNOSTICS_PER_FILE), 0);
 
     const notes: string[] = [];
     if (withheld > 0) {
       notes.push(`Diagnostics withheld for ${withheld} file(s) that are git-ignored, excluded, or could not be verified.`);
     }
-    if (cutFiles > 0 || cutDiagnostics > 0) {
+    if (notExamined > 0) {
       notes.push(
-        `Output truncated: ${cutFiles} files and ${cutDiagnostics} diagnostics were cut ` +
-          `(limits: ${MAX_DIAGNOSTIC_FILES} files, ${MAX_DIAGNOSTICS_PER_FILE} diagnostics per file).`
+        `${notExamined} files not examined after the ${MAX_DIAGNOSTIC_FILES}-file limit or the ${MAX_PROBED_FILES}-file probe limit, ${withheld} of the examined files withheld.`
       );
+    }
+    if (cutDiagnostics > 0) {
+      notes.push(`${cutDiagnostics} diagnostics were cut (limit ${MAX_DIAGNOSTICS_PER_FILE} per file).`);
     }
     const entries = shown.map(([uri, found]) => toEntry(uri, found));
     return [text(JSON.stringify(entries, null, 2)), ...(notes.length ? [text(notes.join(' '))] : [])];
