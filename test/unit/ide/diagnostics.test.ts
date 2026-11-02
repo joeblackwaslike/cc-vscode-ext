@@ -8,6 +8,7 @@ import {
   MAX_DIAGNOSTIC_FILES,
   MAX_DIAGNOSTICS_PER_FILE,
   MAX_PROBED_FILES,
+  COLLECTOR_DEADLINE_MS,
 } from '../../../src/ide/diagnostics';
 
 const WITHHELD_NOTE = 'Diagnostics withheld: the file is git-ignored, excluded, or could not be verified.';
@@ -218,5 +219,27 @@ describe('createDiagnosticsCollector', () => {
     });
     await collect()(undefined);
     expect(peak).toBeLessThanOrEqual(8);
+  });
+
+  it('stops probing at the deadline and returns partial results plus the note', async () => {
+    vi.useFakeTimers();
+    try {
+      all = Array.from({ length: 100 }, (_, i) => [uriOf(`/ws/f${i}.ts`), [diag()]]);
+      isWithheld.mockImplementation(
+        () => new Promise((resolve) => setTimeout(() => resolve(false), 5000))
+      );
+      const result = collect()(undefined);
+      await vi.advanceTimersByTimeAsync(COLLECTOR_DEADLINE_MS + 5000);
+      const blocks = await result;
+      const callsAtDeadline = isWithheld.mock.calls.length;
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(isWithheld.mock.calls.length).toBe(callsAtDeadline);
+      expect(callsAtDeadline).toBeLessThan(100);
+      expect(JSON.parse(blocks[0]!.text).length).toBe(callsAtDeadline);
+      expect(blocks[1]!.text).toContain('time limit');
+      expect(blocks[1]!.text).toContain(`${100 - callsAtDeadline} files not examined`);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

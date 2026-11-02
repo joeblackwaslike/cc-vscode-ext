@@ -146,7 +146,7 @@
 - [ ] **Step 1: Write the live tests** through the real broker and real CLI:
   - `model calls getDiagnostics and reports a seeded diagnostic`.
   - `a seeded diagnostic in a git-ignored file does not appear in the model's answer or the tool result`.
-  - `the call goes through the permission dock in default permission mode and succeeds once allowed`.
+  - `in default permission mode the CLI issues no can_use_tool for the read-only tool and the call succeeds`.
 - [ ] **Step 2:** Run `CLAUDE_ACCEPTANCE=1 node_modules/.bin/vitest run --pool=forks test/unit/process/ide-diagnostics.acceptance.test.ts`. Expected: PASS (3/3). If the default-mode case fails because the CLI never asks, record what it does and assert that instead.
 - [ ] **Step 3:** Update the `docs/parity.md` row. Run the full suite and linters once more.
 - [ ] **Step 4: Commit** `test(ide): live getDiagnostics acceptance and parity row`.

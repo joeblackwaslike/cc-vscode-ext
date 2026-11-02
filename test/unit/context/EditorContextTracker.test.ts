@@ -759,6 +759,13 @@ describe('EditorContextTracker.isWithheld', () => {
     await expect(tracker.isWithheld(uri as never)).resolves.toBe(false);
   });
 
+  it('re-probes on every call so a file that becomes ignored is withheld', async () => {
+    exec.mockResolvedValue({ code: 1 });
+    await expect(tracker.isWithheld(uri as never)).resolves.toBe(false);
+    exec.mockResolvedValue({ code: 0 });
+    await expect(tracker.isWithheld(uri as never)).resolves.toBe(true);
+  });
+
   it('is true when the git check times out', async () => {
     exec.mockReturnValue(new Promise(() => {}));
     const result = tracker.isWithheld(uri as never);

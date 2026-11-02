@@ -116,7 +116,7 @@
           "clawdCode.respectGitIgnore": {
             "type": "boolean",
             "default": true,
-            "description": "Withhold selected text from files that are git-ignored or matched by files.exclude. The line range is still sent. Falls back to claudeCode.respectGitIgnore when unset."
+            "description": "Withhold selected text and Problems-panel diagnostics from files that are git-ignored or matched by files.exclude. The line range is still sent. Falls back to claudeCode.respectGitIgnore when unset."
           },
           "clawdCode.customModels": {
             "type": "array",

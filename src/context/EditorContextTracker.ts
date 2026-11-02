@@ -200,7 +200,9 @@ export class EditorContextTracker implements vscode.Disposable {
 
   /** Whether `respectGitIgnore` is on and the file is ignored, excluded, or could not be verified. */
   async isWithheld(uri: vscode.Uri): Promise<boolean> {
-    return this.opts.settings.getRespectGitIgnore() && (await this.isIgnored(uri));
+    if (!this.opts.settings.getRespectGitIgnore()) return false;
+    this.ignored.delete(uri.fsPath);
+    return this.isIgnored(uri);
   }
 
   dispose(): void {
