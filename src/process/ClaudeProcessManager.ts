@@ -3,6 +3,7 @@ import { spawn, type SpawnOptions } from 'child_process';
 import { buildArgs, type LaunchOptions } from './ProcessArgs';
 import type { ChannelRouter } from './ChannelRouter';
 import { StreamJsonParser } from './StreamJsonParser';
+import { DIAGNOSTICS_SERVER_NAME } from '../ide/DiagnosticsMcpServer';
 
 const MAX_STDERR_TAIL = 4096;
 const MAX_ERROR_DETAIL = 500;
@@ -400,6 +401,20 @@ export class ClaudeProcessManager {
       this._emitSyntheticErrorIfStuck(channelId, proc, `Claude process error: ${String(err)}`);
       this._cleanupAndNotifyExit(channelId, proc);
     });
+
+    try {
+      if (proc.stdin?.writable) {
+        proc.stdin.write(
+          JSON.stringify({
+            type: 'control_request',
+            request_id: `cc_init_${channelId}`,
+            request: { subtype: 'initialize', sdkMcpServers: [DIAGNOSTICS_SERVER_NAME] },
+          }) + '\n'
+        );
+      }
+    } catch (err) {
+      this.logger.warn(`[channel:${channelId}] initialize write failed: ${String(err)}`);
+    }
 
     return proc;
   }

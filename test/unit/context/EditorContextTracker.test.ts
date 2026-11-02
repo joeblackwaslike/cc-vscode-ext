@@ -741,6 +741,39 @@ describe('EditorContextTracker', () => {
   });
 });
 
+describe('EditorContextTracker.isWithheld', () => {
+  const uri = { scheme: 'file', fsPath: '/ws/a.ts', toString: () => 'file:///ws/a.ts' };
+
+  it('is false when respectGitIgnore is off even for an ignored file', async () => {
+    flags.gitIgnore = false;
+    exec.mockResolvedValue({ code: 0 });
+    await expect(tracker.isWithheld(uri as never)).resolves.toBe(false);
+  });
+
+  it('is true for a git-ignored file', async () => {
+    exec.mockResolvedValue({ code: 0 });
+    await expect(tracker.isWithheld(uri as never)).resolves.toBe(true);
+  });
+
+  it('is false for a file that is not ignored', async () => {
+    await expect(tracker.isWithheld(uri as never)).resolves.toBe(false);
+  });
+
+  it('re-probes on every call so a file that becomes ignored is withheld', async () => {
+    exec.mockResolvedValue({ code: 1 });
+    await expect(tracker.isWithheld(uri as never)).resolves.toBe(false);
+    exec.mockResolvedValue({ code: 0 });
+    await expect(tracker.isWithheld(uri as never)).resolves.toBe(true);
+  });
+
+  it('is true when the git check times out', async () => {
+    exec.mockReturnValue(new Promise(() => {}));
+    const result = tracker.isWithheld(uri as never);
+    await vi.advanceTimersByTimeAsync(5000);
+    await expect(result).resolves.toBe(true);
+  });
+});
+
 describe('execFileCode', () => {
   beforeEach(() => vi.useRealTimers());
 
