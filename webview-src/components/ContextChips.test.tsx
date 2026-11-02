@@ -26,6 +26,29 @@ describe('ContextChips', () => {
     expect(screen.queryByTestId('context-chip-file')).not.toBeInTheDocument();
   });
 
+  test('a selection whose text is withheld says so in the tooltip and marks the label', () => {
+    render(
+      <ContextChips
+        context={{ filePath: '/repo/.env', selection: { startLine: 1, endLine: 2 } }}
+        onDismiss={() => {}}
+      />,
+    );
+
+    const chip = screen.getByTestId('context-chip-selection');
+    expect(chip).toHaveAttribute('title', '/repo/.env\ntext not included (git-ignored or excluded)');
+    expect(chip).toHaveTextContent('.env:1-2 (lines only)');
+  });
+
+  test('a selection with text carries no withheld marker', () => {
+    render(
+      <ContextChips
+        context={{ filePath: '/repo/a.ts', selection: { startLine: 1, endLine: 2, text: 'x' } }}
+        onDismiss={() => {}}
+      />,
+    );
+    expect(screen.getByTestId('context-chip-selection')).not.toHaveTextContent('lines only');
+  });
+
   test('a Windows path shows its basename', () => {
     render(<ContextChips context={{ filePath: 'C:\\repo\\src\\app.ts' }} onDismiss={() => {}} />);
     expect(screen.getByTestId('context-chip-file')).toHaveTextContent('app.ts');

@@ -108,6 +108,7 @@ describe('App: editor context on send', () => {
     const bubble = await screen.findByTestId('chat-message-user');
     expect(bubble).toHaveTextContent('/clear');
     expect(bubble).not.toHaveTextContent('ide_opened_file');
+    expect(screen.queryByTestId('history-chip-file')).not.toBeInTheDocument();
   });
 });
 
