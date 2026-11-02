@@ -6,6 +6,8 @@ export const MAX_DIAGNOSTICS_PER_FILE = 100;
 export const MAX_PROBED_FILES = 1000;
 export const COLLECTOR_DEADLINE_MS = 20_000;
 const PROBE_CONCURRENCY = 8;
+/** Slightly above the tracker's own 5s probe timeouts, so a stuck probe fails closed instead of hanging the collector. */
+const PROBE_TIMEOUT_MS = 6_000;
 
 const WITHHELD_EXPLICIT_NOTE = 'Diagnostics withheld: the file is git-ignored, excluded, or could not be verified.';
 
@@ -52,12 +54,21 @@ function parseFileUri(raw: string): vscode.Uri | undefined {
   }
 }
 
-/** Withheld when the check says so or fails to answer, so an unsettled check fails closed. */
+/**
+ * Withheld when the check says so, fails to answer, or never settles within
+ * PROBE_TIMEOUT_MS, so an unsettled check fails closed and never stalls the collector.
+ */
 async function isWithheldSafe(deps: DiagnosticsCollectorDeps, uri: vscode.Uri): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    return await deps.isWithheld(uri);
+    const timeout = new Promise<boolean>((resolve) => {
+      timer = setTimeout(() => resolve(true), PROBE_TIMEOUT_MS);
+    });
+    return await Promise.race([deps.isWithheld(uri), timeout]);
   } catch {
     return true;
+  } finally {
+    clearTimeout(timer);
   }
 }
 

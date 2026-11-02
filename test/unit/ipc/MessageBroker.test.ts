@@ -1,6 +1,6 @@
 import { formatIdeBlocks } from '../../../src/shared/ideTags';
 import type { IdeContext } from '../../../src/shared/ideTags';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 
 vi.mock('vscode', () => ({
   RelativePattern: vi.fn(),

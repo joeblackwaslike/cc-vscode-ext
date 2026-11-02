@@ -242,4 +242,19 @@ describe('createDiagnosticsCollector', () => {
       vi.useRealTimers();
     }
   });
+
+  it('a probe that never settles is counted as withheld after the per-probe timeout', async () => {
+    vi.useFakeTimers();
+    try {
+      all = [[uriOf('/ws/stuck.ts'), [diag()]]];
+      isWithheld.mockImplementation(() => new Promise(() => {}));
+      const result = collect()(undefined);
+      await vi.advanceTimersByTimeAsync(COLLECTOR_DEADLINE_MS);
+      const blocks = await result;
+      expect(JSON.parse(blocks[0]!.text)).toEqual([]);
+      expect(blocks[1]!.text).toContain('withheld for 1 file');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
