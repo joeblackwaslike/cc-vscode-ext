@@ -25,10 +25,13 @@ const FILE_SUFFIX = ' in the IDE. This may or may not be related to the current 
 const FILE_CLOSE = '</ide_opened_file>';
 const SEL_CLOSE = '</ide_selection>';
 const WITHHELD =
+  'The selected text was not included because the file is git-ignored, excluded, or could not be verified.';
+const LEGACY_WITHHELD =
   'The selected text was not included because the file is git-ignored or excluded.';
 
 const SEL_HEAD = /<ide_selection>The user selected the lines (\d+) to (\d+) from /y;
 const NEXT_TAG = /\s*<ide_(?:selection|opened_file)>/y;
+const SEL_HEADER_TEXT = '<ide_selection>The user selected the lines ';
 
 /** Replaces characters that could close or open a tag inside the block. */
 function safePath(path: string): string {
@@ -59,13 +62,22 @@ function closeIndex(text: string, from: number): number {
     last = i;
     const after = i + SEL_CLOSE.length;
     NEXT_TAG.lastIndex = after;
-    if (after === text.length || NEXT_TAG.test(text)) return i;
+    if (
+      after === text.length ||
+      NEXT_TAG.test(text) ||
+      text.includes(SEL_HEADER_TEXT, after) ||
+      text.includes(FILE_OPEN, after)
+    ) {
+      return i;
+    }
   }
   return last;
 }
 
 function selectionPath(inner: string): string | undefined {
-  if (inner.endsWith(`. ${WITHHELD}`)) return inner.slice(0, -(WITHHELD.length + 2));
+  for (const withheld of [WITHHELD, LEGACY_WITHHELD]) {
+    if (inner.endsWith(`. ${withheld}`)) return inner.slice(0, -(withheld.length + 2));
+  }
   const colon = inner.search(/:\r?\n/);
   return colon === -1 ? undefined : inner.slice(0, colon);
 }

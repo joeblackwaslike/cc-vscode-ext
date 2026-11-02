@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { formatIdeBlocks, parseIdeBlocks, MAX_SELECTION_CHARS } from '../../../src/shared/ideTags';
 
 const WITHHELD =
+  'The selected text was not included because the file is git-ignored, excluded, or could not be verified.';
+const LEGACY_WITHHELD =
   'The selected text was not included because the file is git-ignored or excluded.';
 
 describe('formatIdeBlocks', () => {
@@ -162,5 +164,32 @@ describe('parseIdeBlocks', () => {
       ...formatIdeBlocks({ filePath: path }),
     ];
     expect(parseIdeBlocks(blocks.join('\n')).chips.map((c) => c.path)).toEqual([path, path, path]);
+  });
+
+  it('parses the legacy withheld wording', () => {
+    const raw = `<ide_selection>The user selected the lines 1 to 4 from /a.ts. ${LEGACY_WITHHELD}</ide_selection>`;
+    expect(parseIdeBlocks(raw).chips).toEqual([
+      { kind: 'selection', path: '/a.ts', startLine: 1, endLine: 4 },
+    ]);
+  });
+
+  it('keeps prose between two selections and yields two chips in order', () => {
+    const [a] = formatIdeBlocks({ filePath: '/a.ts', selection: { startLine: 1, endLine: 2, text: 'aa' } });
+    const [b] = formatIdeBlocks({ filePath: '/b.ts', selection: { startLine: 3, endLine: 4, text: 'bb' } });
+    expect(parseIdeBlocks(`${a}\ncompare these\n${b}`)).toEqual({
+      text: 'compare these',
+      chips: [
+        { kind: 'selection', path: '/a.ts', startLine: 1, endLine: 2 },
+        { kind: 'selection', path: '/b.ts', startLine: 3, endLine: 4 },
+      ],
+    });
+  });
+
+  it('keeps prose between a selection and an opened-file tag', () => {
+    const [a] = formatIdeBlocks({ filePath: '/a.ts', selection: { startLine: 1, endLine: 2, text: 'aa' } });
+    const [f] = formatIdeBlocks({ filePath: '/f.ts' });
+    const out = parseIdeBlocks(`${a}\nhello\n${f}`);
+    expect(out.text).toBe('hello');
+    expect(out.chips.map((c) => c.path)).toEqual(['/a.ts', '/f.ts']);
   });
 });

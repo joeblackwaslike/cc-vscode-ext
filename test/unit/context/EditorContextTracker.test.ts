@@ -432,6 +432,14 @@ describe('EditorContextTracker', () => {
     await settle();
     expect(mockVscode.workspace.findFiles).toHaveBeenCalledTimes(2);
     expect(tracker.current()?.selection?.text).toBe('picked text');
+    expect(log).toHaveBeenCalledWith('EditorContextTracker: /ws/a.ts: exclude probe failed: search failed');
+  });
+
+  it('logs the path and reason when the git probe rejects', async () => {
+    exec.mockRejectedValue(new Error('spawn EACCES'));
+    await selectTwice();
+    expect(tracker.current()?.selection).toStrictEqual({ startLine: 1, endLine: 1 });
+    expect(log).toHaveBeenCalledWith('EditorContextTracker: /ws/a.ts: git check-ignore failed: spawn EACCES');
   });
 
   it('recomputes the selected text when the tracked document changes', async () => {

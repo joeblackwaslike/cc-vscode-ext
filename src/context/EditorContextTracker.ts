@@ -118,6 +118,10 @@ function escapeGlob(p: string): string {
  * IDE context to offer the composer, with the attach and git-ignore settings
  * already applied. Changes are debounced and only reported when the value differs.
  */
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 export class EditorContextTracker implements vscode.Disposable {
   private editor: vscode.TextEditor | undefined;
   private value: IdeContext | null = null;
@@ -237,7 +241,7 @@ export class EditorContextTracker implements vscode.Disposable {
   }
 
   private log(err: unknown): void {
-    this.opts.log?.(`EditorContextTracker: ${err instanceof Error ? err.message : String(err)}`);
+    this.opts.log?.(`EditorContextTracker: ${errorMessage(err)}`);
   }
 
   private async compute(editor: vscode.TextEditor | undefined): Promise<IdeContext | null> {
@@ -296,8 +300,7 @@ export class EditorContextTracker implements vscode.Disposable {
       const firstLine = result.stderr?.split('\n', 1)[0] ?? '';
       return this.unsettled(fsPath, `git check-ignore exit ${result.code}: ${firstLine}`);
     } catch (err) {
-      this.log(err);
-      return UNSETTLED;
+      return this.unsettled(fsPath, `git check-ignore failed: ${errorMessage(err)}`);
     }
   }
 
@@ -320,8 +323,7 @@ export class EditorContextTracker implements vscode.Disposable {
       if (found === 'timeout') return this.unsettled(uri.fsPath, 'exclude probe timed out');
       return { ignored: found.length === 0, settled: true };
     } catch (err) {
-      this.log(err);
-      return UNSETTLED;
+      return this.unsettled(uri.fsPath, `exclude probe failed: ${errorMessage(err)}`);
     }
   }
 }
