@@ -62,13 +62,13 @@ function closeIndex(text: string, from: number): number {
     last = i;
     const after = i + SEL_CLOSE.length;
     NEXT_TAG.lastIndex = after;
-    if (
-      after === text.length ||
-      NEXT_TAG.test(text) ||
-      text.includes(SEL_HEADER_TEXT, after) ||
-      text.includes(FILE_OPEN, after)
-    ) {
-      return i;
+    if (after === text.length || NEXT_TAG.test(text)) return i;
+    const selPos = text.indexOf(SEL_HEADER_TEXT, after);
+    const filePos = text.indexOf(FILE_OPEN, after);
+    const nextTagPos = [selPos, filePos].filter((p) => p !== -1).sort((a, b) => a - b)[0];
+    if (nextTagPos !== undefined) {
+      const nextClose = text.indexOf(SEL_CLOSE, after);
+      if (nextClose === -1 || nextClose > nextTagPos) return i;
     }
   }
   return last;
