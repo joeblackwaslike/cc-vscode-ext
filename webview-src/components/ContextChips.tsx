@@ -20,7 +20,7 @@ export function ContextChips({ context, onDismiss }: Props) {
     ? `${basename(context.filePath)}:${selection.startLine}-${selection.endLine}`
     : basename(context.filePath);
   const withheld = selection !== undefined && selection.text === undefined;
-  const title = withheld ? `${context.filePath}\ntext not included (git-ignored or excluded)` : context.filePath;
+  const title = withheld ? `${context.filePath}\ntext not included (git-ignored, excluded, or could not be verified)` : context.filePath;
 
   return (
     <div className="cc-context-chips">

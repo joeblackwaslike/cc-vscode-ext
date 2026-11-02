@@ -283,15 +283,23 @@ export class EditorContextTracker implements vscode.Disposable {
         this.opts.exec('git', ['check-ignore', '-q', fsPath], path.dirname(fsPath)),
         this.opts.gitTimeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS
       );
-      if (result === 'timeout' || result.killed) return UNSETTLED;
+      if (result === 'timeout') return this.unsettled(fsPath, 'git check-ignore timed out');
+      if (result.killed) return this.unsettled(fsPath, 'git check-ignore was killed');
       if (result.code === 0) return { ignored: true, settled: true };
       if (SETTLED_NOT_IGNORED.has(result.code)) return { ignored: false, settled: true };
       if (result.code === 128 && NOT_A_REPOSITORY.test(result.stderr ?? '')) return { ignored: false, settled: true };
-      return UNSETTLED;
+      const firstLine = result.stderr?.split('\n', 1)[0] ?? '';
+      return this.unsettled(fsPath, `git check-ignore exit ${result.code}: ${firstLine}`);
     } catch (err) {
       this.log(err);
       return UNSETTLED;
     }
+  }
+
+  /** Logs why a probe for `fsPath` could not be settled, and withholds the text for that computation. */
+  private unsettled(fsPath: string, reason: string): ProbeResult {
+    this.log(`${fsPath}: ${reason}`);
+    return UNSETTLED;
   }
 
   /** Whether `files.exclude` hides the file; a failed or hung probe counts as excluded and is not cached. */
@@ -304,7 +312,7 @@ export class EditorContextTracker implements vscode.Disposable {
         vscode.workspace.findFiles(new vscode.RelativePattern(folder, escapeGlob(relative)), undefined, 1),
         this.opts.excludeTimeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS
       );
-      if (found === 'timeout') return UNSETTLED;
+      if (found === 'timeout') return this.unsettled(uri.fsPath, 'exclude probe timed out');
       return { ignored: found.length === 0, settled: true };
     } catch (err) {
       this.log(err);

@@ -35,7 +35,7 @@ describe('ContextChips', () => {
     );
 
     const chip = screen.getByTestId('context-chip-selection');
-    expect(chip).toHaveAttribute('title', '/repo/.env\ntext not included (git-ignored or excluded)');
+    expect(chip).toHaveAttribute('title', '/repo/.env\ntext not included (git-ignored, excluded, or could not be verified)');
     expect(chip).toHaveTextContent('.env:1-2 (lines only)');
   });
 

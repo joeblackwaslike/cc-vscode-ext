@@ -17,8 +17,8 @@ and as a usable extension in its own right.
 - **Automatic open-file and selection context** — the active file, or the lines you've selected,
   attach to your prompt as a removable chip. `clawdCode.attachOpenFile` and
   `clawdCode.attachSelection` turn each one off. With `clawdCode.respectGitIgnore` on (the
-  default), selected text from a git-ignored or `files.exclude`d file is left out and only its
-  line range is sent.
+  default), selected text is left out and only its line range is sent when the file is
+  git-ignored or `files.exclude`d, or when that could not be checked.
 - **Session management** — conversations are saved automatically; browse past sessions, resume
   where you left off, and organize sessions into named groups via the sidebar.
 - **Diff review** — proposed edits render as an inline diff you can accept or reject before

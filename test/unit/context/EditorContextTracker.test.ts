@@ -350,6 +350,7 @@ describe('EditorContextTracker', () => {
     await vi.advanceTimersByTimeAsync(5000);
     await drain();
     expect(tracker.current()?.selection).toStrictEqual({ startLine: 1, endLine: 1 });
+    expect(log).toHaveBeenCalledWith('EditorContextTracker: /ws/a.ts: git check-ignore timed out');
 
     exec.mockResolvedValue({ code: 1 });
     select(a, sel(0, 0, 0, 5));
@@ -375,6 +376,7 @@ describe('EditorContextTracker', () => {
     await selectTwice();
     expect(tracker.current()?.selection).toStrictEqual({ startLine: 1, endLine: 1 });
     expect(exec).toHaveBeenCalledTimes(2);
+    expect(log).toHaveBeenCalledWith('EditorContextTracker: /ws/a.ts: git check-ignore was killed');
   });
 
   it.each([
@@ -389,10 +391,16 @@ describe('EditorContextTracker', () => {
   });
 
   it('withholds text and does not cache when git exits 128 for a reason other than a missing repository', async () => {
-    exec.mockResolvedValue({ code: 128, stderr: "fatal: detected dubious ownership in repository at '/ws'" });
+    exec.mockResolvedValue({
+      code: 128,
+      stderr: "fatal: detected dubious ownership in repository at '/ws'\nTo add an exception run git config\n",
+    });
     await selectTwice();
     expect(tracker.current()?.selection).toStrictEqual({ startLine: 1, endLine: 1 });
     expect(exec).toHaveBeenCalledTimes(2);
+    expect(log).toHaveBeenCalledWith(
+      "EditorContextTracker: /ws/a.ts: git check-ignore exit 128: fatal: detected dubious ownership in repository at '/ws'"
+    );
   });
 
   it('withholds text when the exclude probe hangs, and retries it on the next event', async () => {
@@ -405,6 +413,7 @@ describe('EditorContextTracker', () => {
     await vi.advanceTimersByTimeAsync(5000);
     await drain();
     expect(tracker.current()?.selection).toStrictEqual({ startLine: 1, endLine: 1 });
+    expect(log).toHaveBeenCalledWith('EditorContextTracker: /ws/a.ts: exclude probe timed out');
 
     select(a, sel(0, 0, 0, 5));
     await settle();
@@ -440,10 +449,11 @@ describe('EditorContextTracker', () => {
   });
 
   it('withholds text and does not cache when git exits with an unrecognized code', async () => {
-    exec.mockResolvedValue({ code: 2 });
+    exec.mockResolvedValue({ code: 2, stderr: 'usage: git check-ignore\n' });
     await selectTwice();
     expect(tracker.current()?.selection).toStrictEqual({ startLine: 1, endLine: 1 });
     expect(exec).toHaveBeenCalledTimes(2);
+    expect(log).toHaveBeenCalledWith('EditorContextTracker: /ws/a.ts: git check-ignore exit 2: usage: git check-ignore');
   });
 
   it('logs a throwing onChange instead of rejecting', async () => {

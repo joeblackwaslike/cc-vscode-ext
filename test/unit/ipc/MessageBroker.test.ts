@@ -1115,7 +1115,7 @@ describe('permission prompt routing', () => {
       setThreshold: vi.fn(),
       isRelaying: vi.fn(() => opts.isRelaying ?? false),
       enqueueIfRelaying: vi.fn(() => false),
-    clearQueue: vi.fn(),
+      clearQueue: vi.fn(),
       updateLaunchOptions: vi.fn(),
     };
     h.processManager.writeToChannel.mockReturnValue(true);
