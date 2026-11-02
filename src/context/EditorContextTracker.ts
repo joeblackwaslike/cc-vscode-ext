@@ -198,6 +198,11 @@ export class EditorContextTracker implements vscode.Disposable {
     return { filePath: context.filePath, selection: { startLine: sel.startLine, endLine: sel.endLine } };
   }
 
+  /** Whether `respectGitIgnore` is on and the file is ignored, excluded, or could not be verified. */
+  async isWithheld(uri: vscode.Uri): Promise<boolean> {
+    return this.opts.settings.getRespectGitIgnore() && (await this.isIgnored(uri));
+  }
+
   dispose(): void {
     this.disposed = true;
     this.generation++;
