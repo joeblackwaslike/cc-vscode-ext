@@ -15,6 +15,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write
 
 jobs:
   publish:
@@ -69,4 +70,4 @@ jobs:
             ./*.vsix
 
       - name: Publish to VS Code Marketplace
-        run: bunx @vscode/vsce publish --packagePath ./*.vsix --pat "${{ secrets.VSCE_PAT }}"
+        run: bunx @vscode/vsce publish --packagePath ./*.vsix --oidc
