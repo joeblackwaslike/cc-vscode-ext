@@ -6,8 +6,9 @@
  *   {type:'control_response', response:{subtype:'success'|'error', request_id, response?, error?}}
  *
  * This manager writes the request, resolves the matching promise by request_id,
- * and times out stragglers so the map can't leak. No `initialize` handshake is
- * required (verified against claude 2.1.x).
+ * and times out stragglers so the map can't leak. The process manager sends one
+ * `initialize` request per spawn for the SDK MCP server; its response carries
+ * an unknown request_id, so this manager ignores it.
  */
 
 export type ControlSubtype =

@@ -1,6 +1,6 @@
 import { formatIdeBlocks } from '../../../src/shared/ideTags';
 import type { IdeContext } from '../../../src/shared/ideTags';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 
 vi.mock('vscode', () => ({
   RelativePattern: vi.fn(),
@@ -1578,5 +1578,171 @@ describe('permission prompt routing', () => {
     expect(h.viewManager.broadcastMessage).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'permission_cancelled', channelId: 'ch-1', requestIds: ['req-1'] }),
     );
+  });
+});
+
+describe('claude-vscode mcp_message routing', () => {
+  type SentControl = {
+    type: string;
+    response: { subtype: string; request_id: string; error?: string; response: { mcp_response: { id: number; result: { tools: { name: string }[]; content: unknown } } } };
+  };
+
+  function launch(collectDiagnostics?: (uri: string | undefined) => Promise<{ type: 'text'; text: string }[]>) {
+    const h = createIpcTestHarness();
+    new MessageBroker(
+      h.processManager,
+      h.sessionManager,
+      h.diffManager,
+      h.viewManager,
+      h.channelRouter,
+      h.webview,
+      h.logger,
+      { collectDiagnostics }
+    );
+    h.dispatch({ type: 'launch_claude', channelId: 'ch-1' });
+    const routed = h.channelRouter.register.mock.calls[0][1] as (event: unknown) => void;
+    h.processManager.writeToChannel.mockClear();
+    return { h, routed };
+  }
+
+  const mcpRequest = (message: unknown, serverName = 'claude-vscode') => ({
+    type: 'control_request',
+    request_id: 'rq-1',
+    request: { subtype: 'mcp_message', server_name: serverName, message },
+  });
+
+  it('answers an mcp_message tools/list with an mcp_response echoing the id', async () => {
+    const { h, routed } = launch(async () => []);
+    routed(mcpRequest({ jsonrpc: '2.0', id: 7, method: 'tools/list' }));
+    await vi.waitFor(() => expect(h.processManager.writeToChannel).toHaveBeenCalled());
+    const [channel, data] = h.processManager.writeToChannel.mock.calls[0] as [string, SentControl];
+    expect(channel).toBe('ch-1');
+    expect(data.type).toBe('control_response');
+    expect(data.response.subtype).toBe('success');
+    expect(data.response.request_id).toBe('rq-1');
+    expect(data.response.response.mcp_response.id).toBe(7);
+    expect(data.response.response.mcp_response.result.tools[0].name).toBe('getDiagnostics');
+  });
+
+  it('answers tools/call by invoking the collector', async () => {
+    const collect = vi.fn(async () => [{ type: 'text' as const, text: 'none' }]);
+    const { h, routed } = launch(collect);
+    routed(
+      mcpRequest({
+        jsonrpc: '2.0',
+        id: 8,
+        method: 'tools/call',
+        params: { name: 'getDiagnostics', arguments: { uri: 'file:///a.ts' } },
+      })
+    );
+    await vi.waitFor(() => expect(h.processManager.writeToChannel).toHaveBeenCalled());
+    expect(collect).toHaveBeenCalledWith('file:///a.ts');
+    const data = h.processManager.writeToChannel.mock.calls[0][1] as SentControl;
+    expect(data.response.response.mcp_response.result.content).toEqual([{ type: 'text', text: 'none' }]);
+  });
+
+  it('unknown server_name gets an error control_response', async () => {
+    const { h, routed } = launch(async () => []);
+    routed(mcpRequest({ jsonrpc: '2.0', id: 1, method: 'ping' }, 'other'));
+    await vi.waitFor(() => expect(h.processManager.writeToChannel).toHaveBeenCalled());
+    const data = h.processManager.writeToChannel.mock.calls[0][1] as SentControl;
+    expect(data.response.subtype).toBe('error');
+    expect(data.response.request_id).toBe('rq-1');
+    expect(typeof data.response.error).toBe('string');
+  });
+
+  it('no collectDiagnostics service gets an error control_response', async () => {
+    const { h, routed } = launch(undefined);
+    routed(mcpRequest({ jsonrpc: '2.0', id: 1, method: 'ping' }));
+    await vi.waitFor(() => expect(h.processManager.writeToChannel).toHaveBeenCalled());
+    const data = h.processManager.writeToChannel.mock.calls[0][1] as SentControl;
+    expect(data.response.subtype).toBe('error');
+  });
+
+  it('other control_request subtypes are still dropped without a response', async () => {
+    const { h, routed } = launch(async () => []);
+    routed({ type: 'control_request', request_id: 'rq-2', request: { subtype: 'hook_callback' } });
+    await Promise.resolve();
+    expect(h.processManager.writeToChannel).not.toHaveBeenCalled();
+    expect(h.viewManager.broadcastMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'request' })
+    );
+  });
+
+  it('an error control_response nobody is waiting for is logged', () => {
+    const { h, routed } = launch(async () => []);
+    routed({
+      type: 'control_response',
+      response: { subtype: 'error', request_id: 'nobody', error: 'initialize rejected' },
+    });
+    expect(h.logger.warn).toHaveBeenCalledWith(expect.stringContaining('initialize rejected'));
+  });
+
+  describe('timeout and id handling', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    const callRequest = {
+      jsonrpc: '2.0',
+      id: 9,
+      method: 'tools/call',
+      params: { name: 'getDiagnostics', arguments: {} },
+    };
+
+    it('writes exactly one error control_response when the collector never resolves', async () => {
+      vi.useFakeTimers();
+      const { h, routed } = launch(() => new Promise(() => {}));
+      routed(mcpRequest(callRequest));
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(h.processManager.writeToChannel).toHaveBeenCalledTimes(1);
+      const data = h.processManager.writeToChannel.mock.calls[0][1] as SentControl;
+      expect(data.response.subtype).toBe('error');
+      expect(data.response.error).toMatch(/timed out/);
+      expect(h.logger.warn).toHaveBeenCalled();
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('discards a collector result that arrives after the timeout', async () => {
+      vi.useFakeTimers();
+      let resolveLate: (v: { type: 'text'; text: string }[]) => void = () => {};
+      const { h, routed } = launch(() => new Promise((r) => (resolveLate = r)));
+      routed(mcpRequest(callRequest));
+      await vi.advanceTimersByTimeAsync(30_000);
+      resolveLate([{ type: 'text', text: 'late' }]);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(h.processManager.writeToChannel).toHaveBeenCalledTimes(1);
+    });
+
+    it('succeeds and clears its timer when the collector resolves quickly', async () => {
+      vi.useFakeTimers();
+      const { h, routed } = launch(async () => [{ type: 'text', text: 'ok' }]);
+      routed(mcpRequest(callRequest));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(h.processManager.writeToChannel).toHaveBeenCalledTimes(1);
+      const data = h.processManager.writeToChannel.mock.calls[0][1] as SentControl;
+      expect(data.response.subtype).toBe('success');
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('echoes a string JSON-RPC id', async () => {
+      const { h, routed } = launch(async () => []);
+      routed(mcpRequest({ jsonrpc: '2.0', id: 'abc', method: 'tools/list' }));
+      await vi.waitFor(() => expect(h.processManager.writeToChannel).toHaveBeenCalled());
+      const data = h.processManager.writeToChannel.mock.calls[0][1] as unknown as {
+        response: { response: { mcp_response: { id: string } } };
+      };
+      expect(data.response.response.mcp_response.id).toBe('abc');
+    });
+
+    it('acks an id-less notification with the placeholder response', async () => {
+      const { h, routed } = launch(async () => []);
+      routed(mcpRequest({ jsonrpc: '2.0', method: 'notifications/initialized' }));
+      await vi.waitFor(() => expect(h.processManager.writeToChannel).toHaveBeenCalled());
+      const data = h.processManager.writeToChannel.mock.calls[0][1] as unknown as {
+        response: { response: { mcp_response: unknown } };
+      };
+      expect(data.response.response.mcp_response).toEqual({ jsonrpc: '2.0', result: {}, id: 0 });
+    });
   });
 });

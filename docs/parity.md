@@ -64,8 +64,10 @@ Protocol, as implemented in the official `extension.js`:
 |---|---|---|
 | Open file and selection context: composer chip, tags sent with the prompt, chips in history | have (Phase 1A) | |
 | Git-ignored files withhold selection text | have (Phase 1A) | |
-| `getDiagnostics` tool for the model | missing | 1C |
+| `getDiagnostics` tool for the model | have (Phase 1C) | |
 | WebSocket server, lock file, `CLAUDE_CODE_SSE_PORT` | missing | 1B |
+
+Phase 1C (`getDiagnostics`) was checked live against the real CLI through `MessageBroker` (`test/unit/process/ide-diagnostics.acceptance.test.ts`, `CLAUDE_ACCEPTANCE=1`): the model reads a seeded Problems entry, diagnostics for git-ignored files never reach it, and in default permission mode the read-only call runs without a permission request.
 
 Phase 1A was checked live against the real CLI through `MessageBroker` (`test/unit/process/ide-context.acceptance.test.ts`, `CLAUDE_ACCEPTANCE=1`): selection text, the file path and the withheld-text form all reach the model as expected.
 

@@ -124,7 +124,23 @@ export const mockVscode = {
       stat: vi.fn(() => Promise.resolve({ type: 1 })),
     },
     saveAll: vi.fn(() => Promise.resolve(true)),
+    textDocuments: [] as Array<{ uri: ReturnType<typeof makeUri>; lineCount: number }>,
   },
+
+  languages: {
+    getDiagnostics: vi.fn((_uri?: unknown) => [] as unknown[]),
+  },
+
+  DiagnosticSeverity: {
+    Error: 0,
+    Warning: 1,
+    Information: 2,
+    Hint: 3,
+    0: 'Error',
+    1: 'Warning',
+    2: 'Information',
+    3: 'Hint',
+  } as Record<string | number, string | number>,
 
   // commands namespace
   commands: {
